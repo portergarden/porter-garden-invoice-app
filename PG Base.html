@@ -1351,10 +1351,16 @@ td.dim{color:var(--text2)}
         <button class="btn pri" onclick="openSchedM()">＋ 予定追加</button>
       </div>
     </div>
-    <div id="schedSummary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
-    <div style="padding:6px 14px;display:flex;gap:8px;border-bottom:0.5px solid var(--border)">
+    <div id="schedSummary" style="display:grid;grid-template-columns:repeat(4,1fr) 1.6fr;gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+    <div style="padding:6px 14px;display:flex;align-items:center;gap:8px;border-bottom:0.5px solid var(--border);flex-wrap:wrap">
       <span style="font-size:10px;background:var(--red-bg);color:var(--red-text);padding:2px 6px;border-radius:3px">■ 期限超過</span>
       <span style="font-size:10px;background:var(--amber-bg);color:var(--amber-text);padding:2px 6px;border-radius:3px">■ 7日以内</span>
+      <div style="flex:1"></div>
+      <span id="schedBulkCount" style="font-size:11px;color:var(--text2)"></span>
+      <button class="btn sml" onclick="toggleSchedSelAll(true)">全て選択</button>
+      <button class="btn sml" onclick="toggleSchedSelAll(false)">全て解除</button>
+      <button class="btn sml grn" onclick="bulkMarkSchedDone()">選択を支払済にする</button>
+      <button class="btn sml" onclick="bulkUnmarkSchedDone()">選択の支払済を取消</button>
     </div>
     <div id="schedList" style="overflow-y:auto;max-height:calc(100vh - 200px)">
       <div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">支払予定がありません</div>
@@ -1374,10 +1380,16 @@ td.dim{color:var(--text2)}
         <button class="btn pri" onclick="openReceiptSchedM()">＋ 予定追加</button>
       </div>
     </div>
-    <div id="receiptSchedSummary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
-    <div style="padding:6px 14px;display:flex;gap:8px;border-bottom:0.5px solid var(--border)">
+    <div id="receiptSchedSummary" style="display:grid;grid-template-columns:repeat(4,1fr) 1.6fr;gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+    <div style="padding:6px 14px;display:flex;align-items:center;gap:8px;border-bottom:0.5px solid var(--border);flex-wrap:wrap">
       <span style="font-size:10px;background:var(--red-bg);color:var(--red-text);padding:2px 6px;border-radius:3px">■ 期限超過</span>
       <span style="font-size:10px;background:var(--amber-bg);color:var(--amber-text);padding:2px 6px;border-radius:3px">■ 7日以内</span>
+      <div style="flex:1"></div>
+      <span id="receiptSchedBulkCount" style="font-size:11px;color:var(--text2)"></span>
+      <button class="btn sml" onclick="toggleReceiptSchedSelAll(true)">全て選択</button>
+      <button class="btn sml" onclick="toggleReceiptSchedSelAll(false)">全て解除</button>
+      <button class="btn sml grn" onclick="bulkMarkReceiptSchedDone()">選択を入金済にする</button>
+      <button class="btn sml" onclick="bulkUnmarkReceiptSchedDone()">選択の入金済を取消</button>
     </div>
     <div id="receiptSchedList" style="overflow-y:auto;max-height:calc(100vh - 200px)">
       <div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">入金予定がありません</div>
@@ -6375,7 +6387,9 @@ function renderScheduleGrouped(data, listId, opts) {
         if (s.date < today) { cls += ' overdue'; badge = `<span class="sched-pill" style="background:var(--red-bg);color:var(--red-text)">期限超過</span>`; }
         else if (s.date <= soonStr) { cls += ' soon'; badge = `<span class="sched-pill" style="background:var(--amber-bg);color:var(--amber-text)">7日以内</span>`; }
       } else { cls += ' done'; badge = `<span class="sched-pill" style="background:var(--green-bg);color:var(--green-text)">${opts.doneLabel}</span>`; }
+      const checked = opts.selSet && opts.selSet.has(s.id);
       return `<div class="${cls}">
+        <input type="checkbox" ${checked?'checked':''} onchange="${opts.toggleSelFn}(${s.id},this.checked)">
         <div style="flex:1">
           <div style="font-weight:500">${opts.getName(s)} <span style="font-size:10px;color:var(--text2)">${s.month ? s.month+'分' : ''}</span></div>
           ${s.note ? `<div style="font-size:10px;color:var(--text2)">${s.note}</div>` : ''}
@@ -6400,23 +6414,36 @@ function renderScheduleGrouped(data, listId, opts) {
 }
 
 // 支払・入金スケジュール共通：予定合計／済合計／残高／件数のKPIサマリーを表示する
-function renderScheduleSummary(data, elId, label) {
+function renderScheduleSummary(data, elId, label, getName) {
   const el = document.getElementById(elId);
   if (!el) return;
   const total = data.reduce((a,s)=>a+(s.amt||0),0);
   const doneTotal = data.filter(s=>s.done).reduce((a,s)=>a+(s.amt||0),0);
   const remaining = total - doneTotal;
+  // 直近の予定＝未済のうち最も日付が早いもの（期限超過があればそれが最優先で表示される）
+  const today = fmtLocalDate(new Date());
+  const next = data.filter(s=>!s.done).sort((a,b)=>a.date.localeCompare(b.date))[0];
+  const nextOverdue = next && next.date < today;
+  const nextHtml = next
+    ? `<div style="font-size:12px;font-weight:600${nextOverdue?';color:var(--red-text)':''}">${next.date}${nextOverdue?'（期限超過）':''}</div>
+       <div style="font-size:12px;margin-top:1px">${getName ? (getName(next)||'—') : '—'}${next.month?` <span style="color:var(--text2)">${next.month}分</span>`:''}</div>
+       <div style="font-size:13px;font-weight:600;margin-top:1px">${yen(next.amt)}</div>`
+    : `<div style="font-size:11px;color:var(--text2)">予定はありません</div>`;
   el.innerHTML = `
     <div class="kpi-card"><div class="kpi-label">${label}予定合計</div><div class="kpi-val">${yen(total)}</div></div>
     <div class="kpi-card"><div class="kpi-label">${label}済合計</div><div class="kpi-val" style="color:var(--green)">${yen(doneTotal)}</div></div>
     <div class="kpi-card"><div class="kpi-label">未${label}残高</div><div class="kpi-val" style="color:${remaining>0?'var(--red)':'var(--green)'}">${yen(remaining)}</div></div>
     <div class="kpi-card"><div class="kpi-label">件数</div><div class="kpi-val">${data.length}件</div></div>
+    <div class="kpi-card"><div class="kpi-label">直近の予定</div>${nextHtml}</div>
   `;
 }
+let schedSelIds = new Set();
 function renderSched() {
   const list = document.getElementById('schedList');
   if (!list) return;
-  renderScheduleSummary(schedData, 'schedSummary', '支払');
+  renderScheduleSummary(schedData, 'schedSummary', '支払', s => s.drv_name || s.drvName || '');
+  schedSelIds = new Set([...schedSelIds].filter(id=>schedData.some(s=>s.id===id)));
+  updateSchedBulkBar();
   if (!schedData.length) {
     list.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">
       支払予定がありません<br>
@@ -6430,7 +6457,43 @@ function renderSched() {
     markDoneFn: 'markSchedDone',
     unmarkDoneFn: 'unmarkSchedDone',
     deleteFn: 'deleteSchedItem',
+    selSet: schedSelIds,
+    toggleSelFn: 'toggleSchedSel',
   });
+}
+function toggleSchedSel(id,v){ if(v)schedSelIds.add(id); else schedSelIds.delete(id); updateSchedBulkBar(); }
+function toggleSchedSelAll(v){ schedSelIds = v ? new Set(schedData.map(s=>s.id)) : new Set(); renderSched(); }
+function updateSchedBulkBar(){
+  const el=document.getElementById('schedBulkCount');
+  if(el)el.textContent=schedSelIds.size?`${schedSelIds.size}件選択中`:'';
+}
+async function bulkMarkSchedDone(){
+  const ids=[...schedSelIds].filter(id=>{const it=schedData.find(s=>s.id===id);return it&&!it.done;});
+  if(!ids.length){showT('未済の予定を選択してください','twa');return;}
+  if(!confirm(`${ids.length}件を支払済にしますか？`))return;
+  showLoad(true);
+  try{
+    const{error}=await sb.from('payment_schedules').update({done:true}).in('id',ids);
+    if(error)throw error;
+    ids.forEach(id=>{const it=schedData.find(s=>s.id===id);if(it)it.done=true;});
+    schedSelIds.clear();renderSched();
+    addLog('支払済一括マーク',`${ids.length}件`);showT(`${ids.length}件を支払済にしました`);
+  }catch(e){showT('エラー: '+e.message,'ter');}
+  showLoad(false);
+}
+async function bulkUnmarkSchedDone(){
+  const ids=[...schedSelIds].filter(id=>{const it=schedData.find(s=>s.id===id);return it&&it.done;});
+  if(!ids.length){showT('支払済の予定を選択してください','twa');return;}
+  if(!confirm(`${ids.length}件の支払済を取り消しますか？`))return;
+  showLoad(true);
+  try{
+    const{error}=await sb.from('payment_schedules').update({done:false}).in('id',ids);
+    if(error)throw error;
+    ids.forEach(id=>{const it=schedData.find(s=>s.id===id);if(it)it.done=false;});
+    schedSelIds.clear();renderSched();
+    addLog('支払済一括取消',`${ids.length}件`);showT(`${ids.length}件の支払済を取り消しました`);
+  }catch(e){showT('エラー: '+e.message,'ter');}
+  showLoad(false);
 }
 
 // markSchedDone → v9新実装に移行済み（async版）
@@ -8495,10 +8558,13 @@ async function loadReceiptSched() {
   } catch(e) { console.warn('loadReceiptSched:', e.message); }
 }
 
+let receiptSchedSelIds = new Set();
 function renderReceiptSched() {
   const list = document.getElementById('receiptSchedList');
   if (!list) return;
-  renderScheduleSummary(receiptSchedData, 'receiptSchedSummary', '入金');
+  renderScheduleSummary(receiptSchedData, 'receiptSchedSummary', '入金', s => s.cli_name || '');
+  receiptSchedSelIds = new Set([...receiptSchedSelIds].filter(id=>receiptSchedData.some(s=>s.id===id)));
+  updateReceiptSchedBulkBar();
   if (!receiptSchedData.length) {
     list.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">入金予定がありません</div>`;
     return;
@@ -8509,7 +8575,66 @@ function renderReceiptSched() {
     markDoneFn: 'markReceiptSchedDone',
     unmarkDoneFn: 'unmarkReceiptSchedDone',
     deleteFn: 'deleteReceiptSchedItem',
+    selSet: receiptSchedSelIds,
+    toggleSelFn: 'toggleReceiptSchedSel',
   });
+}
+function toggleReceiptSchedSel(id,v){ if(v)receiptSchedSelIds.add(id); else receiptSchedSelIds.delete(id); updateReceiptSchedBulkBar(); }
+function toggleReceiptSchedSelAll(v){ receiptSchedSelIds = v ? new Set(receiptSchedData.map(s=>s.id)) : new Set(); renderReceiptSched(); }
+function updateReceiptSchedBulkBar(){
+  const el=document.getElementById('receiptSchedBulkCount');
+  if(el)el.textContent=receiptSchedSelIds.size?`${receiptSchedSelIds.size}件選択中`:'';
+}
+async function bulkMarkReceiptSchedDone(){
+  const ids=[...receiptSchedSelIds].filter(id=>{const it=receiptSchedData.find(s=>s.id===id);return it&&!it.done;});
+  if(!ids.length){showT('未済の予定を選択してください','twa');return;}
+  if(!confirm(`${ids.length}件を入金済にしますか？`))return;
+  showLoad(true);
+  try{
+    const{error}=await sb.from('receipt_schedules').update({done:true}).in('id',ids);
+    if(error)throw error;
+    const items=ids.map(id=>receiptSchedData.find(s=>s.id===id)).filter(Boolean);
+    items.forEach(it=>it.done=true);
+    try{
+      const inserts=items.map(item=>({
+        date:item.date,amt:item.amt,cli_id:item.cli_id||null,
+        target_month:item.month,type:'transfer',
+        note:`${RECEIPT_SCHED_AUTO_TAG}${item.cli_name||''}`,
+      }));
+      const{data,error:piErr}=await sb.from('payment_in').insert(inserts).select();
+      if(!piErr&&data){paymentIns=[...data,...paymentIns];if(typeof renderPaymentIn==='function')renderPaymentIn();}
+      else if(piErr){console.warn('入金管理への自動反映エラー:',piErr.message);showT('入金済にしましたが、入金管理への自動記録に失敗しました: '+piErr.message,'twa');}
+    }catch(e2){console.warn('入金管理への自動反映エラー:',e2.message);}
+    receiptSchedSelIds.clear();renderReceiptSched();
+    addLog('入金済一括マーク',`${ids.length}件`);showT(`${ids.length}件を入金済にしました（入金管理にも記録しました）`);
+  }catch(e){showT('エラー: '+e.message,'ter');}
+  showLoad(false);
+}
+async function bulkUnmarkReceiptSchedDone(){
+  const ids=[...receiptSchedSelIds].filter(id=>{const it=receiptSchedData.find(s=>s.id===id);return it&&it.done;});
+  if(!ids.length){showT('入金済の予定を選択してください','twa');return;}
+  if(!confirm(`${ids.length}件の入金済を取り消しますか？`))return;
+  showLoad(true);
+  try{
+    const{error}=await sb.from('receipt_schedules').update({done:false}).in('id',ids);
+    if(error)throw error;
+    const items=ids.map(id=>receiptSchedData.find(s=>s.id===id)).filter(Boolean);
+    items.forEach(it=>it.done=false);
+    try{
+      for(const item of items){
+        const autoNote=`${RECEIPT_SCHED_AUTO_TAG}${item.cli_name||''}`;
+        const{data:matches}=await sb.from('payment_in').select('id').eq('date',item.date).eq('amt',item.amt).eq('note',autoNote);
+        if(matches&&matches.length){
+          await sb.from('payment_in').delete().in('id',matches.map(m=>m.id));
+          paymentIns=paymentIns.filter(p=>!matches.some(m=>m.id===p.id));
+        }
+      }
+      if(typeof renderPaymentIn==='function')renderPaymentIn();
+    }catch(e2){console.warn('入金記録の取消エラー:',e2.message);}
+    receiptSchedSelIds.clear();renderReceiptSched();
+    addLog('入金済一括取消',`${ids.length}件`);showT(`${ids.length}件の入金済を取り消しました`);
+  }catch(e){showT('エラー: '+e.message,'ter');}
+  showLoad(false);
 }
 
 async function saveReceiptSched() {
