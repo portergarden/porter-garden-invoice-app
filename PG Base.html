@@ -1514,9 +1514,10 @@ td.dim{color:var(--text2)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="fld"><label>乗務日 <span style="color:var(--red)">*</span></label><input type="date" id="drD"></div>
         <div class="fld"><label>車両番号 <span style="color:var(--red)">*</span></label>
-          <select id="drCar">
+          <select id="drCar" onchange="onDrCarChange()">
             <option value="">選択</option>
           </select>
+          <input type="text" id="drCarCustom" placeholder="車両番号を入力" style="display:none;margin-top:4px">
         </div>
       </div>
       <div class="fld"><label>乗務員名</label>
@@ -6639,13 +6640,22 @@ function initDailyForm(reportId=null) {
   const dEl = document.getElementById('drD');
   if (!dEl.value) dEl.value = fmtLocalDate(new Date());
   const carSel = document.getElementById('drCar');
-  const allCars = drvs.flatMap(d => (d.cars||[]).map(c => ({car:c, name:d.name, drvId:d.id})));
-  carSel.innerHTML = '<option value="">選択してください</option>' +
-    allCars.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
-  carSel.onchange = () => {
-    const opt = carSel.options[carSel.selectedIndex];
-    document.getElementById('drName').value = opt ? (opt.dataset.name||'') : '';
-  };
+  const carCustom = document.getElementById('drCarCustom');
+  const isDriver = me?.role === 'driver';
+  if (isDriver) {
+    // ドライバー本人には自分の登録車両のみを表示（他ドライバーの車番は見せない）。
+    // 代車など未登録車両は「その他（手入力）」で入力できるようにする
+    const ownCars = me.driver_data?.cars || [];
+    carSel.innerHTML = '<option value="">選択してください</option>' +
+      ownCars.map(c => `<option value="${c}">${c}</option>`).join('') +
+      '<option value="__custom__">＋ その他の車両（手入力）</option>';
+  } else {
+    const allCars = drvs.flatMap(d => (d.cars||[]).map(c => ({car:c, name:d.name, drvId:d.id})));
+    carSel.innerHTML = '<option value="">選択してください</option>' +
+      allCars.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
+  }
+  carCustom.style.display = 'none';
+  carCustom.value = '';
 
   // 取引先
   const cliSel = document.getElementById('drCli');
@@ -6656,7 +6666,17 @@ function initDailyForm(reportId=null) {
     const r = dailyReports.find(x => x.id === reportId);
     if (r) {
       document.getElementById('drD').value = r.date || '';
-      document.getElementById('drCar').value = r.car || '';
+      // 車両: 選択肢にない車番（過去の代車など）の場合は手入力欄にフォールバック
+      const carOptExists = Array.from(carSel.options).some(o => o.value === (r.car||''));
+      if (carOptExists) {
+        carSel.value = r.car || '';
+      } else if (isDriver && r.car) {
+        carSel.value = '__custom__';
+        carCustom.style.display = 'block';
+        carCustom.value = r.car;
+      } else {
+        carSel.value = r.car || '';
+      }
       document.getElementById('drName').value = r.driver_name || '';
       document.getElementById('drStart').value = r.start_time || '';
       document.getElementById('drEnd').value = r.end_time || '';
@@ -6694,11 +6714,28 @@ function initDailyForm(reportId=null) {
     document.getElementById('drTotalDisp').textContent = '¥0';
   }
 
-  // ドライバーロールなら自分の車番を自動選択（新規入力時のみ。車両1台の場合だけ確定できる）
-  if (me && me.role === 'driver' && !reportId) {
-    const dCars = me.driver_data?.cars || [];
-    if (dCars.length === 1) document.getElementById('drCar').value = dCars[0];
+  // ドライバーロールなら乗務員名は常に自分自身。新規入力時、車両1台のみなら自動選択する
+  if (isDriver) {
     document.getElementById('drName').value = me.name || '';
+    if (!reportId) {
+      const dCars = me.driver_data?.cars || [];
+      if (dCars.length === 1) carSel.value = dCars[0];
+    }
+  }
+}
+
+// 車両番号セレクトの選択変更時: ドライバーは「その他（手入力）」欄の表示切替のみ、
+// 管理者は選択した車両の所有ドライバー名を乗務員名欄へ自動反映する
+function onDrCarChange() {
+  const carSel = document.getElementById('drCar');
+  const carCustom = document.getElementById('drCarCustom');
+  if (me?.role === 'driver') {
+    const showCustom = carSel.value === '__custom__';
+    carCustom.style.display = showCustom ? 'block' : 'none';
+    if (showCustom) carCustom.focus(); else carCustom.value = '';
+  } else {
+    const opt = carSel.options[carSel.selectedIndex];
+    document.getElementById('drName').value = opt ? (opt.dataset.name||'') : '';
   }
 }
 
@@ -6731,7 +6768,8 @@ function calcDrTotal() {
 
 async function submitDailyReport() {
   const date = document.getElementById('drD').value;
-  const car = document.getElementById('drCar').value;
+  let car = document.getElementById('drCar').value;
+  if (car === '__custom__') car = document.getElementById('drCarCustom').value.trim();
   const km = document.getElementById('drKm').value;
   const alcBefore = document.getElementById('drAlcBefore').value;
   const alcAfter = document.getElementById('drAlcAfter').value;
