@@ -7993,12 +7993,20 @@ async function openStmtStatusM() {
     </table>`;
   } catch(e) { el.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red-text);font-size:12px">読み込みエラー: ${e.message}</div>`; }
 }
+// Supabase Storageの署名付きURLはHTMLファイルでも安全のためContent-Type: text/plainで配信される。
+// 直接window.open(signedUrl)すると生のソースがそのまま表示され文字化けもするため、
+// fetchで本文を取得してから自分でウィンドウに書き込む（既存のPDF表示と同じ方式）
 async function viewStatementFile(path) {
+  const win = window.open('', '_blank');
+  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'ter'); return; }
   try {
     const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
     if (error) throw error;
-    window.open(data.signedUrl, '_blank');
-  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+    const res = await fetch(data.signedUrl);
+    if (!res.ok) throw new Error('ファイルの取得に失敗しました（' + res.status + '）');
+    const html = await res.text();
+    win.document.open(); win.document.write(html); win.document.close();
+  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
 }
 async function deleteStatement(id, path) {
   if (!confirm('この明細書の配信を取り消しますか？（ドライバーからも見えなくなります）')) return;
@@ -8031,15 +8039,20 @@ async function loadDriverStatements() {
   } catch(e) { el.innerHTML = `<span style="color:var(--red-text)">読み込みエラー: ${e.message}</span>`; }
 }
 async function openDriverStatement(id, path, isRead) {
+  const win = window.open('', '_blank');
+  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'ter'); return; }
   try {
     const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
     if (error) throw error;
-    window.open(data.signedUrl, '_blank');
+    const res = await fetch(data.signedUrl);
+    if (!res.ok) throw new Error('ファイルの取得に失敗しました（' + res.status + '）');
+    const html = await res.text();
+    win.document.open(); win.document.write(html); win.document.close();
     if (!isRead) {
       await sb.from('driver_statements').update({read_at: new Date().toISOString()}).eq('id', id);
       loadDriverStatements();
     }
-  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
 }
 
 async function loadDriverDailyList() {
