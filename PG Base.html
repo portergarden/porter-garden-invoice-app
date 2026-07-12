@@ -7077,8 +7077,16 @@ function exportDailyReportCsv() {
 
 /* initMob互換 - 日報一覧の月デフォルトセット */
 const _origInitMob = typeof initMob === 'function' ? null : null;
+// 日報は請求集計と違って「今日提出されたものを今すぐ確認する」用途のため、
+// 請求系で使うensureMonthRangeDefault（前月がデフォルト）ではなく今月をデフォルトにする
 function _setDailyListMonth() {
-  ensureMonthRangeDefault('drListFrom', 'drListTo');
+  const fromEl = document.getElementById('drListFrom');
+  const toEl = document.getElementById('drListTo');
+  if (fromEl && toEl && !fromEl.value) {
+    const now = new Date();
+    fromEl.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    toEl.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth()+1, 0));
+  }
 }
 
 /* ===== ⑥ 月次締め処理 ===== */
