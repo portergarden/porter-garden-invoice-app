@@ -1504,6 +1504,8 @@ td.dim{color:var(--text2)}
   <div id="dailySummaryBar" style="padding:6px 14px;border-bottom:0.5px solid var(--border);display:flex;gap:12px;flex-wrap:wrap"></div>
 
   <!-- ===== 日報入力フォーム ===== -->
+  <!-- dailyFormAreaHost: ドライバーポータル(#dpg0)へ一時的に移動したdailyFormAreaを、管理画面側に戻す際の元の位置マーカー -->
+  <span id="dailyFormAreaHost" style="display:none"></span>
   <div id="dailyFormArea" style="display:none;overflow-y:auto;max-height:calc(100vh - 160px)">
     <div class="mob-form" style="max-width:560px">
 
@@ -6591,17 +6593,39 @@ async function bulkUnmarkSchedDone(){
 let dailyReports = []; // Supabaseから読み込む
 let editDailyId = null;
 
+// 日報入力フォーム（#dailyFormArea）はpg10（管理者用）に置かれているが、
+// ドライバーポータル（#dpg0）は別コンテナのため、ドライバーがログイン中はフォームDOMを
+// dpg0側へ移動させてから開く。同じフォームを両方のUIで使い回すための仕組み
+function ensureDailyFormPlacement() {
+  const formArea = document.getElementById('dailyFormArea');
+  if (!formArea) return;
+  if (me?.role === 'driver') {
+    const target = document.getElementById('dpg0');
+    if (target && formArea.parentElement !== target) target.appendChild(formArea);
+  } else {
+    const host = document.getElementById('dailyFormAreaHost');
+    if (host && host.nextElementSibling !== formArea) host.insertAdjacentElement('afterend', formArea);
+  }
+}
 function showDailyForm(reportId=null) {
   editDailyId = reportId;
+  ensureDailyFormPlacement();
   document.getElementById('dailyFormArea').style.display = 'block';
-  document.getElementById('dailyListArea').style.display = 'none';
+  const listArea = document.getElementById(me?.role === 'driver' ? 'drvDailyListArea' : 'dailyListArea');
+  if (listArea) listArea.style.display = 'none';
   initDailyForm(reportId);
 }
 
 function showDailyList() {
   document.getElementById('dailyFormArea').style.display = 'none';
-  document.getElementById('dailyListArea').style.display = 'block';
-  loadDailyReports();
+  if (me?.role === 'driver') {
+    const listArea = document.getElementById('drvDailyListArea');
+    if (listArea) listArea.style.display = 'block';
+    loadDriverDailyList();
+  } else {
+    document.getElementById('dailyListArea').style.display = 'block';
+    loadDailyReports();
+  }
 }
 
 function initMob() {
@@ -6670,9 +6694,10 @@ function initDailyForm(reportId=null) {
     document.getElementById('drTotalDisp').textContent = '¥0';
   }
 
-  // ドライバーロールなら自分の車番を自動選択
-  if (me && me.role === 'driver' && me.car) {
-    document.getElementById('drCar').value = me.car;
+  // ドライバーロールなら自分の車番を自動選択（新規入力時のみ。車両1台の場合だけ確定できる）
+  if (me && me.role === 'driver' && !reportId) {
+    const dCars = me.driver_data?.cars || [];
+    if (dCars.length === 1) document.getElementById('drCar').value = dCars[0];
     document.getElementById('drName').value = me.name || '';
   }
 }
