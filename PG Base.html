@@ -11717,83 +11717,92 @@ async function showDriverStats(drvId) {
 </script>
 
 <script>
-const SETUP_SQL = `-- ポーターガーデン Supabase セットアップSQL（全テーブル）
+const SETUP_SQL = `-- ポーターガーデン Supabase セットアップSQL（全テーブル・現行スキーマ準拠）
 -- SQL EditorにコピーしてRunをクリック
+-- 認証はSupabase Authに一本化されています。新規導入時は本SQL実行後、
+-- Authでユーザーを1人作成し、そのauth_uidを使って手動で最初のadminユーザーを
+-- 1行だけ登録してください（例は末尾のコメントを参照）。以降のユーザー管理はアプリのUIから行えます。
 
--- 1. 請求書
-CREATE TABLE IF NOT EXISTS invoices (
-  id bigserial PRIMARY KEY,
-  date date, car text, type text DEFAULT 'regular',
-  fare int DEFAULT 0, hw int DEFAULT 0, oth int DEFAULT 0,
-  pay_fare int DEFAULT 0, pay_hw int DEFAULT 0, pay_oth int DEFAULT 0,
-  tax int DEFAULT 10, st int DEFAULT 0, cli bigint,
-  note text, created_at timestamptz DEFAULT now()
-);
--- 既存テーブルに支払運賃カラムを追加（テーブルが既にある場合はこれが実際に効きます）
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_fare int DEFAULT 0;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_hw int DEFAULT 0;
-ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_oth int DEFAULT 0;
-ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON invoices;
-CREATE POLICY "allow_all" ON invoices FOR ALL USING (true) WITH CHECK (true);
+-- ============================================================
+-- 1. テーブル定義
+-- ============================================================
 
--- 2. ドライバー
-CREATE TABLE IF NOT EXISTS drivers (
-  id bigserial PRIMARY KEY, name text NOT NULL,
-  cars jsonb DEFAULT '[]', tel text, supplier_id text,
-  fee_rate numeric DEFAULT -0.15, admin_fee int DEFAULT -10000,
-  vehicle_rental int DEFAULT -30000, email text,
-  driver_login_id text, driver_pw text,
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON drivers;
-CREATE POLICY "allow_all" ON drivers FOR ALL USING (true) WITH CHECK (true);
-
--- 3. 取引先
+-- 取引先
 CREATE TABLE IF NOT EXISTS clients (
   id bigserial PRIMARY KEY, name text NOT NULL,
-  short text, tel text, created_at timestamptz DEFAULT now()
+  short text, person text, tel text, note text,
+  closing_day text DEFAULT 'end', fee_rate numeric DEFAULT 0,
+  zip text, address text,
+  pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end',
+  invoice_no text, client_no text UNIQUE,
+  is_partner boolean NOT NULL DEFAULT false,
+  pay_out_month_offset int, pay_out_day text
 );
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON clients;
-CREATE POLICY "allow_all" ON clients FOR ALL USING (true) WITH CHECK (true);
 
--- 4. ユーザー
+-- ドライバー
+CREATE TABLE IF NOT EXISTS drivers (
+  id bigserial PRIMARY KEY, name text NOT NULL,
+  cars text[] DEFAULT '{}', tel text, supplier_id text UNIQUE,
+  fee_rate numeric DEFAULT -0.15, admin_fee int DEFAULT -10000,
+  vehicle_rental int DEFAULT -30000,
+  pay_month_offset int DEFAULT 2, pay_day text DEFAULT 'end',
+  invoice_no text, other_deductions jsonb NOT NULL DEFAULT '[]',
+  bank text, company text, note text
+);
+
+-- ユーザー（認証はSupabase Auth。pwは廃止済み・互換用にnullable列のみ残置）
 CREATE TABLE IF NOT EXISTS users (
-  id text PRIMARY KEY, name text, pw text, role text DEFAULT 'viewer',
-  created_at timestamptz DEFAULT now()
+  id text PRIMARY KEY, name text NOT NULL, pw text,
+  role text NOT NULL DEFAULT 'viewer',
+  auth_uid uuid UNIQUE REFERENCES auth.users(id),
+  driver_id int REFERENCES drivers(id)
 );
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON users;
-CREATE POLICY "allow_all" ON users FOR ALL USING (true) WITH CHECK (true);
 
--- 5. 監査ログ
+-- 請求書・受注データ
+CREATE TABLE IF NOT EXISTS invoices (
+  id bigserial PRIMARY KEY,
+  date text NOT NULL, car text NOT NULL, type text NOT NULL DEFAULT 'regular',
+  fare int DEFAULT 0, hw int DEFAULT 0, oth int DEFAULT 0,
+  tax int DEFAULT 10, st int DEFAULT 0, cli bigint REFERENCES clients(id),
+  note text, created_at timestamptz DEFAULT now(),
+  pay_fare int DEFAULT 0, pay_hw int DEFAULT 0, pay_oth int DEFAULT 0,
+  delivery_status text DEFAULT 'unconfirmed',
+  call_number text, requester text, shipper text,
+  pickup_date text, pickup_time text, pickup_done boolean DEFAULT false, pickup_location text,
+  delivery_time text, delivery_done boolean DEFAULT false, delivery_location text,
+  task_name text, qty numeric, distance_time text, pay_count_note text, receiver text,
+  fare_calc_method text DEFAULT 'qty', pay_calc_method text DEFAULT 'qty',
+  fare_tax_class text DEFAULT 'excl', pay_tax_class text DEFAULT 'excl',
+  extra_fees jsonb DEFAULT '[]', driver_note text,
+  sales_date text, invoice_payment_date text,
+  drv_id bigint, tax_round text, tax_amount numeric
+);
+
+-- 監査ログ
 CREATE TABLE IF NOT EXISTS audit_logs (
-  id bigserial PRIMARY KEY, action text, detail text,
-  user_name text, created_at timestamptz DEFAULT now()
-);
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON audit_logs;
-CREATE POLICY "allow_all" ON audit_logs FOR ALL USING (true) WITH CHECK (true);
-
--- 6. 支払明細書
-CREATE TABLE IF NOT EXISTS payment_slips (
-  id bigserial PRIMARY KEY, pay_month text, pay_date text,
-  rows jsonb, status text DEFAULT 'pending', saved_by text,
+  id bigserial PRIMARY KEY, ts text, who text, action text, detail text,
   created_at timestamptz DEFAULT now()
 );
-ALTER TABLE payment_slips ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON payment_slips;
-CREATE POLICY "allow_all" ON payment_slips FOR ALL USING (true) WITH CHECK (true);
 
--- 7. 日報
+-- 支払明細書（保存済みPDF元データ）
+CREATE TABLE IF NOT EXISTS payment_slips (
+  id bigserial PRIMARY KEY, label text NOT NULL, pay_month text,
+  rows jsonb NOT NULL DEFAULT '[]', saved_at timestamptz NOT NULL DEFAULT now(), saved_by text
+);
+
+-- 請求明細書（保存済みPDF元データ）
+CREATE TABLE IF NOT EXISTS invoice_slips (
+  id bigserial PRIMARY KEY, label text NOT NULL, invoice_month text,
+  rows jsonb NOT NULL DEFAULT '[]', saved_at timestamptz NOT NULL DEFAULT now(), saved_by text
+);
+
+-- 乗務日報（貨物軽自動車運送事業 法定様式準拠）
 CREATE TABLE IF NOT EXISTS daily_reports (
   id bigserial PRIMARY KEY, date date NOT NULL, car text NOT NULL,
   driver_name text, start_time time, end_time time, distance_km numeric,
   type text DEFAULT 'regular', alc_before numeric, alc_after numeric,
   alc_device text, health_before text DEFAULT 'good', health_after text DEFAULT 'good',
-  cli bigint, qty_takkyubin int DEFAULT 0, qty_nekopos int DEFAULT 0,
+  cli bigint, qty_takkyubin int DEFAULT 0, qty_nekopos int DEFAULT 0, qty_charter int DEFAULT 0,
   qty_other int DEFAULT 0, fare int DEFAULT 0, hw int DEFAULT 0, oth int DEFAULT 0,
   note text, status text DEFAULT 'pending', submitted_by text,
   reviewed_by text, reviewed_at timestamptz,
@@ -11802,100 +11811,385 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   insp_engine bool DEFAULT true, insp_mirror bool DEFAULT true,
   insp_horn bool DEFAULT true, insp_battery bool DEFAULT true,
   insp_cargo bool DEFAULT true, insp_fuel bool DEFAULT true,
-  insp_note text, created_at timestamptz DEFAULT now()
+  insp_note text, created_at timestamptz DEFAULT now(),
+  start_location text, end_location text,
+  rest_start time, rest_end time, rest_location text, -- 旧形式（後方互換用）。新規記録はrestsを使用
+  rests jsonb DEFAULT '[]', -- 複数回の休憩を[{start,end,location}]の配列で記録
+  wait_flag boolean DEFAULT false, wait_start time, wait_end time, wait_location text,
+  cargo_work_flag boolean DEFAULT false, cargo_work_start time, cargo_work_end time,
+  shipper_confirmed boolean DEFAULT false,
+  incident_flag boolean DEFAULT false, incident_cause text, incident_prevention text,
+  drv_id int REFERENCES drivers(id)
 );
-ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON daily_reports;
-CREATE POLICY "allow_all" ON daily_reports FOR ALL USING (true) WITH CHECK (true);
 
--- 8. 支払スケジュール
+-- 支払スケジュール（ドライバーへの支払予定）
 CREATE TABLE IF NOT EXISTS payment_schedules (
   id bigserial PRIMARY KEY, drv_id bigint, drv_name text,
   date date NOT NULL, amt int DEFAULT 0, month text, note text,
-  done bool DEFAULT false, created_at timestamptz DEFAULT now()
+  done bool DEFAULT false, created_at timestamptz DEFAULT now(),
+  source text DEFAULT 'manual'
 );
-ALTER TABLE payment_schedules ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON payment_schedules;
-CREATE POLICY "allow_all" ON payment_schedules FOR ALL USING (true) WITH CHECK (true);
 
--- 9. 掲示板
+-- 入金予定（取引先からの入金予定）
+CREATE TABLE IF NOT EXISTS receipt_schedules (
+  id bigserial PRIMARY KEY, cli_id bigint, cli_name text,
+  date date NOT NULL, amt int DEFAULT 0, month text, note text,
+  done bool DEFAULT false, created_at timestamptz NOT NULL DEFAULT now(),
+  source text DEFAULT 'manual'
+);
+
+-- 掲示板
 CREATE TABLE IF NOT EXISTS board_posts (
   id bigserial PRIMARY KEY, title text NOT NULL, body text,
   priority text DEFAULT 'normal', author text,
   created_at timestamptz DEFAULT now()
 );
-ALTER TABLE board_posts ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON board_posts;
-CREATE POLICY "allow_all" ON board_posts FOR ALL USING (true) WITH CHECK (true);
 
--- 10. 手入力テンプレート
+-- 手入力テンプレート
 CREATE TABLE IF NOT EXISTS input_templates (
   id bigserial PRIMARY KEY, name text NOT NULL, cli bigint,
   car text, type text DEFAULT 'regular', fare int DEFAULT 0,
   hw int DEFAULT 0, oth int DEFAULT 0, tax int DEFAULT 10,
-  note text, created_by text, created_at timestamptz DEFAULT now()
+  note text, created_by text, created_at timestamptz DEFAULT now(),
+  tax_class text DEFAULT 'excl'
 );
-ALTER TABLE input_templates ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON input_templates;
-CREATE POLICY "allow_all" ON input_templates FOR ALL USING (true) WITH CHECK (true);
 
--- 11. ファイル取込マッピング
+-- ファイル取込マッピング
 CREATE TABLE IF NOT EXISTS file_mappings (
   id bigserial PRIMARY KEY, cli_id bigint UNIQUE NOT NULL,
   col_date int DEFAULT 0, col_driver int DEFAULT 0,
   col_fare int DEFAULT 0, col_hw int DEFAULT 0,
   col_note int DEFAULT 0, skip_rows int DEFAULT 1,
-  mapping_name text, created_at timestamptz DEFAULT now()
+  mapping_name text, created_at timestamptz DEFAULT now(),
+  col_car int DEFAULT 0, col_detail int DEFAULT 0, col_qty int DEFAULT 0,
+  col_price int DEFAULT 0, col_amount int DEFAULT 0,
+  default_type text NOT NULL DEFAULT 'regular',
+  default_tax_round text NOT NULL DEFAULT 'round',
+  hw_as_advance boolean NOT NULL DEFAULT false,
+  default_type_by_month jsonb DEFAULT '{}'
 );
-ALTER TABLE file_mappings ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON file_mappings;
-CREATE POLICY "allow_all" ON file_mappings FOR ALL USING (true) WITH CHECK (true);
 
--- 12. 単価マスタ
+-- 単価マスタ
 CREATE TABLE IF NOT EXISTS price_master (
   id bigserial PRIMARY KEY, cli_id bigint NOT NULL,
   service_name text NOT NULL, unit_price int NOT NULL,
   unit text DEFAULT '個', created_at timestamptz DEFAULT now(),
   UNIQUE(cli_id, service_name)
 );
-ALTER TABLE price_master ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON price_master;
-CREATE POLICY "allow_all" ON price_master FOR ALL USING (true) WITH CHECK (true);
 
--- 13. 入金管理
+-- 入金管理（実績）
 CREATE TABLE IF NOT EXISTS payment_in (
   id bigserial PRIMARY KEY, date date NOT NULL, amt int NOT NULL,
   cli_id bigint, target_month text, type text DEFAULT 'transfer',
   note text, matched bool DEFAULT false, matched_inv_ids jsonb,
   created_at timestamptz DEFAULT now()
 );
-ALTER TABLE payment_in ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON payment_in;
-CREATE POLICY "allow_all" ON payment_in FOR ALL USING (true) WITH CHECK (true);
 
--- 14. 経費管理
+-- 経費管理
 CREATE TABLE IF NOT EXISTS expenses (
   id bigserial PRIMARY KEY, date date NOT NULL, amt int NOT NULL,
   category text DEFAULT 'other', drv_id bigint,
   note text, created_at timestamptz DEFAULT now()
 );
-ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON expenses;
-CREATE POLICY "allow_all" ON expenses FOR ALL USING (true) WITH CHECK (true);
 
--- 15. 会社設定
+-- 会社設定（1行のみ）
 CREATE TABLE IF NOT EXISTS company_settings (
   id int PRIMARY KEY DEFAULT 1, reg_no text, name text,
   zip text, address text, tel text, bank text,
-  updated_at timestamptz DEFAULT now()
+  updated_at timestamptz DEFAULT now(), stamp_image text
 );
+
+-- ドライバー提出書類（免許証・車検証等）
+CREATE TABLE IF NOT EXISTS driver_documents (
+  id bigserial PRIMARY KEY, drv_id int NOT NULL REFERENCES drivers(id),
+  doc_type text NOT NULL, file_path text NOT NULL,
+  expiry_date date, note text DEFAULT '', uploaded_by text DEFAULT '',
+  created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
+);
+
+-- ドライバー向け支払明細書配信
+CREATE TABLE IF NOT EXISTS driver_statements (
+  id bigserial PRIMARY KEY, drv_id int NOT NULL REFERENCES drivers(id),
+  month text NOT NULL, title text NOT NULL DEFAULT '', file_path text NOT NULL,
+  amount int DEFAULT 0, published_by text DEFAULT '',
+  created_at timestamptz DEFAULT now(), read_at timestamptz
+);
+
+-- ============================================================
+-- 2. 権限判定用ヘルパー関数（SECURITY DEFINER: usersテーブルのRLSに関係なく
+--    ログイン中ユーザー自身の行だけを安全に参照する）
+-- ============================================================
+CREATE OR REPLACE FUNCTION public."current_role"()
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $function$
+  SELECT role FROM public.users WHERE auth_uid = auth.uid() LIMIT 1;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.current_app_user_id()
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $function$
+  SELECT id FROM public.users WHERE auth_uid = auth.uid() LIMIT 1;
+$function$;
+
+-- ドライバーが取引先名だけを参照できるようにする窓口（clients本体はadmin/editor/viewer限定のため）
+CREATE OR REPLACE FUNCTION public.list_client_names()
+RETURNS TABLE(id bigint, name text) LANGUAGE sql SECURITY DEFINER SET search_path TO 'public' AS $function$
+  SELECT id, name FROM clients ORDER BY name;
+$function$;
+
+-- ============================================================
+-- 3. RLS有効化＋ポリシー（allow_allではなく役割ベースの安全な制御）
+--    admin/editor/viewer=社内ユーザー、driver=業務委託ドライバー本人のみ
+-- ============================================================
+
+-- 取引先: 社内のみ閲覧・編集可
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "clients_select" ON clients;
+CREATE POLICY "clients_select" ON clients FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "clients_insert" ON clients;
+CREATE POLICY "clients_insert" ON clients FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "clients_update" ON clients;
+CREATE POLICY "clients_update" ON clients FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "clients_delete" ON clients;
+CREATE POLICY "clients_delete" ON clients FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ドライバー: 社内は全件、ドライバー本人は自分の行のみ閲覧可
+ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "drivers_select" ON drivers;
+CREATE POLICY "drivers_select" ON drivers FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "drivers_insert" ON drivers;
+CREATE POLICY "drivers_insert" ON drivers FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "drivers_update" ON drivers;
+CREATE POLICY "drivers_update" ON drivers FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "drivers_delete" ON drivers;
+CREATE POLICY "drivers_delete" ON drivers FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ユーザー: 自分の行、またはadminのみ閲覧・編集可（他人の情報には一切アクセス不可）
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users_select" ON users;
+CREATE POLICY "users_select" ON users FOR SELECT TO authenticated USING (auth_uid = auth.uid() OR "current_role"() = 'admin');
+DROP POLICY IF EXISTS "users_insert" ON users;
+CREATE POLICY "users_insert" ON users FOR INSERT TO authenticated WITH CHECK ("current_role"() = 'admin');
+DROP POLICY IF EXISTS "users_update" ON users;
+CREATE POLICY "users_update" ON users FOR UPDATE TO authenticated USING ("current_role"() = 'admin') WITH CHECK ("current_role"() = 'admin');
+DROP POLICY IF EXISTS "users_delete" ON users;
+CREATE POLICY "users_delete" ON users FOR DELETE TO authenticated USING ("current_role"() = 'admin');
+
+-- 請求書・受注データ: 社内は全件、ドライバーは自分の車番の行のみ閲覧可
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "invoices_select" ON invoices;
+CREATE POLICY "invoices_select" ON invoices FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR car IN (SELECT unnest(d.cars) FROM drivers d WHERE d.id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())));
+DROP POLICY IF EXISTS "invoices_insert" ON invoices;
+CREATE POLICY "invoices_insert" ON invoices FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "invoices_update" ON invoices;
+CREATE POLICY "invoices_update" ON invoices FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "invoices_delete" ON invoices;
+CREATE POLICY "invoices_delete" ON invoices FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 監査ログ: 社内のみ閲覧・追記可（更新・削除は不可＝改ざん防止）
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "audit_logs_select" ON audit_logs;
+CREATE POLICY "audit_logs_select" ON audit_logs FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "audit_logs_insert" ON audit_logs;
+CREATE POLICY "audit_logs_insert" ON audit_logs FOR INSERT TO authenticated WITH CHECK (true);
+
+-- 支払明細書・請求明細書: 社内のみ閲覧・編集可
+ALTER TABLE payment_slips ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "payment_slips_select" ON payment_slips;
+CREATE POLICY "payment_slips_select" ON payment_slips FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "payment_slips_insert" ON payment_slips;
+CREATE POLICY "payment_slips_insert" ON payment_slips FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "payment_slips_update" ON payment_slips;
+CREATE POLICY "payment_slips_update" ON payment_slips FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "payment_slips_delete" ON payment_slips;
+CREATE POLICY "payment_slips_delete" ON payment_slips FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+ALTER TABLE invoice_slips ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "invoice_slips_select" ON invoice_slips;
+CREATE POLICY "invoice_slips_select" ON invoice_slips FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "invoice_slips_insert" ON invoice_slips;
+CREATE POLICY "invoice_slips_insert" ON invoice_slips FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "invoice_slips_update" ON invoice_slips;
+CREATE POLICY "invoice_slips_update" ON invoice_slips FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "invoice_slips_delete" ON invoice_slips;
+CREATE POLICY "invoice_slips_delete" ON invoice_slips FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 乗務日報: 社内は全件、ドライバーは自分の日報のみ閲覧・編集可（他人の日報は不可）
+ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "daily_reports_select" ON daily_reports;
+CREATE POLICY "daily_reports_select" ON daily_reports FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "daily_reports_insert" ON daily_reports;
+CREATE POLICY "daily_reports_insert" ON daily_reports FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','driver']));
+DROP POLICY IF EXISTS "daily_reports_update" ON daily_reports;
+CREATE POLICY "daily_reports_update" ON daily_reports FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "daily_reports_delete" ON daily_reports;
+CREATE POLICY "daily_reports_delete" ON daily_reports FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 支払スケジュール・入金予定: 社内のみ
+ALTER TABLE payment_schedules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "payment_schedules_select" ON payment_schedules;
+CREATE POLICY "payment_schedules_select" ON payment_schedules FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "payment_schedules_insert" ON payment_schedules;
+CREATE POLICY "payment_schedules_insert" ON payment_schedules FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "payment_schedules_update" ON payment_schedules;
+CREATE POLICY "payment_schedules_update" ON payment_schedules FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "payment_schedules_delete" ON payment_schedules;
+CREATE POLICY "payment_schedules_delete" ON payment_schedules FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+ALTER TABLE receipt_schedules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "receipt_schedules_select" ON receipt_schedules;
+CREATE POLICY "receipt_schedules_select" ON receipt_schedules FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "receipt_schedules_insert" ON receipt_schedules;
+CREATE POLICY "receipt_schedules_insert" ON receipt_schedules FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "receipt_schedules_update" ON receipt_schedules;
+CREATE POLICY "receipt_schedules_update" ON receipt_schedules FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "receipt_schedules_delete" ON receipt_schedules;
+CREATE POLICY "receipt_schedules_delete" ON receipt_schedules FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 掲示板: 全員閲覧可、投稿・編集・削除は社内のみ
+ALTER TABLE board_posts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "board_posts_select" ON board_posts;
+CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "board_posts_insert" ON board_posts;
+CREATE POLICY "board_posts_insert" ON board_posts FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "board_posts_update" ON board_posts;
+CREATE POLICY "board_posts_update" ON board_posts FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "board_posts_delete" ON board_posts;
+CREATE POLICY "board_posts_delete" ON board_posts FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 手入力テンプレート: 全員閲覧可、編集は社内のみ
+ALTER TABLE input_templates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "input_templates_select" ON input_templates;
+CREATE POLICY "input_templates_select" ON input_templates FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "input_templates_insert" ON input_templates;
+CREATE POLICY "input_templates_insert" ON input_templates FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "input_templates_update" ON input_templates;
+CREATE POLICY "input_templates_update" ON input_templates FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "input_templates_delete" ON input_templates;
+CREATE POLICY "input_templates_delete" ON input_templates FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ファイル取込マッピング・単価マスタ・入金管理・経費管理: 社内のみ
+ALTER TABLE file_mappings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "file_mappings_select" ON file_mappings;
+CREATE POLICY "file_mappings_select" ON file_mappings FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "file_mappings_insert" ON file_mappings;
+CREATE POLICY "file_mappings_insert" ON file_mappings FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "file_mappings_update" ON file_mappings;
+CREATE POLICY "file_mappings_update" ON file_mappings FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "file_mappings_delete" ON file_mappings;
+CREATE POLICY "file_mappings_delete" ON file_mappings FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+ALTER TABLE price_master ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "price_master_select" ON price_master;
+CREATE POLICY "price_master_select" ON price_master FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "price_master_insert" ON price_master;
+CREATE POLICY "price_master_insert" ON price_master FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "price_master_update" ON price_master;
+CREATE POLICY "price_master_update" ON price_master FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "price_master_delete" ON price_master;
+CREATE POLICY "price_master_delete" ON price_master FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+ALTER TABLE payment_in ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "payment_in_select" ON payment_in;
+CREATE POLICY "payment_in_select" ON payment_in FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "payment_in_insert" ON payment_in;
+CREATE POLICY "payment_in_insert" ON payment_in FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "payment_in_update" ON payment_in;
+CREATE POLICY "payment_in_update" ON payment_in FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "payment_in_delete" ON payment_in;
+CREATE POLICY "payment_in_delete" ON payment_in FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "expenses_select" ON expenses;
+CREATE POLICY "expenses_select" ON expenses FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "expenses_insert" ON expenses;
+CREATE POLICY "expenses_insert" ON expenses FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "expenses_update" ON expenses;
+CREATE POLICY "expenses_update" ON expenses FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "expenses_delete" ON expenses;
+CREATE POLICY "expenses_delete" ON expenses FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 会社設定: 全員閲覧可、編集は社内のみ
 ALTER TABLE company_settings ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "allow_all" ON company_settings;
-CREATE POLICY "allow_all" ON company_settings FOR ALL USING (true) WITH CHECK (true);`;
+DROP POLICY IF EXISTS "company_settings_select" ON company_settings;
+CREATE POLICY "company_settings_select" ON company_settings FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "company_settings_insert" ON company_settings;
+CREATE POLICY "company_settings_insert" ON company_settings FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "company_settings_update" ON company_settings;
+CREATE POLICY "company_settings_update" ON company_settings FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "company_settings_delete" ON company_settings;
+CREATE POLICY "company_settings_delete" ON company_settings FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ドライバー提出書類: 社内は全件、ドライバーは自分の書類のみ
+ALTER TABLE driver_documents ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "driver_documents_select" ON driver_documents;
+CREATE POLICY "driver_documents_select" ON driver_documents FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "driver_documents_insert" ON driver_documents;
+CREATE POLICY "driver_documents_insert" ON driver_documents FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "driver_documents_update" ON driver_documents;
+CREATE POLICY "driver_documents_update" ON driver_documents FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "driver_documents_delete" ON driver_documents;
+CREATE POLICY "driver_documents_delete" ON driver_documents FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ドライバー向け支払明細書配信: 社内は全件、ドライバーは自分宛のみ
+ALTER TABLE driver_statements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "driver_statements_select" ON driver_statements;
+CREATE POLICY "driver_statements_select" ON driver_statements FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "driver_statements_insert" ON driver_statements;
+CREATE POLICY "driver_statements_insert" ON driver_statements FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "driver_statements_update" ON driver_statements;
+CREATE POLICY "driver_statements_update" ON driver_statements FOR UPDATE TO authenticated USING (drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()) OR "current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "driver_statements_delete" ON driver_statements;
+CREATE POLICY "driver_statements_delete" ON driver_statements FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ============================================================
+-- 4. Storage（ドライバー提出書類・支払明細書PDF置き場）
+--    バケットはSQL Editorから作成できないため、Dashboard > Storage で
+--    以下の2つを「Private」で作成してください:
+--      driver-docs        (許可MIME: image/jpeg, image/png, image/webp, application/pdf / 上限10MB)
+--      driver-statements  (許可MIME: text/html, application/pdf / 上限10MB)
+--    作成後、以下のポリシーを実行してください
+-- ============================================================
+DROP POLICY IF EXISTS "driver_docs_storage_select" ON storage.objects;
+CREATE POLICY "driver_docs_storage_select" ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'driver-docs' AND ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR (storage.foldername(name))[1] = 'drv' || (SELECT driver_id::text FROM users WHERE auth_uid = auth.uid()))
+);
+DROP POLICY IF EXISTS "driver_docs_storage_insert" ON storage.objects;
+CREATE POLICY "driver_docs_storage_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (
+  bucket_id = 'driver-docs' AND ("current_role"() = ANY(ARRAY['admin','editor']) OR (storage.foldername(name))[1] = 'drv' || (SELECT driver_id::text FROM users WHERE auth_uid = auth.uid()))
+);
+DROP POLICY IF EXISTS "driver_docs_storage_update" ON storage.objects;
+CREATE POLICY "driver_docs_storage_update" ON storage.objects FOR UPDATE TO authenticated USING (
+  bucket_id = 'driver-docs' AND ("current_role"() = ANY(ARRAY['admin','editor']) OR (storage.foldername(name))[1] = 'drv' || (SELECT driver_id::text FROM users WHERE auth_uid = auth.uid()))
+);
+DROP POLICY IF EXISTS "driver_docs_storage_delete" ON storage.objects;
+CREATE POLICY "driver_docs_storage_delete" ON storage.objects FOR DELETE TO authenticated USING (
+  bucket_id = 'driver-docs' AND "current_role"() = ANY(ARRAY['admin','editor'])
+);
+
+DROP POLICY IF EXISTS "driver_stmt_storage_select" ON storage.objects;
+CREATE POLICY "driver_stmt_storage_select" ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'driver-statements' AND ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR (storage.foldername(name))[1] = 'drv' || (SELECT driver_id::text FROM users WHERE auth_uid = auth.uid()))
+);
+DROP POLICY IF EXISTS "driver_stmt_storage_insert" ON storage.objects;
+CREATE POLICY "driver_stmt_storage_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (
+  bucket_id = 'driver-statements' AND "current_role"() = ANY(ARRAY['admin','editor'])
+);
+DROP POLICY IF EXISTS "driver_stmt_storage_delete" ON storage.objects;
+CREATE POLICY "driver_stmt_storage_delete" ON storage.objects FOR DELETE TO authenticated USING (
+  bucket_id = 'driver-statements' AND "current_role"() = ANY(ARRAY['admin','editor'])
+);
+
+-- ============================================================
+-- 5. 最初のadminユーザー登録（1回だけ手動実行）
+--    事前にDashboard > Authenticationで管理者用アカウントを作成し、
+--    そのUUID（Auth users一覧のUIDカラム）を下記 'ここにauth_uid' に貼り替えて実行してください
+-- ============================================================
+-- INSERT INTO public.users (id, name, role, auth_uid) VALUES ('admin1', '管理者名', 'admin', 'ここにauth_uid');
+`;
 const REQUIRED_TABLES = [
-  'invoices','drivers','clients','users','audit_logs','payment_slips',
-  'daily_reports','payment_schedules','board_posts','input_templates',
-  'file_mappings','price_master','payment_in','expenses','company_settings'
+  'invoices','drivers','clients','users','audit_logs','payment_slips','invoice_slips',
+  'daily_reports','payment_schedules','receipt_schedules','board_posts','input_templates',
+  'file_mappings','price_master','payment_in','expenses','company_settings',
+  'driver_documents','driver_statements'
 ];
 
 /* ============================================================
