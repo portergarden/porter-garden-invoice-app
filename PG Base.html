@@ -7588,8 +7588,6 @@ async function renderMonthlyReport() {
   const totalNeko  = drReports.reduce((a,r) => a + (+r.qty_nekopos||0), 0);
   const workDays   = new Set(drReports.map(r=>r.date)).size;
   const alcAlerts  = drReports.filter(r => +r.alc_before>=0.15 || +r.alc_after>=0.15).length;
-  const totalSales = invMonth.reduce((a,r) => a+totR(r,'inc'), 0);
-  const drSales    = drReports.reduce((a,r) => a+(+r.fare||0)+(+r.hw||0)+(+r.oth||0), 0);
 
   kpiEl.innerHTML = `
     <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
@@ -7619,14 +7617,11 @@ async function renderMonthlyReport() {
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
       const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
       const drOtherQty=dReports.reduce((a,r)=>a+(+r.qty_other||0),0);
-      const drFareSum  = dReports.reduce((a,r)=>a+(+r.fare||0),0);
-      const drHwSum    = dReports.reduce((a,r)=>a+(+r.hw||0),0);
       const drAlcAlert = dReports.filter(r=>+r.alc_before>=0.15||+r.alc_after>=0.15);
       const drHealthBad= dReports.filter(r=>r.health_before==='bad'||r.health_after==='bad');
 
       // 請求書（invoices）からの集計
       const invRecs = invMonth.filter(r => dCars.some(c=>nm(c)===nm(r.car)));
-      const invFare = invRecs.reduce((a,r)=>a+(r.fare||0),0);
       const invTotal= invRecs.reduce((a,r)=>a+totR(r,'inc'),0);
       const invDays = new Set(invRecs.map(r=>r.date)).size;
 
@@ -7638,15 +7633,6 @@ async function renderMonthlyReport() {
         const dayDiff = Math.abs(drWorkDays - invDays);
         if (dayDiff >= 2) {
           diffs.push(`稼働日数: 日報 ${drWorkDays}日 / 請求明細書 ${invDays}日（差${dayDiff}日）`);
-        }
-      }
-
-      // 運賃乖離（15%超を警告）
-      if (drFareSum > 0 && invFare > 0) {
-        const fareDiff = Math.abs(drFareSum - invFare);
-        const farePct  = Math.round(fareDiff / Math.max(drFareSum,invFare) * 100);
-        if (farePct >= 15) {
-          diffs.push(`運賃: 日報 ${yen(drFareSum)} / 請求明細書 ${yen(invFare)}（差${farePct}%）`);
         }
       }
 
@@ -7681,8 +7667,8 @@ async function renderMonthlyReport() {
             </div>
           </div>
           <div style="text-align:right">
-            <div style="font-size:13px;font-weight:600">${yen(drFareSum+drHwSum)}</div>
-            <div style="font-size:10px;color:var(--text2)">日報計</div>
+            <div style="font-size:13px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
+            <div style="font-size:10px;color:var(--text2)">配送個数計</div>
           </div>
         </div>
         <div class="pnl-body">
@@ -7712,15 +7698,6 @@ async function renderMonthlyReport() {
             </div>
           </div>
 
-          <!-- 運賃比較 -->
-          <div class="pnl-row"><span>日報 運賃計</span><span>${yen(drFareSum)}</span></div>
-          <div class="pnl-row"><span>請求明細書 運賃計</span>
-            <span ${invFare&&Math.abs(drFareSum-invFare)/Math.max(drFareSum||1,invFare||1)>0.15?'style="color:var(--amber-text);font-weight:600"':''}>
-              ${invFare ? yen(invFare) : '—'}
-            </span>
-          </div>
-          <div class="pnl-row"><span>日報 高速代計</span><span>${yen(drHwSum)}</span></div>
-
           <!-- アルコール・健康 -->
           ${drAlcAlert.length ? `<div class="pnl-row neg"><span>🍺 アルコール超過記録</span><span>${drAlcAlert.length}件</span></div>` : ''}
           ${drHealthBad.length ? `<div class="pnl-row" style="color:var(--amber-text)"><span>⚠ 体調不良申告</span><span>${drHealthBad.length}日</span></div>` : ''}
@@ -7735,7 +7712,7 @@ async function renderMonthlyReport() {
                   <th style="padding:3px 6px;text-align:right">走行km</th>
                   <th style="padding:3px 6px;text-align:right">宅急便</th>
                   <th style="padding:3px 6px;text-align:right">ネコポス</th>
-                  <th style="padding:3px 6px;text-align:right">運賃</th>
+                  <th style="padding:3px 6px;text-align:right">チャーター</th>
                   <th style="padding:3px 6px;text-align:center">Alc前/後</th>
                   <th style="padding:3px 6px;text-align:center">体調</th>
                   <th style="padding:3px 6px;text-align:center">状態</th>
@@ -7745,14 +7722,12 @@ async function renderMonthlyReport() {
                   ${dReports.map(r => {
                     const alcWarn = +r.alc_before>=0.15||+r.alc_after>=0.15;
                     const healthBad = r.health_before==='bad'||r.health_after==='bad';
-                    const invOnDay = invRecs.find(x=>x.date===r.date);
-                    const fareDiffDay = invOnDay ? Math.abs((r.fare||0)-(invOnDay.fare||0)) : 0;
                     return `<tr style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">
                       <td style="padding:3px 6px">${r.date}</td>
                       <td style="padding:3px 6px;text-align:right">${r.distance_km||0}</td>
                       <td style="padding:3px 6px;text-align:right">${r.qty_takkyubin||0}</td>
                       <td style="padding:3px 6px;text-align:right">${r.qty_nekopos||0}</td>
-                      <td style="padding:3px 6px;text-align:right${fareDiffDay>0?';color:var(--amber-text);font-weight:600':''}">${r.fare?yen(r.fare):''}</td>
+                      <td style="padding:3px 6px;text-align:right">${r.qty_charter||0}</td>
                       <td style="padding:3px 6px;text-align:center;${alcWarn?'color:var(--red);font-weight:600':''}">${r.alc_before??'—'}/${r.alc_after??'—'}</td>
                       <td style="padding:3px 6px;text-align:center;${healthBad?'color:var(--amber-text)':''}">${{good:'良',normal:'普',bad:'不'}[r.health_before||'good']}</td>
                       <td style="padding:3px 6px;text-align:center"><span class="dr-status ${r.status||'pending'}">${{pending:'未',approved:'承',rejected:'差'}[r.status||'pending']}</span></td>
@@ -7784,7 +7759,7 @@ function exportMonthlyCsv() {
   const month = mrFrom;
   const drReports_local = dailyReports.filter(r=>r.date&&r.date>=mrFrom&&r.date<=mrTo);
   const headers = ['ドライバー','ドライバーID','日付','走行距離(km)','乗務開始','乗務終了',
-    '宅急便','ネコポス','その他','運賃','高速','立替','Alc前','Alc後','体調(前)','状態','備考'];
+    '宅急便','ネコポス','チャーター','その他','Alc前','Alc後','体調(前)','状態','備考'];
   const rows = [];
   drvs.forEach(d => {
     const dCars = d.cars||[];
@@ -7793,8 +7768,7 @@ function exportMonthlyCsv() {
       rows.push([
         d.name, d.supplier_id||'', r.date,
         r.distance_km||0, r.start_time||'', r.end_time||'',
-        r.qty_takkyubin||0, r.qty_nekopos||0, r.qty_other||0,
-        r.fare||0, r.hw||0, r.oth||0,
+        r.qty_takkyubin||0, r.qty_nekopos||0, r.qty_charter||0, r.qty_other||0,
         r.alc_before??'', r.alc_after??'',
         {good:'良好',normal:'普通',bad:'不調'}[r.health_before||'good'],
         {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending'],
@@ -7834,7 +7808,7 @@ async function checkSlipVsDailyReport() {
     const minM = months.sort()[0];
     const maxM = months.sort().pop();
     const {data, error} = await sb.from('daily_reports')
-      .select('date,car,distance_km,fare,hw,qty_takkyubin,qty_nekopos,status')
+      .select('date,car,distance_km,qty_takkyubin,qty_nekopos,status')
       .gte('date', `${minM}-01`)
       .lte('date', `${maxM}-31`);
     if (!error) drReports = data||[];
@@ -7887,16 +7861,6 @@ async function checkSlipVsDailyReport() {
     }
     if (missingPay.length) {
       warnings.push(`<b>${d.name}</b>: 日報はあるが明細書に含まれていない日があります（${missingPay.slice(0,3).join('、')}${missingPay.length>3?'…':''}）`);
-    }
-
-    // 運賃合計の差異（20%超）
-    const payFare = dPayRows.reduce((a,r)=>a+(+(r.qty??1))*(+(r.price??0)),0);
-    const drFare  = dDailyReps.reduce((a,r)=>a+(+r.fare||0),0);
-    if (payFare>0 && drFare>0) {
-      const pct = Math.round(Math.abs(payFare-drFare)/Math.max(payFare,drFare)*100);
-      if (pct >= 20) {
-        warnings.push(`<b>${d.name}</b>: 運賃に差異 — 明細書 ${yen(payFare)} / 日報 ${yen(drFare)}（${pct}%の乖離）`);
-      }
     }
 
     // 未承認日報がある場合
@@ -8435,7 +8399,7 @@ async function renderDriverMonthly() {
     const totalKm = reps.reduce((a,r)=>a+(+r.distance_km||0),0);
     const totalTak = reps.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
     const totalNeko = reps.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
-    const totalFare = reps.reduce((a,r)=>a+(+r.fare||0),0);
+    const totalCharter = reps.reduce((a,r)=>a+(+r.qty_charter||0),0);
     const workDays = new Set(reps.map(r=>r.date)).size;
     el.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
@@ -8445,10 +8409,10 @@ async function renderDriverMonthly() {
       </div>
       <div class="pnl-row"><span>宅急便</span><span>${totalTak.toLocaleString()}個</span></div>
       <div class="pnl-row"><span>ネコポス</span><span>${totalNeko.toLocaleString()}個</span></div>
-      <div class="pnl-row"><span>運賃合計</span><span>${yen(totalFare)}</span></div>
+      <div class="pnl-row"><span>チャーター</span><span>${totalCharter.toLocaleString()}件</span></div>
       <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:8px">
         <div style="font-size:10px;color:var(--text2);margin-bottom:4px;font-weight:500">日別明細</div>
-        ${reps.map(r=>`<div class="pnl-row sub"><span>${r.date}</span><span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ネコ${r.qty_nekopos||0} / ${yen(r.fare||0)}</span></div>`).join('')}
+        ${reps.map(r=>`<div class="pnl-row sub"><span>${r.date}</span><span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ネコ${r.qty_nekopos||0}</span></div>`).join('')}
       </div>`;
   } catch(e) { el.innerHTML = `<div style="color:var(--red);font-size:11px">${e.message}</div>`; }
 }
