@@ -8753,29 +8753,30 @@ function exportYearCsv() {
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`年報_${year}.csv`;a.click();
 }
 
-/* ===== バックアップ・復元 ===== */
+/* ===== バックアップ・復元 =====
+   Supabase無料プランには自動バックアップ（日次バックアップ・PITR）が無いため、
+   このJSONエクスポートが唯一のバックアップ手段。全テーブルを対象にする */
+const BACKUP_TABLES = [
+  'invoices','drivers','clients','users','daily_reports',
+  'payment_schedules','receipt_schedules','payment_in','expenses',
+  'company_settings','board_posts','price_master','input_templates',
+  'file_mappings','driver_documents','driver_statements','payment_slips','invoice_slips'
+];
 async function backupAllData() {
   showLoad(true);
   try {
-    const [invRes, drvRes, cliRes, usrRes, drRes] = await Promise.all([
-      sb.from('invoices').select('*').order('id'),
-      sb.from('drivers').select('*').order('id'),
-      sb.from('clients').select('*').order('id'),
-      sb.from('users').select('*').order('id'),
-      sb.from('daily_reports').select('*').order('id').limit(5000),
-    ]);
-    const backup = {
-      version: 9,
-      exported_at: new Date().toISOString(),
-      invoices: invRes.data||[],
-      drivers: drvRes.data||[],
-      clients: cliRes.data||[],
-      users: (usrRes.data||[]).map(u=>({...u,pw:'[HASHED]'})),
-      daily_reports: drRes.data||[],
-    };
+    const results = await Promise.all(BACKUP_TABLES.map(t => sb.from(t).select('*').order('id').limit(20000)));
+    for (let i=0;i<BACKUP_TABLES.length;i++) { if (results[i].error) throw results[i].error; }
+    const backup = { version: 10, exported_at: new Date().toISOString() };
+    BACKUP_TABLES.forEach((t,i) => {
+      const data = results[i].data || [];
+      backup[t] = t==='users' ? data.map(u=>({...u,pw:'[HASHED]'})) : data;
+    });
     const blob = new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    const dt=fmtLocalDate(new Date());
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`PGBase_backup_${fmtLocalDate(new Date())}.json`;
+    a.click();
     addLog('バックアップ', `全データ ${backup.invoices.length}件`);
     showT('バックアップを作成しました');
   } catch(e) { showT('バックアップエラー: '+e.message,'ter'); }
@@ -8784,29 +8785,19 @@ async function backupAllData() {
 
 async function restoreFromBackup(file) {
   if (!file) return;
-  if (!confirm('⚠ 復元するとinvoices・drivers・clients・daily_reportsのデータが上書きされます。続けますか？')) return;
+  if (!confirm('⚠ 復元すると保存済みのデータが上書きされます（ユーザーを除く）。続けますか？')) return;
   showLoad(true);
   try {
     const text = await file.text();
     const backup = JSON.parse(text);
     if (!backup.version || !backup.invoices) throw new Error('バックアップファイルの形式が不正です');
-    // invoicesは件数が多いので50件ずつupsert
+    // usersはauth_uidの不整合でログインが壊れる可能性があるため復元対象から除外
     const chunk=(arr,n)=>Array.from({length:Math.ceil(arr.length/n)},(_,i)=>arr.slice(i*n,(i+1)*n));
-    for (const ch of chunk(backup.invoices||[],50)) {
-      const {error}=await sb.from('invoices').upsert(ch,{onConflict:'id'});
-      if(error) throw error;
-    }
-    for (const ch of chunk(backup.drivers||[],50)) {
-      const {error}=await sb.from('drivers').upsert(ch,{onConflict:'id'});
-      if(error) throw error;
-    }
-    for (const ch of chunk(backup.clients||[],50)) {
-      const {error}=await sb.from('clients').upsert(ch,{onConflict:'id'});
-      if(error) throw error;
-    }
-    for (const ch of chunk(backup.daily_reports||[],50)) {
-      const {error}=await sb.from('daily_reports').upsert(ch,{onConflict:'id'});
-      if(error) throw error;
+    for (const t of BACKUP_TABLES.filter(t=>t!=='users')) {
+      for (const ch of chunk(backup[t]||[],50)) {
+        const {error}=await sb.from(t).upsert(ch,{onConflict:'id'});
+        if(error) throw error;
+      }
     }
     await loadAll();
     addLog('データ復元', `バックアップから復元 (v${backup.version} ${backup.exported_at?.slice(0,10)})`);
