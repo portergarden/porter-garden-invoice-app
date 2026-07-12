@@ -2491,19 +2491,28 @@ async function applyLogin(data) {
   ['bAdd','bAddD','bAddC'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
   startSess();
   await loadAll();
-  // ドライバーロールの場合はポータル画面に切替
+  // ドライバーロールの場合はポータル画面に切替。ここで例外が起きると画面が真っ白のまま
+  // 何も表示されなくなってしまうため（pgLoginは既に非表示済み）、必ずcatchして
+  // 目に見える形でエラーを出す。表示自体はここで失敗しても最低限成立させる
   if (me.role === 'driver') {
-    // usersテーブルのdriver_idからドライバー情報を解決（ポータルの日報・明細表示に使用）
-    if (me.driver_id && !me.driver_data) me.driver_data = drvs.find(d => d.id === me.driver_id) || null;
-    applyDriverPortal();
-  } else {
-    goPage(0, document.getElementById('nt0'));
-    switchP0Tab(1);
-    setTimeout(checkSchedAlerts, 1500);
-    setTimeout(()=>{ checkDriverDocAlerts().catch(()=>{}); }, 3000);
+    try {
+      // usersテーブルのdriver_idからドライバー情報を解決（ポータルの日報・明細表示に使用）
+      if (me.driver_id && !me.driver_data) me.driver_data = drvs.find(d => d.id === me.driver_id) || null;
+      applyDriverPortal();
+    } catch(e) {
+      console.error('applyDriverPortal failed:', e);
+      const main = document.getElementById('pgMain'); if (main) { main.classList.remove('hide'); main.style.display = 'flex'; }
+      showT('ドライバーポータルの表示に失敗しました: ' + e.message, 'ter');
+    }
+    // 未配車・未確認請求書の通知は管理者向けのため、ドライバーには出さない
+    return;
+  }
+  goPage(0, document.getElementById('nt0'));
+  switchP0Tab(1);
+  setTimeout(checkSchedAlerts, 1500);
+  setTimeout(()=>{ checkDriverDocAlerts().catch(()=>{}); }, 3000);
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
-  }
   const unC = recs.filter(r=>!recDrv(r)).length, pend = recs.filter(r=>r.st===0).length;
   if (unC>0||pend>0) {
     document.getElementById('notTitle').textContent = '確認が必要な項目があります';
