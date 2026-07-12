@@ -6673,7 +6673,21 @@ function isFullPlateNumber(car) {
   return !!car && !/^\d+$/.test(car);
 }
 
-function initDailyForm(reportId=null) {
+// ドライバーはclientsテーブルを直接読めないため、名前のみを返すRPC経由で取引先候補を取得する（セッション中はキャッシュ）
+let driverClientNames = null;
+async function populateDriverCliList() {
+  const listEl = document.getElementById('drCliList');
+  if (!listEl) return;
+  if (driverClientNames === null) {
+    try {
+      const {data, error} = await sb.rpc('list_client_names');
+      driverClientNames = error ? [] : (data || []);
+    } catch(e) { driverClientNames = []; }
+  }
+  listEl.innerHTML = driverClientNames.map(c => `<option value="${c.name}">`).join('');
+}
+
+async function initDailyForm(reportId=null) {
   // 日付
   const dEl = document.getElementById('drD');
   if (!dEl.value) dEl.value = fmtLocalDate(new Date());
@@ -6696,8 +6710,14 @@ function initDailyForm(reportId=null) {
   carCustom.style.display = 'none';
   carCustom.value = '';
 
-  // 取引先（名前で候補表示・手入力可能なdatalist方式）
-  document.getElementById('drCliList').innerHTML = clients.map(c => `<option value="${c.name}">`).join('');
+  // 取引先（名前で候補表示・手入力可能なdatalist方式）。
+  // ドライバーはclientsテーブルを直接読めない（RLSで他社情報を遮断済み）ため、
+  // 名前だけを安全に返すRPC（list_client_names）から候補を取得する
+  if (isDriver) {
+    await populateDriverCliList();
+  } else {
+    document.getElementById('drCliList').innerHTML = clients.map(c => `<option value="${c.name}">`).join('');
+  }
 
   // 既存データ編集
   if (reportId) {
@@ -6725,7 +6745,9 @@ function initDailyForm(reportId=null) {
       document.getElementById('drAlcDevice').value = r.alc_device || '';
       document.getElementById('drHealthBefore').value = r.health_before || 'good';
       document.getElementById('drHealthAfter').value = r.health_after || 'good';
-      document.getElementById('drCli').value = r.cli ? (lkC(r.cli)?.name || '') : '';
+      // クライアント名解決: 管理者はclients、ドライバーはRPCで取得したdriverClientNamesから引く
+      const cliName = r.cli ? (isDriver ? (driverClientNames||[]).find(c=>c.id===r.cli)?.name : lkC(r.cli)?.name) : '';
+      document.getElementById('drCli').value = cliName || '';
       document.getElementById('drQtyTak').value = r.qty_takkyubin || '';
       document.getElementById('drQtyNeko').value = r.qty_nekopos || '';
       document.getElementById('drQtyCharter').value = r.qty_charter || '';
@@ -6912,15 +6934,23 @@ async function submitDailyReport() {
     if (!confirm(drivingWarning + '\n\nこのまま提出しますか？')) return;
   }
   // 取引先は名前で手入力のため、入力文字列から候補と一致するクライアントを解決する
+  // （ドライバーはclientsを直接読めないため、RPCで取得したdriverClientNamesを使う）
   const cliInput = document.getElementById('drCli').value.trim();
-  const cliMatch = cliInput ? clients.find(c => nm(c.name) === nm(cliInput)) : null;
+  const cliSource = (me?.role === 'driver') ? (driverClientNames||[]) : clients;
+  const cliMatch = cliInput ? cliSource.find(c => nm(c.name) === nm(cliInput)) : null;
   if (cliInput && !cliMatch) {
     if (!confirm(`⚠ 取引先「${cliInput}」が登録済みの取引先名と一致しませんでした。取引先を未設定のまま提出しますか？`)) return;
   }
 
+  // drv_id: RLSで「自分の日報だけ見える」を成立させるための紐付け。
+  // 車番から解決できればそれを優先（管理者が代理入力した場合も正しいドライバーに紐づく）、
+  // できない場合（ドライバー自身の未登録車番など）は自分自身のIDにフォールバック
+  const resolvedDrvId = lkD(car)?.id ?? (me?.role === 'driver' ? me.driver_id : null);
+
   const obj = {
     date,
     car,
+    drv_id: resolvedDrvId,
     driver_name: document.getElementById('drName').value || '',
     start_time: startTime,
     end_time: endTime,
