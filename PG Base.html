@@ -1612,7 +1612,8 @@ td.dim{color:var(--text2)}
       <!-- セクション6: 業務内容 -->
       <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 業務内容</div>
       <div class="fld"><label>取引先 / センター</label>
-        <select id="drCli"><option value="">未設定</option></select>
+        <input type="text" id="drCli" list="drCliList" placeholder="取引先名を入力（候補から選択可）">
+        <datalist id="drCliList"></datalist>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div class="fld"><label>宅急便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
@@ -6673,6 +6674,11 @@ function initMob() {
   renderDailySummary();
 }
 
+// 車両番号がフル表記（例: 仙台480れ8113）かどうかを判定する。数字のみの4桁略式登録は対象外
+function isFullPlateNumber(car) {
+  return !!car && !/^\d+$/.test(car);
+}
+
 function initDailyForm(reportId=null) {
   // 日付
   const dEl = document.getElementById('drD');
@@ -6682,22 +6688,22 @@ function initDailyForm(reportId=null) {
   const isDriver = me?.role === 'driver';
   if (isDriver) {
     // ドライバー本人には自分の登録車両のみを表示（他ドライバーの車番は見せない）。
+    // フルの車両番号のみ表示し、4桁だけの略式登録は非表示にする。
     // 代車など未登録車両は「その他（手入力）」で入力できるようにする
-    const ownCars = me.driver_data?.cars || [];
+    const ownCars = (me.driver_data?.cars || []).filter(isFullPlateNumber);
     carSel.innerHTML = '<option value="">選択してください</option>' +
       ownCars.map(c => `<option value="${c}">${c}</option>`).join('') +
       '<option value="__custom__">＋ その他の車両（手入力）</option>';
   } else {
-    const allCars = drvs.flatMap(d => (d.cars||[]).map(c => ({car:c, name:d.name, drvId:d.id})));
+    const allCars = drvs.flatMap(d => (d.cars||[]).filter(isFullPlateNumber).map(c => ({car:c, name:d.name, drvId:d.id})));
     carSel.innerHTML = '<option value="">選択してください</option>' +
       allCars.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
   }
   carCustom.style.display = 'none';
   carCustom.value = '';
 
-  // 取引先
-  const cliSel = document.getElementById('drCli');
-  cliSel.innerHTML = '<option value="">未設定</option>' + clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  // 取引先（名前で候補表示・手入力可能なdatalist方式）
+  document.getElementById('drCliList').innerHTML = clients.map(c => `<option value="${c.name}">`).join('');
 
   // 既存データ編集
   if (reportId) {
@@ -6725,7 +6731,7 @@ function initDailyForm(reportId=null) {
       document.getElementById('drAlcDevice').value = r.alc_device || '';
       document.getElementById('drHealthBefore').value = r.health_before || 'good';
       document.getElementById('drHealthAfter').value = r.health_after || 'good';
-      document.getElementById('drCli').value = r.cli || '';
+      document.getElementById('drCli').value = r.cli ? (lkC(r.cli)?.name || '') : '';
       document.getElementById('drQtyTak').value = r.qty_takkyubin || '';
       document.getElementById('drQtyNeko').value = r.qty_nekopos || '';
       document.getElementById('drQtyOther').value = r.qty_other || '';
@@ -6762,7 +6768,7 @@ function initDailyForm(reportId=null) {
     }
   } else {
     // 新規: リセット
-    ['drStart','drEnd','drKm','drAlcBefore','drAlcAfter','drAlcDevice',
+    ['drStart','drEnd','drKm','drAlcBefore','drAlcAfter','drAlcDevice','drCli',
      'drQtyTak','drQtyNeko','drQtyOther','drFare','drHw','drOth','drNote',
      'drStartLoc','drEndLoc','drRestStart','drRestEnd','drRestLoc',
      'drWaitStart','drWaitEnd','drWaitLoc','drCargoWorkStart','drCargoWorkEnd',
@@ -6884,6 +6890,12 @@ async function submitDailyReport() {
   if (drivingWarning) {
     if (!confirm(drivingWarning + '\n\nこのまま提出しますか？')) return;
   }
+  // 取引先は名前で手入力のため、入力文字列から候補と一致するクライアントを解決する
+  const cliInput = document.getElementById('drCli').value.trim();
+  const cliMatch = cliInput ? clients.find(c => nm(c.name) === nm(cliInput)) : null;
+  if (cliInput && !cliMatch) {
+    if (!confirm(`⚠ 取引先「${cliInput}」が登録済みの取引先名と一致しませんでした。取引先を未設定のまま提出しますか？`)) return;
+  }
 
   const obj = {
     date,
@@ -6898,7 +6910,7 @@ async function submitDailyReport() {
     alc_device: document.getElementById('drAlcDevice').value.trim(),
     health_before: document.getElementById('drHealthBefore').value,
     health_after: document.getElementById('drHealthAfter').value,
-    cli: +document.getElementById('drCli').value || null,
+    cli: cliMatch ? cliMatch.id : null,
     qty_takkyubin: +document.getElementById('drQtyTak').value || 0,
     qty_nekopos: +document.getElementById('drQtyNeko').value || 0,
     qty_other: +document.getElementById('drQtyOther').value || 0,
