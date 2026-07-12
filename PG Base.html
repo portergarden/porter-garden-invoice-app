@@ -1531,6 +1531,10 @@ td.dim{color:var(--text2)}
         <div class="fld"><label>乗務終了時刻</label><input type="time" id="drEnd"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld"><label>出発地点</label><input type="text" id="drStartLoc" placeholder="例: 仙台営業所"></div>
+        <div class="fld"><label>到着地点</label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="fld"><label>走行距離（km） <span style="color:var(--red)">*</span></label><input type="number" id="drKm" placeholder="0" min="0" step="0.1"></div>
         <div class="fld"><label>乗務形態</label>
           <select id="drType">
@@ -1539,6 +1543,13 @@ td.dim{color:var(--text2)}
           </select>
         </div>
       </div>
+      <div class="fld"><label>休憩・睡眠時刻（10分未満の休憩は記録省略可）</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input type="time" id="drRestStart" placeholder="休憩開始">
+          <input type="time" id="drRestEnd" placeholder="休憩終了">
+        </div>
+      </div>
+      <div class="fld"><label>休憩地点</label><input type="text" id="drRestLoc" placeholder="例: 〇〇パーキングエリア"></div>
 
       <!-- セクション3: アルコール検知 -->
       <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③ アルコール検知記録</div>
@@ -1578,8 +1589,28 @@ td.dim{color:var(--text2)}
         </div>
       </div>
 
-      <!-- セクション5: 業務内容 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑤ 業務内容</div>
+      <!-- セクション5: 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象） -->
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑤ 荷待ち・付帯作業</div>
+      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">荷主都合で30分以上待機した場合、または荷役・付帯作業を行った場合に記録してください</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drWaitFlag" onchange="toggleDrWaitFields()"> 荷待ち（30分以上）があった</label>
+      <div id="drWaitFields" style="display:none;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>荷待ち開始</label><input type="time" id="drWaitStart"></div>
+          <div class="fld"><label>荷待ち終了</label><input type="time" id="drWaitEnd"></div>
+        </div>
+        <div class="fld"><label>集貨地点等</label><input type="text" id="drWaitLoc" placeholder="例: 〇〇センター"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drCargoWorkFlag" onchange="toggleDrWaitFields()"> 荷役作業・付帯業務を行った</label>
+      <div id="drCargoWorkFields" style="display:none;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>作業開始</label><input type="time" id="drCargoWorkStart"></div>
+          <div class="fld"><label>作業終了</label><input type="time" id="drCargoWorkEnd"></div>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="drShipperConfirmed"> 上記の記録を荷主が確認した</label>
+
+      <!-- セクション6: 業務内容 -->
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 業務内容</div>
       <div class="fld"><label>取引先 / センター</label>
         <select id="drCli"><option value="">未設定</option></select>
       </div>
@@ -1598,8 +1629,8 @@ td.dim{color:var(--text2)}
         <span id="drTotalDisp" style="font-weight:600;color:var(--blue)">¥0</span>
       </div>
 
-      <!-- セクション6: 車両日常点検 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 車両日常点検（道路運送車両法 第47条の2）</div>
+      <!-- セクション7: 車両日常点検 -->
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 車両日常点検（道路運送車両法 第47条の2）</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px" id="inspChecks">
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp1" value="tire"> タイヤ（空気圧・亀裂・磨耗）</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp2" value="brake"> ブレーキ（効き・液量）</label>
@@ -1618,11 +1649,16 @@ td.dim{color:var(--text2)}
         <input type="text" id="inspNote" placeholder="例: 左前タイヤ空気圧低め" style="padding:8px 10px;font-size:14px">
       </div>
 
-      <!-- セクション7: 備考 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 特記事項</div>
+      <!-- セクション8: 備考 -->
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑧ 特記事項</div>
       <div class="fld">
         <label>事故・ヒヤリハット・車両異常・その他</label>
         <textarea id="drNote" rows="3" style="width:100%;padding:8px 10px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);resize:vertical" placeholder="異常なし、またはヒヤリハット内容・事故状況等を記入"></textarea>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drIncidentFlag" onchange="toggleDrIncidentFields()"> 事故が発生した（保存期間3年）</label>
+      <div id="drIncidentFields" style="display:none">
+        <div class="fld"><label>原因</label><input type="text" id="drIncidentCause" placeholder="例: 前方不注意による接触"></div>
+        <div class="fld"><label>再発防止策</label><input type="text" id="drIncidentPrevention" placeholder="例: 車間距離確保の徹底"></div>
       </div>
 
       <!-- アルコール異常時警告ボックス -->
@@ -6695,6 +6731,27 @@ function initDailyForm(reportId=null) {
       document.getElementById('drHw').value = r.hw || '';
       document.getElementById('drOth').value = r.oth || '';
       document.getElementById('drNote').value = r.note || '';
+      // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
+      document.getElementById('drStartLoc').value = r.start_location || '';
+      document.getElementById('drEndLoc').value = r.end_location || '';
+      document.getElementById('drRestStart').value = r.rest_start || '';
+      document.getElementById('drRestEnd').value = r.rest_end || '';
+      document.getElementById('drRestLoc').value = r.rest_location || '';
+      // 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象）
+      document.getElementById('drWaitFlag').checked = !!r.wait_flag;
+      document.getElementById('drWaitStart').value = r.wait_start || '';
+      document.getElementById('drWaitEnd').value = r.wait_end || '';
+      document.getElementById('drWaitLoc').value = r.wait_location || '';
+      document.getElementById('drCargoWorkFlag').checked = !!r.cargo_work_flag;
+      document.getElementById('drCargoWorkStart').value = r.cargo_work_start || '';
+      document.getElementById('drCargoWorkEnd').value = r.cargo_work_end || '';
+      document.getElementById('drShipperConfirmed').checked = !!r.shipper_confirmed;
+      toggleDrWaitFields();
+      // 事故記録
+      document.getElementById('drIncidentFlag').checked = !!r.incident_flag;
+      document.getElementById('drIncidentCause').value = r.incident_cause || '';
+      document.getElementById('drIncidentPrevention').value = r.incident_prevention || '';
+      toggleDrIncidentFields();
       // 点検復元
       const inspMap = {1:'tire',2:'brake',3:'light',4:'wiper',5:'engine',6:'mirror',7:'horn',8:'battery',9:'cargo',10:'fuel'};
       Object.entries(inspMap).forEach(([n,k])=>{const el=document.getElementById('insp'+n);if(el)el.checked=r['insp_'+k]!==false;});
@@ -6704,9 +6761,17 @@ function initDailyForm(reportId=null) {
   } else {
     // 新規: リセット
     ['drStart','drEnd','drKm','drAlcBefore','drAlcAfter','drAlcDevice',
-     'drQtyTak','drQtyNeko','drQtyOther','drFare','drHw','drOth','drNote'].forEach(id => {
+     'drQtyTak','drQtyNeko','drQtyOther','drFare','drHw','drOth','drNote',
+     'drStartLoc','drEndLoc','drRestStart','drRestEnd','drRestLoc',
+     'drWaitStart','drWaitEnd','drWaitLoc','drCargoWorkStart','drCargoWorkEnd',
+     'drIncidentCause','drIncidentPrevention'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
+    ['drWaitFlag','drCargoWorkFlag','drShipperConfirmed','drIncidentFlag'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.checked = false;
+    });
+    toggleDrWaitFields();
+    toggleDrIncidentFields();
     document.getElementById('drHealthBefore').value = 'good';
     document.getElementById('drHealthAfter').value = 'good';
     document.getElementById('drType').value = 'regular';
@@ -6755,6 +6820,14 @@ function checkAlc(input, warnId) {
       if (alertBox) alertBox.style.display = 'none';
     }
   }
+}
+
+function toggleDrWaitFields() {
+  document.getElementById('drWaitFields').style.display = document.getElementById('drWaitFlag').checked ? 'block' : 'none';
+  document.getElementById('drCargoWorkFields').style.display = document.getElementById('drCargoWorkFlag').checked ? 'block' : 'none';
+}
+function toggleDrIncidentFields() {
+  document.getElementById('drIncidentFields').style.display = document.getElementById('drIncidentFlag').checked ? 'block' : 'none';
 }
 
 function calcDrTotal() {
@@ -6806,6 +6879,25 @@ async function submitDailyReport() {
     note: document.getElementById('drNote').value.trim(),
     status: 'pending',
     submitted_by: me?.name || '',
+    // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
+    start_location: document.getElementById('drStartLoc').value.trim(),
+    end_location: document.getElementById('drEndLoc').value.trim(),
+    rest_start: document.getElementById('drRestStart').value || null,
+    rest_end: document.getElementById('drRestEnd').value || null,
+    rest_location: document.getElementById('drRestLoc').value.trim(),
+    // 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象）
+    wait_flag: document.getElementById('drWaitFlag').checked,
+    wait_start: document.getElementById('drWaitFlag').checked ? (document.getElementById('drWaitStart').value || null) : null,
+    wait_end: document.getElementById('drWaitFlag').checked ? (document.getElementById('drWaitEnd').value || null) : null,
+    wait_location: document.getElementById('drWaitFlag').checked ? document.getElementById('drWaitLoc').value.trim() : '',
+    cargo_work_flag: document.getElementById('drCargoWorkFlag').checked,
+    cargo_work_start: document.getElementById('drCargoWorkFlag').checked ? (document.getElementById('drCargoWorkStart').value || null) : null,
+    cargo_work_end: document.getElementById('drCargoWorkFlag').checked ? (document.getElementById('drCargoWorkEnd').value || null) : null,
+    shipper_confirmed: document.getElementById('drShipperConfirmed').checked,
+    // 事故記録
+    incident_flag: document.getElementById('drIncidentFlag').checked,
+    incident_cause: document.getElementById('drIncidentFlag').checked ? document.getElementById('drIncidentCause').value.trim() : '',
+    incident_prevention: document.getElementById('drIncidentFlag').checked ? document.getElementById('drIncidentPrevention').value.trim() : '',
     // 車両点検
     insp_tire:    document.getElementById('insp1')?.checked||false,
     insp_brake:   document.getElementById('insp2')?.checked||false,
@@ -6961,10 +7053,13 @@ function renderDailyList() {
             <span class="dr-status ${r.status||'pending'}">${{pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending']}</span>
             ${alcWarn?'<span class="dr-alc-warn" title="アルコール検知値超過">🚨 ALc</span>':''}
             ${healthBad?'<span style="color:var(--amber-text);font-size:10px">体調不良申告</span>':''}
+            ${r.incident_flag?'<span style="color:var(--red-text);font-size:10px">🚧 事故あり</span>':''}
+            ${r.wait_flag?'<span style="color:var(--amber-text);font-size:10px">⏳ 荷待ちあり</span>':''}
           </div>
           <div class="dr-section">
             <span>🏃 ${r.distance_km??'—'}km</span>
             ${r.start_time?`<span>⏱ ${r.start_time}〜${r.end_time||'?'}</span>`:''}
+            ${(r.start_location||r.end_location)?`<span>📍 ${r.start_location||'?'}→${r.end_location||'?'}</span>`:''}
             <span>🍺 前:${r.alc_before??'—'} 後:${r.alc_after??'—'} mg/L</span>
             ${(r.qty_takkyubin||r.qty_nekopos)?`<span>📦 宅急便:${r.qty_takkyubin||0} ネコポス:${r.qty_nekopos||0}</span>`:''}
             ${r.fare?`<span>💴 ${yen(r.fare)}</span>`:''}
