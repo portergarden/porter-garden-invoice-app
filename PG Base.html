@@ -1293,6 +1293,8 @@ td.dim{color:var(--text2)}
       <button class="btn pri sml" onclick="handlePayPdfOut()" title="支払明細書PDF作成（選択分）">📑 PDF</button>
       <button class="btn sml" onclick="downloadAggPayCsv()" title="支払明細書CSV作成（選択分）">📥 CSV</button>
       <button class="btn sml" onclick="printAllPnlPdf2()" title="集計期間にデータがある全ドライバーの支払明細書PDFを未選択でも一括発行します">🖨 全員分</button>
+      <button class="btn sml" onclick="publishPayStatements()" title="選択したドライバーのポータルに正式な支払明細書を配信します（既読管理付き）">📬 ポータル配信</button>
+      <button class="btn sml" onclick="openStmtStatusM()" title="配信済み明細書と既読状況の一覧">📖 配信状況</button>
     </div>
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;padding:5px 8px;background:var(--bg2);border-radius:var(--radius);font-size:11px">
       <span style="color:var(--text2)">協力会社で一括発行:</span>
@@ -1912,6 +1914,10 @@ td.dim{color:var(--text2)}
 
     <!-- D2: 手取り明細 -->
     <div id="dpg2" style="display:none">
+      <div id="drvStmtArea" style="padding:8px 14px;border-bottom:3px solid var(--bg2)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📬 支払明細書（会社発行）</div>
+        <div id="drvStmtList" style="font-size:12px;color:var(--text2)">読み込み中...</div>
+      </div>
       <div style="padding:6px 14px;border-bottom:0.5px solid var(--border);display:flex;gap:8px;align-items:center">
         <input type="month" id="drvPnlMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDriverPnl()">
         <button class="btn sml" onclick="window.print()">🖨 印刷</button>
@@ -1933,6 +1939,15 @@ td.dim{color:var(--text2)}
       <div id="drvDocsList" style="padding:8px 14px"></div>
     </div>
 
+  </div>
+</div>
+
+<!-- モーダル: 明細書配信状況（管理側） -->
+<div class="overlay" id="mStmtStatus">
+  <div class="modal" style="max-width:720px">
+    <div class="mh">明細書 配信状況 <button class="ibtn" onclick="closeM('mStmtStatus')">✕</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">ドライバーポータルに配信した支払明細書の一覧です。ドライバーが開くと「既読」になります。</div>
+    <div id="stmtStatusBody" style="max-height:60vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -7618,6 +7633,13 @@ function applyDriverPortal() {
   if (drvDmEl) drvDmEl.value = thisM;
 
   goDrvPage(0, document.getElementById('dnt0'));
+
+  // 未読の明細書があればログイン時に知らせる
+  if (me?.driver_id && sb) {
+    sb.from('driver_statements').select('id').eq('drv_id', me.driver_id).is('read_at', null)
+      .then(({data}) => { if (data?.length) showT(`📬 未読の支払明細書が${data.length}件あります（手取り明細タブで確認）`, 'twa'); })
+      .catch?.(()=>{});
+  }
 }
 
 function goDrvPage(n, el) {
@@ -7629,7 +7651,7 @@ function goDrvPage(n, el) {
   }
   if (n===0) loadDriverDailyList();
   if (n===1) renderDriverMonthly();
-  if (n===2) renderDriverPnl();
+  if (n===2) { renderDriverPnl(); loadDriverStatements(); }
   if (n===3) { loadBoard(); renderBoardTo('drvBoardList'); }
   if (n===4) renderDriverPortalDocs();
 }
@@ -7879,6 +7901,135 @@ function renderDocStatusBody() {
       <td style="${cellStyle}"><button class="ibtn" title="書類を開く" onclick="closeM('mDocStatus');openDrvDocsM(${d.id})">📄</button></td>
     </tr>`).join('')}</tbody>
   </table>`;
+}
+
+/* ===== 支払明細書のポータル配信（正式版・既読管理付き） ===== */
+// 配信用の明細書HTML: 印刷用と同じ内容だが自動印刷せず、画面上部に印刷ボタンを付ける
+function buildStatementHtmlForDelivery(rows) {
+  const d = buildStatementSheetData('payment', rows);
+  const inner = buildStatementDocInner('payment', rows);
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${statementFileTitle('payment', d)}</title>
+  <style>${getDocCss()}${statementDocStyle()}
+  .dl-bar{text-align:right;padding:10px 16px}
+  .dl-bar button{font-size:13px;padding:6px 14px;cursor:pointer}
+  @media print{.dl-bar{display:none}}
+  </style></head><body>
+  <div class="dl-bar"><button onclick="window.print()">🖨 印刷 / PDF保存</button></div>
+  ${inner}
+  </body></html>`;
+}
+
+// pg6で選択したドライバーのポータルへ明細書を配信する
+async function publishPayStatements() {
+  const checked = Array.from(document.querySelectorAll('.aggPayChk:checked')).map(el=>+el.value);
+  if (!checked.length) { alert('ドライバーを選択してください'); return; }
+  const groups = checked.map(id => window._aggPayGroups?.[String(id)]).filter(g=>g?.rows?.length);
+  if (!groups.length) { alert('対象データがありません'); return; }
+  const month = (document.getElementById('aggPayFrom')?.value||'').slice(0,7);
+  if (!confirm(`${groups.length}名のドライバーのポータルに支払明細書を配信しますか？\n対象月: ${month||'—'}`)) return;
+  showLoad(true);
+  let ok = 0, fails = [];
+  for (const g of groups) {
+    try {
+      const rows = g.rows.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+      const d = buildStatementSheetData('payment', rows);
+      const html = buildStatementHtmlForDelivery(rows);
+      const path = `drv${g.drv.id}/${month||'unknown'}_${Date.now()}.html`;
+      const {error: upErr} = await sb.storage.from('driver-statements').upload(path, new Blob([html], {type:'text/html'}), {contentType:'text/html'});
+      if (upErr) throw upErr;
+      const {error} = await sb.from('driver_statements').insert({
+        drv_id: g.drv.id, month: month||'', title: `${month||''}分 支払明細書（${d.docNo}）`,
+        file_path: path, amount: d.summary.grand, published_by: me?.name||'',
+      });
+      if (error) throw error;
+      ok++;
+    } catch(e) { fails.push(`${g.drv.name}: ${e.message}`); }
+  }
+  showLoad(false);
+  if (ok) addLog('明細書配信', `${month} ${ok}名`);
+  if (fails.length) showT(`${ok}名に配信、${fails.length}件失敗: ${fails[0]}`, 'twa');
+  else showT(`${ok}名のポータルに明細書を配信しました`);
+}
+
+// 管理側: 配信状況一覧
+async function openStmtStatusM() {
+  document.getElementById('mStmtStatus').classList.add('on');
+  const el = document.getElementById('stmtStatusBody');
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">読み込み中...</div>';
+  try {
+    const {data, error} = await sb.from('driver_statements').select('*').order('created_at', {ascending:false}).limit(200);
+    if (error) throw error;
+    if (!data?.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">配信済みの明細書はありません</div>'; return; }
+    const cs = 'padding:6px 8px;border:0.5px solid var(--border)';
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:var(--bg2)">
+        <th style="${cs}">配信日</th><th style="${cs}">ドライバー</th><th style="${cs}">対象月</th><th style="${cs};text-align:right">金額</th><th style="${cs}">状態</th><th style="${cs}"></th>
+      </tr></thead>
+      <tbody>${data.map(s => `<tr>
+        <td style="${cs}">${(s.created_at||'').slice(0,10)}</td>
+        <td style="${cs};font-weight:500">${drvs.find(d=>d.id===s.drv_id)?.name||`ID:${s.drv_id}`}</td>
+        <td style="${cs}">${s.month||'—'}</td>
+        <td style="${cs};text-align:right">${yen(s.amount||0)}</td>
+        <td style="${cs};text-align:center">${s.read_at
+          ? `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--green-bg);color:var(--green-text)">既読 ${(s.read_at||'').slice(0,10)}</span>`
+          : `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--amber-bg);color:var(--amber-text)">未読</span>`}</td>
+        <td style="${cs};text-align:center;white-space:nowrap">
+          <button class="ibtn" title="内容を確認" onclick="viewStatementFile('${s.file_path}')">🔍</button>
+          <button class="ibtn" style="color:#e05b5b" title="配信を取り消す" onclick="deleteStatement(${s.id},'${s.file_path}')">🗑</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch(e) { el.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red-text);font-size:12px">読み込みエラー: ${e.message}</div>`; }
+}
+async function viewStatementFile(path) {
+  try {
+    const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+}
+async function deleteStatement(id, path) {
+  if (!confirm('この明細書の配信を取り消しますか？（ドライバーからも見えなくなります）')) return;
+  try {
+    const {error} = await sb.from('driver_statements').delete().eq('id', id);
+    if (error) throw error;
+    if (path) await sb.storage.from('driver-statements').remove([path]);
+    addLog('明細書配信取消', `id:${id}`);
+    showT('配信を取り消しました');
+    openStmtStatusM();
+  } catch(e) { showT('取消エラー: ' + e.message, 'ter'); }
+}
+
+// ドライバーポータル側: 自分宛の明細書一覧（既読管理付き）
+async function loadDriverStatements() {
+  const el = document.getElementById('drvStmtList');
+  if (!el || !me?.driver_id) return;
+  try {
+    const {data, error} = await sb.from('driver_statements').select('*').eq('drv_id', me.driver_id).order('created_at', {ascending:false}).limit(24);
+    if (error) throw error;
+    if (!data?.length) { el.innerHTML = '<span style="color:var(--text2)">配信された明細書はまだありません</span>'; return; }
+    el.innerHTML = data.map(s => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:500;color:var(--text)">${s.title||s.month+'分 支払明細書'}</div>
+        <div style="font-size:10px;color:var(--text2)">配信日: ${(s.created_at||'').slice(0,10)}　${yen(s.amount||0)}</div>
+      </div>
+      ${s.read_at ? '' : '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--red-bg);color:var(--red-text)">未読</span>'}
+      <button class="btn sml pri" onclick="openDriverStatement(${s.id},'${s.file_path}',${s.read_at?'true':'false'})">📄 開く</button>
+    </div>`).join('');
+  } catch(e) { el.innerHTML = `<span style="color:var(--red-text)">読み込みエラー: ${e.message}</span>`; }
+}
+async function openDriverStatement(id, path, isRead) {
+  try {
+    const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+    if (!isRead) {
+      await sb.from('driver_statements').update({read_at: new Date().toISOString()}).eq('id', id);
+      loadDriverStatements();
+    }
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
 }
 
 async function loadDriverDailyList() {
