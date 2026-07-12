@@ -6824,6 +6824,29 @@ function checkAlc(input, warnId) {
   }
 }
 
+// 改善基準告示の「430ルール」チェック：連続運転4時間ごとに合計30分以上の休憩が必要。
+// リアルタイム計測ではなく、提出内容（乗務開始〜終了・休憩時刻）から事後的に判定する
+function checkContinuousDrivingWarning() {
+  const start = document.getElementById('drStart').value;
+  const end = document.getElementById('drEnd').value;
+  if (!start || !end) return null;
+  const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+  let totalMin = toMin(end) - toMin(start);
+  if (totalMin < 0) totalMin += 24*60; // 日をまたぐ場合
+  const restStart = document.getElementById('drRestStart').value;
+  const restEnd = document.getElementById('drRestEnd').value;
+  let restMin = 0;
+  if (restStart && restEnd) {
+    restMin = toMin(restEnd) - toMin(restStart);
+    if (restMin < 0) restMin += 24*60;
+  }
+  if (totalMin > 240 && restMin < 30) {
+    const h = Math.floor(totalMin/60), m = totalMin%60;
+    return `⚠️ 乗務開始から終了まで${h}時間${m}分のうち、休憩が${restMin}分しか記録されていません。連続運転は4時間まで、休憩は合計30分以上必要とされています（改善基準告示）。`;
+  }
+  return null;
+}
+
 function toggleDrWaitFields() {
   document.getElementById('drWaitFields').style.display = document.getElementById('drWaitFlag').checked ? 'block' : 'none';
   document.getElementById('drCargoWorkFields').style.display = document.getElementById('drCargoWorkFlag').checked ? 'block' : 'none';
@@ -6857,6 +6880,10 @@ async function submitDailyReport() {
   if (+alcBefore >= 0.15) {
     if (!confirm('⚠ 乗務前アルコール値が0.15mg/L以上です。記録を提出しますか？（管理者に即時報告してください）')) return;
   }
+  const drivingWarning = checkContinuousDrivingWarning();
+  if (drivingWarning) {
+    if (!confirm(drivingWarning + '\n\nこのまま提出しますか？')) return;
+  }
 
   const obj = {
     date,
@@ -6879,7 +6906,8 @@ async function submitDailyReport() {
     hw: +document.getElementById('drHw').value || 0,
     oth: +document.getElementById('drOth').value || 0,
     note: document.getElementById('drNote').value.trim(),
-    status: 'pending',
+    // 個人事業主のドライバーが自分の記録として提出するため、承認待ちの手動チェックは設けず提出=確定とする
+    status: 'approved',
     submitted_by: me?.name || '',
     // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
     start_location: document.getElementById('drStartLoc').value.trim(),
@@ -7071,10 +7099,8 @@ function renderDailyList() {
         </div>
         <div style="display:flex;gap:3px;flex-shrink:0">
           <button class="ibtn" onclick="showDailyForm(${r.id})" title="編集">✎</button>
-          ${canApprove&&r.status==='pending'?`
-            <button class="ibtn" style="color:var(--green)" onclick="approveDailyReport(${r.id})" title="承認">✓</button>
-            <button class="ibtn" style="color:var(--amber-text)" onclick="rejectDailyReport(${r.id})" title="差戻し">↩</button>
-          `:''}
+          ${canApprove&&r.status==='pending'?`<button class="ibtn" style="color:var(--green)" onclick="approveDailyReport(${r.id})" title="承認">✓</button>`:''}
+          ${canApprove&&r.status!=='rejected'?`<button class="ibtn" style="color:var(--amber-text)" onclick="rejectDailyReport(${r.id})" title="差戻し（要修正としてマークします）">↩</button>`:''}
           ${canApprove?`<button class="ibtn" style="color:var(--red)" onclick="deleteDailyReport(${r.id})" title="削除">🗑</button>`:''}
         </div>
       </div>
