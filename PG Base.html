@@ -2303,7 +2303,11 @@ td.dim{color:var(--text2)}
     </div>
     <div class="g2">
       <div class="fld"><label>パスワード</label><input type="password" id="uPw" placeholder="新規は必須 / 編集時は空欄で変更なし"></div>
-      <div class="fld"><label>権限</label><select id="uRo"><option value="admin">管理者</option><option value="editor">編集者</option><option value="viewer">閲覧者</option></select></div>
+      <div class="fld"><label>権限</label><select id="uRo" onchange="onUsrRoleChange()"><option value="admin">管理者</option><option value="editor">編集者</option><option value="viewer">閲覧者</option><option value="driver">ドライバー</option></select></div>
+    </div>
+    <div class="fld" id="uDrvFld" style="display:none"><label>紐づけるドライバー <span style="color:var(--red)">*</span></label>
+      <select id="uDrvSel" style="width:100%"><option value="">選択してください</option></select>
+      <div style="font-size:10px;color:var(--text2);margin-top:3px">このアカウントでログインすると、選択したドライバーのポータル（日報・月報・手取り明細・書類提出）が表示されます</div>
     </div>
     <div class="mfoot"><button class="btn" onclick="closeM('mUsr')">キャンセル</button><button class="btn pri" onclick="saveUsr()">保存</button></div>
   </div>
@@ -2474,11 +2478,14 @@ async function applyLogin(data) {
   await loadAll();
   // ドライバーロールの場合はポータル画面に切替
   if (me.role === 'driver') {
+    // usersテーブルのdriver_idからドライバー情報を解決（ポータルの日報・明細表示に使用）
+    if (me.driver_id && !me.driver_data) me.driver_data = drvs.find(d => d.id === me.driver_id) || null;
     applyDriverPortal();
   } else {
     goPage(0, document.getElementById('nt0'));
     switchP0Tab(1);
     setTimeout(checkSchedAlerts, 1500);
+    setTimeout(()=>{ checkDriverDocAlerts().catch(()=>{}); }, 3000);
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
   }
@@ -2519,24 +2526,7 @@ async function login(){
         showLoad(false); return;
       }
     }
-    // ② driversテーブルのdriver_login_idで照合（ドライバーログイン・現状未実装のため動作しません）
-    const hashed = await sha256(pw);
-    const{data:dData,error:dErr}=await sb.from('drivers').select('*').eq('driver_login_id',id).single();
-    if(!dErr && dData && dData.driver_pw===hashed){
-      document.getElementById('lerr').textContent='';
-      // driversレコードをusers形式に変換してドライバーロールで適用
-      const driverUser = {
-        id: 'drv_'+dData.id,
-        name: dData.name,
-        pw: dData.driver_pw,
-        role: 'driver',
-        driver_id: dData.id,
-        driver_data: dData
-      };
-      await addLog('ドライバーログイン',`${dData.name}がログイン`);
-      await applyLogin(driverUser);
-      showLoad(false); return;
-    }
+    // ドライバーもusersテーブル（role='driver'＋driver_id）で認証する。applyLogin側でポータルに振り分けられる
     document.getElementById('lerr').textContent='IDまたはパスワードが違います';
   }catch(e){document.getElementById('lerr').textContent='エラー: '+e.message;}
   showLoad(false);
@@ -3697,7 +3687,7 @@ function goPage(n,el){
   if (grp) switchNavGroup(grp, true);
   if(n===0)renderInv();
   if(n===1){populateYearSelect('dashYear',true);renderDash();}
-  if(n===2)renderDrv();
+  if(n===2){renderDrv();if(!driverDocs.length)loadDriverDocs().then(()=>renderDrv());}
   if(n===3)renderCli();
   if(n===4)loadLogs();
   if(n===5)renderUsr();
@@ -4233,17 +4223,39 @@ async function saveCli(){
 /* ===== USERS ===== */
 function renderUsr(){
   document.getElementById('usrList').innerHTML=users.map(u=>{
-    const rn=u.role==='admin'?'管理者':u.role==='editor'?'編集者':'閲覧者';
-    const rc=u.role==='admin'?'ad':u.role==='editor'?'ed':'vi';
+    const rn=u.role==='admin'?'管理者':u.role==='editor'?'編集者':u.role==='driver'?'ドライバー':'閲覧者';
+    const rc=u.role==='admin'?'ad':u.role==='editor'?'ed':u.role==='driver'?'drv':'vi';
     const isMe=me&&me.id===u.id;
-    return`<div class="urow"><div class="uav">${(u.name||'').slice(0,2)}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${u.name}${isMe?' <span style="font-size:10px;color:var(--blue)">（ログイン中）</span>':''}</div><div style="font-size:10px;color:var(--text2)">ID: ${u.id}</div></div><span class="bdg ${rc}">${rn}</span>${!isMe?`<button class="ibtn" onclick="editUsr('${u.id}')">✎</button><button class="ibtn" onclick="delUsr('${u.id}')">🗑</button>`:''}</div>`;
+    const drvName=u.role==='driver'&&u.driver_id?(drvs.find(d=>d.id===u.driver_id)?.name||''):'';
+    return`<div class="urow"><div class="uav">${(u.name||'').slice(0,2)}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${u.name}${isMe?' <span style="font-size:10px;color:var(--blue)">（ログイン中）</span>':''}</div><div style="font-size:10px;color:var(--text2)">ID: ${u.id}${drvName?` ｜ 🚚 ${drvName}`:''}</div></div><span class="bdg ${rc}">${rn}</span>${!isMe?`<button class="ibtn" onclick="editUsr('${u.id}')">✎</button><button class="ibtn" onclick="delUsr('${u.id}')">🗑</button>`:''}</div>`;
   }).join('');
 }
-function openUsrM(){eUsrId=null;['uId','uNm','uPw'].forEach(id=>document.getElementById(id).value='');document.getElementById('uRo').value='editor';document.getElementById('mUsrH').innerHTML='ユーザー追加 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
-function editUsr(id){const u=users.find(x=>x.id===id);if(!u)return;eUsrId=id;document.getElementById('uId').value=u.id;document.getElementById('uNm').value=u.name;document.getElementById('uPw').value=u.pw;document.getElementById('uRo').value=u.role;document.getElementById('mUsrH').innerHTML='ユーザー編集 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
+function onUsrRoleChange(){
+  const isDrv=document.getElementById('uRo').value==='driver';
+  document.getElementById('uDrvFld').style.display=isDrv?'block':'none';
+  if(isDrv)populateUsrDrvSel();
+}
+function populateUsrDrvSel(cur){
+  const sel=document.getElementById('uDrvSel');
+  sel.innerHTML='<option value="">選択してください</option>'+[...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999)).map(d=>`<option value="${d.id}">${d.name}${d.supplier_id?`（ID:${d.supplier_id}）`:''}</option>`).join('');
+  if(cur)sel.value=cur;
+}
+function openUsrM(){eUsrId=null;['uId','uNm','uPw'].forEach(id=>document.getElementById(id).value='');document.getElementById('uRo').value='editor';onUsrRoleChange();document.getElementById('mUsrH').innerHTML='ユーザー追加 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
+function editUsr(id){const u=users.find(x=>x.id===id);if(!u)return;eUsrId=id;document.getElementById('uId').value=u.id;document.getElementById('uNm').value=u.name;document.getElementById('uPw').value='';document.getElementById('uRo').value=u.role;onUsrRoleChange();if(u.role==='driver')populateUsrDrvSel(u.driver_id);document.getElementById('mUsrH').innerHTML='ユーザー編集 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
 async function delUsr(id){
   if(id===me?.id){alert('自分自身は削除できません');return;}if(!confirm('削除しますか？'))return;
-  try{const{error}=await sb.from('users').delete().eq('id',id);if(error)throw error;users=users.filter(u=>u.id!==id);addLog('ユーザー削除',`id:${id}`);renderUsr();showT('削除しました');}
+  try{
+    const u=users.find(x=>x.id===id);
+    const{error}=await sb.from('users').delete().eq('id',id);if(error)throw error;
+    // ログインアカウント（Supabase Auth）も削除。失敗しても本体削除は成立させる
+    if(u?.auth_uid){
+      try{
+        const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'delete',auth_uid:u.auth_uid}});
+        if(fnErr||fnData?.error)console.warn('Authアカウント削除エラー:',fnData?.error||fnErr.message);
+      }catch(e2){console.warn('Authアカウント削除エラー:',e2.message);}
+    }
+    users=users.filter(x=>x.id!==id);addLog('ユーザー削除',`id:${id}`);renderUsr();showT('削除しました');
+  }
   catch(e){showT('削除エラー: '+e.message,'ter');}
 }
 async function saveUsr(){
@@ -4251,18 +4263,29 @@ async function saveUsr(){
   if(!id||!n){alert('IDと名前は必須です');return;}
   // 編集時はパスワード空欄=変更なし、新規時は必須
   if(!eUsrId&&!pw){alert('パスワードを入力してください');return;}
+  const driverId = role==='driver' ? (+document.getElementById('uDrvSel').value||null) : null;
+  if(role==='driver'&&!driverId){alert('紐づけるドライバーを選択してください');return;}
   showLoad(true);
   try{
     const hashed = pw ? await sha256(pw) : null;
     if(eUsrId!==null){
-      const upd = hashed ? {id,name:n,pw:hashed,role} : {id,name:n,role};
+      const cur=users.find(x=>x.id===eUsrId);
+      // パスワード変更はEdge Function経由でSupabase Auth側も更新する（管理者のみ実行可）
+      if(hashed && cur?.auth_uid){
+        const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'set_password',auth_uid:cur.auth_uid,password:pw}});
+        if(fnErr||fnData?.error)throw new Error(fnData?.error||fnErr.message);
+      }
+      const upd = hashed ? {id,name:n,pw:hashed,role,driver_id:driverId} : {id,name:n,role,driver_id:driverId};
       const{data,error}=await sb.from('users').update(upd).eq('id',eUsrId).select().single();
       if(error)throw error;
       const idx=users.findIndex(x=>x.id===eUsrId);if(idx>=0)users[idx]=data;
       addLog('ユーザー編集',n+(hashed?'（PW変更）':''));
     } else {
       if(users.find(x=>x.id===id)){alert('そのIDは既に使用されています');showLoad(false);return;}
-      const{data,error}=await sb.from('users').insert({id,name:n,pw:hashed,role}).select().single();
+      // ログイン用のSupabase AuthアカウントをEdge Function（管理者権限）経由で作成
+      const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'create',login_id:id,password:pw}});
+      if(fnErr||fnData?.error){showT('ログインアカウント作成エラー: '+(fnData?.error||fnErr.message),'ter');showLoad(false);return;}
+      const{data,error}=await sb.from('users').insert({id,name:n,pw:hashed,role,auth_uid:fnData.auth_uid,driver_id:driverId}).select().single();
       if(error)throw error;users.push(data);addLog('ユーザー追加',n);
     }
     closeM('mUsr');renderUsr();showT('ユーザーを保存しました');
@@ -4665,12 +4688,12 @@ function renderDrv() {
 
   const unC = [...new Set(recs.filter(r => !recDrv(r)).map(r => r.car))];
   if (da) {
-    if (unC.length) {
-      da.classList.remove('hide');
-      da.innerHTML = `<div class="alert-bar">⚠ 未配車: ${unC.join('、')}</div>`;
-    } else {
-      da.classList.add('hide');
-    }
+    const docIssues = summarizeDocAlerts();
+    const bars = [];
+    if (unC.length) bars.push(`<div class="alert-bar">⚠ 未配車: ${unC.join('、')}</div>`);
+    if (docIssues.length) bars.push(`<div class="alert-bar">📄 書類期限に注意: ${docIssues.map(i=>`${i.drv.name}・${i.t.label}（${i.st.label}）`).join('、')} <button class="btn sml" style="margin-left:8px" onclick="openDocStatusM()">一覧を開く</button></div>`);
+    if (bars.length) { da.classList.remove('hide'); da.innerHTML = bars.join(''); }
+    else da.classList.add('hide');
   }
 
   const canE = me && me.role !== 'viewer';
@@ -7809,6 +7832,28 @@ async function openDocStatusM() {
   document.getElementById('docStatusBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">読み込み中...</div>';
   await loadDriverDocs();
   renderDocStatusBody();
+}
+// 期限切れ・期限間近の書類を全ドライバー横断で抽出（管理側の警告表示用）
+function summarizeDocAlerts() {
+  const issues = [];
+  drvs.forEach(d => {
+    DRIVER_DOC_TYPES.forEach(t => {
+      const st = docStatusOf(findDriverDoc(d.id, t.key));
+      if (st.cls === 'expired' || st.cls === 'soon') issues.push({ drv: d, t, st });
+    });
+  });
+  return issues;
+}
+// ログイン後に書類期限をチェックしてトーストで知らせる（詳細はドライバー管理タブのバナー＋一覧）
+async function checkDriverDocAlerts() {
+  if (!sb || !drvs.length) return;
+  await loadDriverDocs();
+  const issues = summarizeDocAlerts();
+  if (!issues.length) return;
+  const expired = issues.filter(i => i.st.cls === 'expired').length;
+  const soon = issues.filter(i => i.st.cls === 'soon').length;
+  showT(`📄 書類期限: ${expired ? `期限切れ${expired}件` : ''}${expired && soon ? ' / ' : ''}${soon ? `期限間近${soon}件` : ''}（ドライバー管理で確認）`, 'twa');
+  if (document.getElementById('pg2')?.style.display !== 'none') renderDrv();
 }
 function renderDocStatusBody() {
   const el = document.getElementById('docStatusBody');
