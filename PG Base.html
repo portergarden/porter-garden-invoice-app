@@ -1178,8 +1178,11 @@ td.dim{color:var(--text2)}
           </button>
           <button id="bViewList" style="border:none;padding:6px 14px;cursor:pointer;background:var(--blue);color:#fff;font-weight:bold;font-size:13px;display:flex;align-items:center;justify-content:center;" onclick="setDriverView('list')" title="横長表示">▤</button>
         </div>
-      </div>      
-<button class="btn pri hide" id="bAddD" onclick="openDrvM()">＋ ドライバー追加</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn sml" onclick="openDocStatusM()">📄 書類状況一覧</button>
+        <button class="btn pri hide" id="bAddD" onclick="openDrvM()">＋ ドライバー追加</button>
+      </div>
     </div>
     <div id="dAlert" class="hide"></div>
     <div class="cardgrid" id="drvGrid"></div>
@@ -1879,6 +1882,7 @@ td.dim{color:var(--text2)}
     <div class="ntab" id="dnt1" onclick="goDrvPage(1,this)">📊 月報</div>
     <div class="ntab" id="dnt2" onclick="goDrvPage(2,this)">💴 手取り明細</div>
     <div class="ntab" id="dnt3" onclick="goDrvPage(3,this)">📢 掲示板</div>
+    <div class="ntab" id="dnt4" onclick="goDrvPage(4,this)">📷 書類</div>
   </nav>
   <!-- ドライバー用コンテンツ -->
   <div id="drvContent" style="flex:1;overflow-y:auto">
@@ -1920,6 +1924,32 @@ td.dim{color:var(--text2)}
       <div id="drvBoardList" style="padding:8px 14px"></div>
     </div>
 
+    <!-- D4: 書類提出（免許証・車検証・自賠責・任意保険） -->
+    <div id="dpg4" style="display:none">
+      <div style="padding:6px 14px;border-bottom:0.5px solid var(--border)">
+        <span style="font-size:11px;color:var(--text2)">免許証・車検証・保険証券の写真を提出し、有効期限を登録します</span>
+      </div>
+      <div id="drvDocsBanner" style="padding:0 14px"></div>
+      <div id="drvDocsList" style="padding:8px 14px"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- モーダル: ドライバー提出書類（管理側） -->
+<div class="overlay" id="mDrvDocs">
+  <div class="modal" style="max-width:640px">
+    <div class="mh" id="mDrvDocsH">提出書類 <button class="ibtn" onclick="closeM('mDrvDocs')">✕</button></div>
+    <div id="drvDocsMBody"></div>
+  </div>
+</div>
+
+<!-- モーダル: 書類状況一覧（全ドライバー） -->
+<div class="overlay" id="mDocStatus">
+  <div class="modal" style="max-width:760px">
+    <div class="mh">書類状況一覧 <button class="ibtn" onclick="closeM('mDocStatus')">✕</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">各ドライバーの提出状況と有効期限。期限30日前から「期限間近」になります。行の📄から登録・更新できます。</div>
+    <div id="docStatusBody" style="max-height:60vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -4676,7 +4706,7 @@ function renderDrv() {
       return `<div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
           <div class="av drv">${ini}</div>
-          ${canE ? `<div style="display:flex;gap:1px"><button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button></div>` : ''}
+          <div style="display:flex;gap:1px"><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
         </div>
         <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${d.name}${d.company?` <span style="font-size:10.5px;font-weight:500;color:var(--text2);padding:1px 5px;background:var(--bg2);border-radius:99px">${d.company}</span>`:''}</div>
         ${d.supplier_id ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">仕入先ID: ${d.supplier_id}</div>` : ''}
@@ -4711,7 +4741,7 @@ function renderDrv() {
           </div>
           <div style="width:70px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
         </div>
-        ${canE ? `<div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button></div>` : ''}
+        <div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
       </div>`;
     }).join('');
   }
@@ -6389,7 +6419,7 @@ function renderScheduleGrouped(data, listId, opts) {
       } else { cls += ' done'; badge = `<span class="sched-pill" style="background:var(--green-bg);color:var(--green-text)">${opts.doneLabel}</span>`; }
       const checked = opts.selSet && opts.selSet.has(s.id);
       return `<div class="${cls}">
-        <input type="checkbox" ${checked?'checked':''} onchange="${opts.toggleSelFn}(${s.id},this.checked)">
+        <input type="checkbox" data-schedid="${s.id}" ${checked?'checked':''} onchange="${opts.toggleSelFn}(${s.id},this.checked)">
         <div style="flex:1">
           <div style="font-weight:500">${opts.getName(s)} <span style="font-size:10px;color:var(--text2)">${s.month ? s.month+'分' : ''}</span></div>
           ${s.note ? `<div style="font-size:10px;color:var(--text2)">${s.note}</div>` : ''}
@@ -6403,9 +6433,13 @@ function renderScheduleGrouped(data, listId, opts) {
       </div>`;
     }).join('');
 
-    return `<div class="sched-date-group">
+    const groupChecked = opts.selSet && items.every(s=>opts.selSet.has(s.id));
+    return `<div class="sched-date-group" data-date="${date}">
       <div class="sched-date-header" style="background:${headerBg};color:${headerColor}">
-        <span>📅 ${date}${headerBadge?' ・ '+headerBadge:''}</span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" ${groupChecked?'checked':''} onchange="${opts.toggleGroupFn}('${date}',this.checked)">
+          📅 ${date}${headerBadge?' ・ '+headerBadge:''}
+        </span>
         <span>${items.length}件 ／ 小計 ${yen(subtotal)}</span>
       </div>
       ${rows}
@@ -6459,9 +6493,15 @@ function renderSched() {
     deleteFn: 'deleteSchedItem',
     selSet: schedSelIds,
     toggleSelFn: 'toggleSchedSel',
+    toggleGroupFn: 'toggleSchedDateGroup',
   });
 }
 function toggleSchedSel(id,v){ if(v)schedSelIds.add(id); else schedSelIds.delete(id); updateSchedBulkBar(); }
+function toggleSchedDateGroup(date,v){
+  schedData.filter(s=>s.date===date).forEach(s=>v?schedSelIds.add(s.id):schedSelIds.delete(s.id));
+  document.querySelectorAll(`#schedList .sched-date-group[data-date="${date}"] input[data-schedid]`).forEach(cb=>cb.checked=v);
+  updateSchedBulkBar();
+}
 function toggleSchedSelAll(v){ schedSelIds = v ? new Set(schedData.map(s=>s.id)) : new Set(); renderSched(); }
 function updateSchedBulkBar(){
   const el=document.getElementById('schedBulkCount');
@@ -7558,7 +7598,7 @@ function applyDriverPortal() {
 }
 
 function goDrvPage(n, el) {
-  for (let i=0; i<4; i++) {
+  for (let i=0; i<5; i++) {
     const p = document.getElementById('dpg'+i);
     if (p) p.style.display = i===n ? 'block' : 'none';
     const t = document.getElementById('dnt'+i);
@@ -7568,6 +7608,232 @@ function goDrvPage(n, el) {
   if (n===1) renderDriverMonthly();
   if (n===2) renderDriverPnl();
   if (n===3) { loadBoard(); renderBoardTo('drvBoardList'); }
+  if (n===4) renderDriverPortalDocs();
+}
+
+/* ===== ドライバー提出書類（免許証・車検証・自賠責・任意保険） ===== */
+const DRIVER_DOC_TYPES = [
+  { key:'license', label:'運転免許証',   expLabel:'有効期限' },
+  { key:'shaken',  label:'車検証',       expLabel:'車検満了日' },
+  { key:'jibai',   label:'自賠責保険',   expLabel:'保険期間満了日' },
+  { key:'nini',    label:'任意保険',     expLabel:'保険期間満了日' },
+];
+const DOC_WARN_DAYS = 30; // 期限の何日前から「期限間近」扱いにするか
+let driverDocs = []; // driver_documents全件キャッシュ
+
+async function loadDriverDocs() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('driver_documents').select('*');
+    if (error) throw error;
+    driverDocs = data || [];
+  } catch(e) { console.warn('loadDriverDocs:', e.message); }
+}
+
+function findDriverDoc(drvId, docType) {
+  return driverDocs.find(d => d.drv_id === drvId && d.doc_type === docType);
+}
+
+// 書類の状態判定: none(未提出) / noexp(期限未登録) / expired / soon / ok
+function docStatusOf(doc) {
+  if (!doc) return { cls:'none', label:'未提出', bg:'var(--gray-bg)', fg:'var(--gray-text)' };
+  if (!doc.expiry_date) return { cls:'noexp', label:'期限未登録', bg:'var(--blue-bg)', fg:'var(--blue-text)' };
+  const today = fmtLocalDate(new Date());
+  const warn = new Date(); warn.setDate(warn.getDate()+DOC_WARN_DAYS);
+  if (doc.expiry_date < today) return { cls:'expired', label:'期限切れ', bg:'var(--red-bg)', fg:'var(--red-text)' };
+  if (doc.expiry_date <= fmtLocalDate(warn)) return { cls:'soon', label:'期限間近', bg:'var(--amber-bg)', fg:'var(--amber-text)' };
+  return { cls:'ok', label:'有効', bg:'var(--green-bg)', fg:'var(--green-text)' };
+}
+
+function docStatusPill(doc) {
+  const st = docStatusOf(doc);
+  return `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:${st.bg};color:${st.fg};white-space:nowrap">${st.label}</span>`;
+}
+
+// 画像ファイルを縮小してBlob化（写真の容量を抑える。PDFはそのまま）
+function resizeImageToBlob(file, maxSize) {
+  return new Promise((resolve, reject) => {
+    if (file.type === 'application/pdf') { resolve(file); return; }
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error('画像変換に失敗しました')), 'image/jpeg', 0.85);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// 1書類分の登録・更新（ファイルは任意。期限だけの更新も可能）
+async function saveDriverDoc(drvId, docType) {
+  const fileEl = document.getElementById(`dd_file_${drvId}_${docType}`);
+  const expEl = document.getElementById(`dd_exp_${drvId}_${docType}`);
+  const file = fileEl?.files?.[0];
+  const expiry = expEl?.value || null;
+  const existing = findDriverDoc(drvId, docType);
+  if (!file && !existing) { showT('写真ファイルを選択してください', 'twa'); return; }
+  showLoad(true);
+  try {
+    let filePath = existing?.file_path || '';
+    if (file) {
+      const blob = await resizeImageToBlob(file, 1600);
+      const ext = file.type === 'application/pdf' ? 'pdf' : 'jpg';
+      filePath = `drv${drvId}/${docType}_${Date.now()}.${ext}`;
+      const {error: upErr} = await sb.storage.from('driver-docs').upload(filePath, blob, { contentType: file.type === 'application/pdf' ? 'application/pdf' : 'image/jpeg' });
+      if (upErr) throw upErr;
+      // 旧ファイルは差し替え成功後に削除（失敗しても本体処理は続行）
+      if (existing?.file_path && existing.file_path !== filePath) {
+        sb.storage.from('driver-docs').remove([existing.file_path]).catch?.(()=>{});
+      }
+    }
+    const row = { drv_id: drvId, doc_type: docType, file_path: filePath, expiry_date: expiry, uploaded_by: me?.name || '' , updated_at: new Date().toISOString() };
+    const {data, error} = await sb.from('driver_documents').upsert(row, { onConflict: 'drv_id,doc_type' }).select().single();
+    if (error) throw error;
+    driverDocs = driverDocs.filter(d => !(d.drv_id===drvId && d.doc_type===docType));
+    driverDocs.push(data);
+    if (fileEl) fileEl.value = '';
+    addLog('書類登録', `drv:${drvId} ${docType}${expiry?` 期限:${expiry}`:''}`);
+    showT('書類を保存しました');
+    refreshDocViews(drvId);
+  } catch(e) { showT('保存エラー: ' + e.message, 'ter'); }
+  showLoad(false);
+}
+
+// 書類写真を署名付きURLで開く（バケットは非公開のため直接URLでは見られない）
+async function viewDriverDoc(drvId, docType) {
+  const doc = findDriverDoc(drvId, docType);
+  if (!doc?.file_path) { showT('ファイルがありません', 'twa'); return; }
+  try {
+    const {data, error} = await sb.storage.from('driver-docs').createSignedUrl(doc.file_path, 3600);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+}
+
+async function deleteDriverDoc(drvId, docType) {
+  const doc = findDriverDoc(drvId, docType);
+  if (!doc) return;
+  if (!confirm('この書類を削除しますか？')) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('driver_documents').delete().eq('id', doc.id);
+    if (error) throw error;
+    if (doc.file_path) await sb.storage.from('driver-docs').remove([doc.file_path]);
+    driverDocs = driverDocs.filter(d => d.id !== doc.id);
+    addLog('書類削除', `drv:${drvId} ${docType}`);
+    showT('削除しました');
+    refreshDocViews(drvId);
+  } catch(e) { showT('削除エラー: ' + e.message, 'ter'); }
+  showLoad(false);
+}
+
+// 保存・削除後に開いている書類ビューを再描画する
+function refreshDocViews(drvId) {
+  if (document.getElementById('mDrvDocs')?.classList.contains('on')) renderDrvDocsMBody(drvId);
+  if (document.getElementById('dpg4')?.style.display !== 'none' && me?.driver_id) renderDriverPortalDocs();
+  if (document.getElementById('mDocStatus')?.classList.contains('on')) renderDocStatusBody();
+}
+
+// 書類1件分の編集行（ポータル・管理モーダル共通）
+function docRowHtml(drvId, t, canDelete) {
+  const doc = findDriverDoc(drvId, t.key);
+  return `<div style="border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-weight:600;font-size:13px">${t.label}</span>
+      ${docStatusPill(doc)}
+      ${doc?.expiry_date ? `<span style="font-size:11px;color:var(--text2)">${t.expLabel}: ${doc.expiry_date}</span>` : ''}
+      ${doc ? `<span style="font-size:10px;color:var(--text3)">更新: ${(doc.updated_at||'').slice(0,10)}${doc.uploaded_by?` (${doc.uploaded_by})`:''}</span>` : ''}
+      <div style="flex:1"></div>
+      ${doc?.file_path ? `<button class="btn sml" onclick="viewDriverDoc(${drvId},'${t.key}')">🔍 表示</button>` : ''}
+      ${doc && canDelete ? `<button class="ibtn" style="color:#e05b5b" onclick="deleteDriverDoc(${drvId},'${t.key}')">🗑</button>` : ''}
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
+      <div class="fld" style="margin-bottom:0;flex:1;min-width:180px"><label>写真（カメラ撮影可・PDF可）</label>
+        <input type="file" id="dd_file_${drvId}_${t.key}" accept="image/*,application/pdf" style="width:100%;font-size:12px">
+      </div>
+      <div class="fld" style="margin-bottom:0"><label>${t.expLabel}</label>
+        <input type="date" id="dd_exp_${drvId}_${t.key}" value="${doc?.expiry_date||''}">
+      </div>
+      <button class="btn pri sml" onclick="saveDriverDoc(${drvId},'${t.key}')">💾 保存</button>
+    </div>
+  </div>`;
+}
+
+// ドライバーポータル「書類」タブ
+async function renderDriverPortalDocs() {
+  const listEl = document.getElementById('drvDocsList');
+  const bannerEl = document.getElementById('drvDocsBanner');
+  if (!listEl) return;
+  const drvId = me?.driver_id;
+  if (!drvId) { listEl.innerHTML = '<div style="color:var(--text2);padding:20px;text-align:center;font-size:12px">ドライバー情報が見つかりません</div>'; return; }
+  await loadDriverDocs();
+  const warns = DRIVER_DOC_TYPES.map(t => ({t, doc:findDriverDoc(drvId, t.key), st:docStatusOf(findDriverDoc(drvId, t.key))}))
+    .filter(x => x.st.cls==='expired' || x.st.cls==='soon' || x.st.cls==='none');
+  if (bannerEl) {
+    bannerEl.innerHTML = warns.length
+      ? `<div class="alert-bar" style="margin-top:8px">⚠ 確認が必要な書類: ${warns.map(x=>`${x.t.label}（${x.st.label}）`).join('、')}</div>`
+      : '';
+  }
+  listEl.innerHTML = DRIVER_DOC_TYPES.map(t => docRowHtml(drvId, t, false)).join('');
+}
+
+// 管理側: ドライバーごとの書類モーダル
+async function openDrvDocsM(drvId) {
+  const d = drvs.find(x => x.id === drvId);
+  if (!d) return;
+  document.getElementById('mDrvDocsH').innerHTML = `📄 ${d.name} の提出書類 <button class="ibtn" onclick="closeM('mDrvDocs')">✕</button>`;
+  document.getElementById('mDrvDocs').classList.add('on');
+  document.getElementById('drvDocsMBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">読み込み中...</div>';
+  await loadDriverDocs();
+  renderDrvDocsMBody(drvId);
+}
+function renderDrvDocsMBody(drvId) {
+  const el = document.getElementById('drvDocsMBody');
+  if (!el) return;
+  const canDel = me && (me.role === 'admin' || me.role === 'editor');
+  el.innerHTML = DRIVER_DOC_TYPES.map(t => docRowHtml(drvId, t, canDel)).join('');
+}
+
+// 管理側: 全ドライバー書類状況一覧
+async function openDocStatusM() {
+  document.getElementById('mDocStatus').classList.add('on');
+  document.getElementById('docStatusBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">読み込み中...</div>';
+  await loadDriverDocs();
+  renderDocStatusBody();
+}
+function renderDocStatusBody() {
+  const el = document.getElementById('docStatusBody');
+  if (!el) return;
+  if (!drvs.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">ドライバーが登録されていません</div>'; return; }
+  const sorted = [...drvs].sort((a,b)=>{
+    const na = parseInt(a.supplier_id,10)||999999, nb = parseInt(b.supplier_id,10)||999999;
+    return na - nb;
+  });
+  const cellStyle = 'padding:6px 8px;border:0.5px solid var(--border);text-align:center';
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:var(--bg2)">
+      <th style="${cellStyle};text-align:left">ドライバー</th>
+      ${DRIVER_DOC_TYPES.map(t=>`<th style="${cellStyle}">${t.label}</th>`).join('')}
+      <th style="${cellStyle}"></th>
+    </tr></thead>
+    <tbody>${sorted.map(d => `<tr>
+      <td style="${cellStyle};text-align:left;font-weight:500">${d.name}</td>
+      ${DRIVER_DOC_TYPES.map(t => {
+        const doc = findDriverDoc(d.id, t.key);
+        return `<td style="${cellStyle}">${docStatusPill(doc)}${doc?.expiry_date?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${doc.expiry_date}</div>`:''}</td>`;
+      }).join('')}
+      <td style="${cellStyle}"><button class="ibtn" title="書類を開く" onclick="closeM('mDocStatus');openDrvDocsM(${d.id})">📄</button></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
 }
 
 async function loadDriverDailyList() {
@@ -8577,9 +8843,15 @@ function renderReceiptSched() {
     deleteFn: 'deleteReceiptSchedItem',
     selSet: receiptSchedSelIds,
     toggleSelFn: 'toggleReceiptSchedSel',
+    toggleGroupFn: 'toggleReceiptSchedDateGroup',
   });
 }
 function toggleReceiptSchedSel(id,v){ if(v)receiptSchedSelIds.add(id); else receiptSchedSelIds.delete(id); updateReceiptSchedBulkBar(); }
+function toggleReceiptSchedDateGroup(date,v){
+  receiptSchedData.filter(s=>s.date===date).forEach(s=>v?receiptSchedSelIds.add(s.id):receiptSchedSelIds.delete(s.id));
+  document.querySelectorAll(`#receiptSchedList .sched-date-group[data-date="${date}"] input[data-schedid]`).forEach(cb=>cb.checked=v);
+  updateReceiptSchedBulkBar();
+}
 function toggleReceiptSchedSelAll(v){ receiptSchedSelIds = v ? new Set(receiptSchedData.map(s=>s.id)) : new Set(); renderReceiptSched(); }
 function updateReceiptSchedBulkBar(){
   const el=document.getElementById('receiptSchedBulkCount');
