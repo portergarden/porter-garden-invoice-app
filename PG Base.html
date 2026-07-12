@@ -1527,12 +1527,12 @@ td.dim{color:var(--text2)}
       <!-- セクション2: 乗務時刻・走行距離 -->
       <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">② 乗務記録</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>乗務開始時刻</label><input type="time" id="drStart"></div>
-        <div class="fld"><label>乗務終了時刻</label><input type="time" id="drEnd"></div>
+        <div class="fld"><label>乗務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
+        <div class="fld"><label>乗務終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drEnd"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>出発地点</label><input type="text" id="drStartLoc" placeholder="例: 仙台営業所"></div>
-        <div class="fld"><label>到着地点</label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
+        <div class="fld"><label>出発地点 <span style="color:var(--red)">*</span></label><input type="text" id="drStartLoc" placeholder="例: 仙台営業所"></div>
+        <div class="fld"><label>到着地点 <span style="color:var(--red)">*</span></label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="fld"><label>走行距離（km） <span style="color:var(--red)">*</span></label><input type="number" id="drKm" placeholder="0" min="0" step="0.1"></div>
@@ -1615,19 +1615,11 @@ td.dim{color:var(--text2)}
         <input type="text" id="drCli" list="drCliList" placeholder="取引先名を入力（候補から選択可）">
         <datalist id="drCliList"></datalist>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px">
         <div class="fld"><label>宅急便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
         <div class="fld"><label>ネコポス（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
+        <div class="fld"><label>チャーター（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
         <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>運賃（円）</label><input type="number" id="drFare" placeholder="0" min="0" oninput="calcDrTotal()"></div>
-        <div class="fld"><label>高速代（円）</label><input type="number" id="drHw" placeholder="0" min="0" oninput="calcDrTotal()"></div>
-      </div>
-      <div class="fld"><label>立替金（円）</label><input type="number" id="drOth" placeholder="0" min="0" oninput="calcDrTotal()"></div>
-      <div style="padding:8px 10px;background:var(--blue-bg);border-radius:var(--radius);font-size:12px;margin-bottom:10px;display:flex;justify-content:space-between">
-        <span style="color:var(--blue-text)">合計（税込概算）</span>
-        <span id="drTotalDisp" style="font-weight:600;color:var(--blue)">¥0</span>
       </div>
 
       <!-- セクション7: 車両日常点検 -->
@@ -6734,10 +6726,8 @@ function initDailyForm(reportId=null) {
       document.getElementById('drCli').value = r.cli ? (lkC(r.cli)?.name || '') : '';
       document.getElementById('drQtyTak').value = r.qty_takkyubin || '';
       document.getElementById('drQtyNeko').value = r.qty_nekopos || '';
+      document.getElementById('drQtyCharter').value = r.qty_charter || '';
       document.getElementById('drQtyOther').value = r.qty_other || '';
-      document.getElementById('drFare').value = r.fare || '';
-      document.getElementById('drHw').value = r.hw || '';
-      document.getElementById('drOth').value = r.oth || '';
       document.getElementById('drNote').value = r.note || '';
       // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
       document.getElementById('drStartLoc').value = r.start_location || '';
@@ -6764,12 +6754,11 @@ function initDailyForm(reportId=null) {
       const inspMap = {1:'tire',2:'brake',3:'light',4:'wiper',5:'engine',6:'mirror',7:'horn',8:'battery',9:'cargo',10:'fuel'};
       Object.entries(inspMap).forEach(([n,k])=>{const el=document.getElementById('insp'+n);if(el)el.checked=r['insp_'+k]!==false;});
       const inEl=document.getElementById('inspNote');if(inEl)inEl.value=r.insp_note||'';
-      calcDrTotal();
     }
   } else {
     // 新規: リセット
     ['drStart','drEnd','drKm','drAlcBefore','drAlcAfter','drAlcDevice','drCli',
-     'drQtyTak','drQtyNeko','drQtyOther','drFare','drHw','drOth','drNote',
+     'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drNote',
      'drStartLoc','drEndLoc','drRestStart','drRestEnd','drRestLoc',
      'drWaitStart','drWaitEnd','drWaitLoc','drCargoWorkStart','drCargoWorkEnd',
      'drIncidentCause','drIncidentPrevention'].forEach(id => {
@@ -6784,7 +6773,6 @@ function initDailyForm(reportId=null) {
     document.getElementById('drHealthAfter').value = 'good';
     document.getElementById('drType').value = 'regular';
     document.getElementById('drResult').textContent = '';
-    document.getElementById('drTotalDisp').textContent = '¥0';
   }
 
   // ドライバーロールなら乗務員名は常に自分自身。新規入力時、車両1台のみなら自動選択する
@@ -6861,15 +6849,6 @@ function toggleDrIncidentFields() {
   document.getElementById('drIncidentFields').style.display = document.getElementById('drIncidentFlag').checked ? 'block' : 'none';
 }
 
-function calcDrTotal() {
-  const fare = +document.getElementById('drFare').value||0;
-  const hw = +document.getElementById('drHw').value||0;
-  const oth = +document.getElementById('drOth').value||0;
-  const sub = fare + hw + oth;
-  const total = sub + Math.round(fare * 0.1); // 運賃のみ課税
-  document.getElementById('drTotalDisp').textContent = '¥' + total.toLocaleString();
-}
-
 async function submitDailyReport() {
   const date = document.getElementById('drD').value;
   let car = document.getElementById('drCar').value;
@@ -6877,12 +6856,21 @@ async function submitDailyReport() {
   const km = document.getElementById('drKm').value;
   const alcBefore = document.getElementById('drAlcBefore').value;
   const alcAfter = document.getElementById('drAlcAfter').value;
+  const startTime = document.getElementById('drStart').value;
+  const endTime = document.getElementById('drEnd').value;
+  const startLoc = document.getElementById('drStartLoc').value.trim();
+  const endLoc = document.getElementById('drEndLoc').value.trim();
+  const healthBefore = document.getElementById('drHealthBefore').value;
   const resultEl = document.getElementById('drResult');
 
+  // 貨物自動車運送事業輸送安全規則 第8条：乗務の開始・終了の地点・日時は乗務記録の必須記載事項
   if (!date || !car) { resultEl.textContent = '⚠ 乗務日と車両番号は必須です'; resultEl.style.color='var(--red)'; return; }
   if (!km || isNaN(+km)) { resultEl.textContent = '⚠ 走行距離を入力してください'; resultEl.style.color='var(--red)'; return; }
+  if (!startTime || !endTime) { resultEl.textContent = '⚠ 乗務開始時刻・乗務終了時刻は必須です'; resultEl.style.color='var(--red)'; return; }
+  if (!startLoc || !endLoc) { resultEl.textContent = '⚠ 出発地点・到着地点は必須です'; resultEl.style.color='var(--red)'; return; }
   if (alcBefore === '' || isNaN(+alcBefore)) { resultEl.textContent = '⚠ 乗務前アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (alcAfter === '' || isNaN(+alcAfter)) { resultEl.textContent = '⚠ 乗務後アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
+  if (!healthBefore) { resultEl.textContent = '⚠ 乗務前の体調を選択してください'; resultEl.style.color='var(--red)'; return; }
   if (+alcBefore >= 0.15) {
     if (!confirm('⚠ 乗務前アルコール値が0.15mg/L以上です。記録を提出しますか？（管理者に即時報告してください）')) return;
   }
@@ -6901,29 +6889,27 @@ async function submitDailyReport() {
     date,
     car,
     driver_name: document.getElementById('drName').value || '',
-    start_time: document.getElementById('drStart').value || null,
-    end_time: document.getElementById('drEnd').value || null,
+    start_time: startTime,
+    end_time: endTime,
     distance_km: +km,
     type: document.getElementById('drType').value,
     alc_before: +alcBefore,
     alc_after: +alcAfter,
     alc_device: document.getElementById('drAlcDevice').value.trim(),
-    health_before: document.getElementById('drHealthBefore').value,
+    health_before: healthBefore,
     health_after: document.getElementById('drHealthAfter').value,
     cli: cliMatch ? cliMatch.id : null,
     qty_takkyubin: +document.getElementById('drQtyTak').value || 0,
     qty_nekopos: +document.getElementById('drQtyNeko').value || 0,
+    qty_charter: +document.getElementById('drQtyCharter').value || 0,
     qty_other: +document.getElementById('drQtyOther').value || 0,
-    fare: +document.getElementById('drFare').value || 0,
-    hw: +document.getElementById('drHw').value || 0,
-    oth: +document.getElementById('drOth').value || 0,
     note: document.getElementById('drNote').value.trim(),
     // 個人事業主のドライバーが自分の記録として提出するため、承認待ちの手動チェックは設けず提出=確定とする
     status: 'approved',
     submitted_by: me?.name || '',
     // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
-    start_location: document.getElementById('drStartLoc').value.trim(),
-    end_location: document.getElementById('drEndLoc').value.trim(),
+    start_location: startLoc,
+    end_location: endLoc,
     rest_start: document.getElementById('drRestStart').value || null,
     rest_end: document.getElementById('drRestEnd').value || null,
     rest_location: document.getElementById('drRestLoc').value.trim(),
@@ -7103,8 +7089,7 @@ function renderDailyList() {
             ${r.start_time?`<span>⏱ ${r.start_time}〜${r.end_time||'?'}</span>`:''}
             ${(r.start_location||r.end_location)?`<span>📍 ${r.start_location||'?'}→${r.end_location||'?'}</span>`:''}
             <span>🍺 前:${r.alc_before??'—'} 後:${r.alc_after??'—'} mg/L</span>
-            ${(r.qty_takkyubin||r.qty_nekopos)?`<span>📦 宅急便:${r.qty_takkyubin||0} ネコポス:${r.qty_nekopos||0}</span>`:''}
-            ${r.fare?`<span>💴 ${yen(r.fare)}</span>`:''}
+            ${(r.qty_takkyubin||r.qty_nekopos||r.qty_charter)?`<span>📦 宅急便:${r.qty_takkyubin||0} ネコポス:${r.qty_nekopos||0} チャーター:${r.qty_charter||0}</span>`:''}
             ${cli?`<span>🏢 ${cli.name}</span>`:''}
           </div>
           ${r.note?`<div style="font-size:11px;color:var(--text2);margin-top:3px">📝 ${r.note}</div>`:''}
@@ -7206,7 +7191,7 @@ function exportDailyReportCsv() {
     '休憩地点','休憩開始','休憩終了',
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器','体調(前)','体調(後)',
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
-    '宅急便','ネコポス','その他','運賃','高速','立替','備考',
+    '宅急便','ネコポス','チャーター','その他','備考',
     '事故あり','事故原因','再発防止策','ステータス'];
   const rows = list.map(r=>[
     r.date,r.car,r.driver_name,
@@ -7218,8 +7203,7 @@ function exportDailyReportCsv() {
     r.wait_flag?'あり':'', r.wait_start||'', r.wait_end||'', r.wait_location||'',
     r.cargo_work_flag?'あり':'', r.cargo_work_start||'', r.cargo_work_end||'',
     r.shipper_confirmed?'確認済':'',
-    r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_other||0,
-    r.fare||0,r.hw||0,r.oth||0,
+    r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_charter||0,r.qty_other||0,
     (r.note||'').replace(/\n/g,' '),
     r.incident_flag?'あり':'', r.incident_cause||'', r.incident_prevention||'',
     {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending']
@@ -7297,8 +7281,7 @@ function buildDailyReportHtml(r) {
 
     <div class="drp-section-title">④ 業務内容</div>
     <table class="drp-table">
-      <tr><th>取引先</th><td>${cli?cli.name:'—'}</td><th>個数</th><td>宅急便${r.qty_takkyubin||0} ／ ネコポス${r.qty_nekopos||0} ／ その他${r.qty_other||0}</td></tr>
-      <tr><th>運賃</th><td>${yen(r.fare||0)}</td><th>高速代／立替</th><td>${yen(r.hw||0)} ／ ${yen(r.oth||0)}</td></tr>
+      <tr><th>取引先</th><td>${cli?cli.name:'—'}</td><th>個数</th><td>宅急便${r.qty_takkyubin||0} ／ ネコポス${r.qty_nekopos||0} ／ チャーター${r.qty_charter||0} ／ その他${r.qty_other||0}</td></tr>
     </table>
 
     <div class="drp-section-title">⑤ 車両日常点検</div>
@@ -8423,7 +8406,7 @@ async function loadDriverDailyList() {
               ${inspFailed?'<span style="color:var(--amber-text);font-size:10px;margin-left:4px">⚠ 点検</span>':''}
             </div>
             <div style="font-size:10px;color:var(--text2);margin-top:2px">
-              走行${r.distance_km||0}km · 宅急便${r.qty_takkyubin||0} · ネコポス${r.qty_nekopos||0} · ${yen(r.fare||0)}
+              走行${r.distance_km||0}km · 宅急便${r.qty_takkyubin||0} · ネコポス${r.qty_nekopos||0} · チャーター${r.qty_charter||0}
             </div>
             ${r.note?`<div style="font-size:10px;color:var(--text2)">${r.note}</div>`:''}
           </div>
