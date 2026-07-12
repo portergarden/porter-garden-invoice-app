@@ -1538,18 +1538,20 @@ td.dim{color:var(--text2)}
         <div class="fld"><label>走行距離（km） <span style="color:var(--red)">*</span></label><input type="number" id="drKm" placeholder="0" min="0" step="0.1"></div>
         <div class="fld"><label>乗務形態</label>
           <select id="drType">
-            <option value="regular">定期集配</option>
-            <option value="charter">チャーター</option>
+            <option value="regular">定期集配(個人・企業)</option>
+            <option value="charter">チャーター・スポット便</option>
           </select>
         </div>
       </div>
-      <div class="fld"><label>休憩・睡眠時刻（10分未満の休憩は記録省略可）</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <input type="time" id="drRestStart" placeholder="休憩開始">
-          <input type="time" id="drRestEnd" placeholder="休憩終了">
+      <div class="fld"><label>休憩・睡眠時刻（10分未満の休憩は記録省略可・長時間稼働で複数回ある場合は都度「追加」）</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:6px;align-items:end">
+          <div><label style="font-size:10px;color:var(--text2)">開始</label><input type="time" id="drRestStart"></div>
+          <div><label style="font-size:10px;color:var(--text2)">終了</label><input type="time" id="drRestEnd"></div>
+          <div><label style="font-size:10px;color:var(--text2)">休憩地点</label><input type="text" id="drRestLoc" placeholder="例: 〇〇パーキングエリア"></div>
+          <button class="btn sml" type="button" onclick="addDrRest()">＋ 追加</button>
         </div>
+        <div id="drRestList" style="margin-top:6px"></div>
       </div>
-      <div class="fld"><label>休憩地点</label><input type="text" id="drRestLoc" placeholder="例: 〇〇パーキングエリア"></div>
 
       <!-- セクション3: アルコール検知 -->
       <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③ アルコール検知記録</div>
@@ -1628,7 +1630,7 @@ td.dim{color:var(--text2)}
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp1" value="tire"> タイヤ（空気圧・亀裂・磨耗）</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp2" value="brake"> ブレーキ（効き・液量）</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp3" value="light"> 灯火類（ヘッド・ウインカー・ブレーキ灯）</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--radius);cursor:pointer"><input type="checkbox" id="insp4" value="wiper"> ワイパー・ウォッシャー液</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp4" value="wiper"> ワイパー・ウォッシャー液</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp5" value="engine"> エンジン（オイル・冷却水・異音）</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp6" value="mirror"> ミラー・窓ガラス（汚れ・調整）</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp7" value="horn"> ホーン・警報装置</label>
@@ -6732,9 +6734,13 @@ function initDailyForm(reportId=null) {
       // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
       document.getElementById('drStartLoc').value = r.start_location || '';
       document.getElementById('drEndLoc').value = r.end_location || '';
-      document.getElementById('drRestStart').value = r.rest_start || '';
-      document.getElementById('drRestEnd').value = r.rest_end || '';
-      document.getElementById('drRestLoc').value = r.rest_location || '';
+      // 休憩は配列（rests）で保持。古いデータ（単一のrest_start等）しかない場合はそちらから復元する
+      pendDrRests = Array.isArray(r.rests) && r.rests.length ? r.rests
+        : (r.rest_start ? [{start:r.rest_start, end:r.rest_end||'', location:r.rest_location||''}] : []);
+      document.getElementById('drRestStart').value = '';
+      document.getElementById('drRestEnd').value = '';
+      document.getElementById('drRestLoc').value = '';
+      renderDrRests();
       // 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象）
       document.getElementById('drWaitFlag').checked = !!r.wait_flag;
       document.getElementById('drWaitStart').value = r.wait_start || '';
@@ -6767,6 +6773,8 @@ function initDailyForm(reportId=null) {
     ['drWaitFlag','drCargoWorkFlag','drShipperConfirmed','drIncidentFlag'].forEach(id => {
       const el = document.getElementById(id); if(el) el.checked = false;
     });
+    pendDrRests = [];
+    renderDrRests();
     toggleDrWaitFields();
     toggleDrIncidentFields();
     document.getElementById('drHealthBefore').value = 'good';
@@ -6827,18 +6835,43 @@ function checkContinuousDrivingWarning() {
   const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
   let totalMin = toMin(end) - toMin(start);
   if (totalMin < 0) totalMin += 24*60; // 日をまたぐ場合
-  const restStart = document.getElementById('drRestStart').value;
-  const restEnd = document.getElementById('drRestEnd').value;
-  let restMin = 0;
-  if (restStart && restEnd) {
-    restMin = toMin(restEnd) - toMin(restStart);
-    if (restMin < 0) restMin += 24*60;
-  }
-  if (totalMin > 240 && restMin < 30) {
+  // 全休憩の合計時間（複数回に分かれていてもよい）
+  const restMin = pendDrRests.reduce((a,r) => {
+    if (!r.start || !r.end) return a;
+    let d = toMin(r.end) - toMin(r.start);
+    if (d < 0) d += 24*60;
+    return a + d;
+  }, 0);
+  // 連続運転4時間ごとに合計30分以上の休憩が必要（12時間稼働なら90分以上、など長時間ほど要件が増える）
+  const requiredMin = Math.floor(totalMin / 240) * 30;
+  if (requiredMin > 0 && restMin < requiredMin) {
     const h = Math.floor(totalMin/60), m = totalMin%60;
-    return `⚠️ 乗務開始から終了まで${h}時間${m}分のうち、休憩が${restMin}分しか記録されていません。連続運転は4時間まで、休憩は合計30分以上必要とされています（改善基準告示）。`;
+    return `⚠️ 乗務開始から終了まで${h}時間${m}分のうち、休憩の合計が${restMin}分しか記録されていません。連続運転4時間ごとに合計30分以上の休憩が必要です（改善基準告示）。目安: 合計${requiredMin}分以上。`;
   }
   return null;
+}
+
+// 休憩・睡眠は12時間稼働などで複数回に分かれることがあるため、追加式のリストで管理する
+let pendDrRests = [];
+function addDrRest() {
+  const startEl = document.getElementById('drRestStart');
+  const endEl = document.getElementById('drRestEnd');
+  const locEl = document.getElementById('drRestLoc');
+  const start = startEl.value, end = endEl.value, location = locEl.value.trim();
+  if (!start || !end) { alert('休憩の開始・終了時刻を入力してください'); return; }
+  pendDrRests.push({start, end, location});
+  startEl.value = ''; endEl.value = ''; locEl.value = '';
+  renderDrRests();
+}
+function rmDrRest(i) { pendDrRests.splice(i,1); renderDrRests(); }
+function renderDrRests() {
+  const el = document.getElementById('drRestList');
+  if (!el) return;
+  if (!pendDrRests.length) { el.innerHTML = '<div style="font-size:10px;color:var(--text3)">休憩の記録はありません</div>'; return; }
+  el.innerHTML = pendDrRests.map((r,i) => `<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 6px;background:var(--bg2);border-radius:var(--radius);margin-bottom:3px">
+    <span style="flex:1">${r.start}〜${r.end}${r.location?`（${r.location}）`:''}</span>
+    <button class="ibtn" onclick="rmDrRest(${i})" title="削除">🗑</button>
+  </div>`).join('');
 }
 
 function toggleDrWaitFields() {
@@ -6910,9 +6943,7 @@ async function submitDailyReport() {
     // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
     start_location: startLoc,
     end_location: endLoc,
-    rest_start: document.getElementById('drRestStart').value || null,
-    rest_end: document.getElementById('drRestEnd').value || null,
-    rest_location: document.getElementById('drRestLoc').value.trim(),
+    rests: pendDrRests,
     // 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象）
     wait_flag: document.getElementById('drWaitFlag').checked,
     wait_start: document.getElementById('drWaitFlag').checked ? (document.getElementById('drWaitStart').value || null) : null,
@@ -7181,6 +7212,14 @@ function filteredDailyReportsForExport() {
   return [...list].sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.id-b.id));
 }
 
+// 休憩は複数回ありうるため、rests配列（新形式）を「、」区切りの文字列にまとめる。
+// 旧データ（単一のrest_start等のみ）は後方互換としてそこから1件生成する
+function formatRests(r) {
+  const list = Array.isArray(r.rests) && r.rests.length ? r.rests
+    : (r.rest_start ? [{start:r.rest_start, end:r.rest_end||'', location:r.rest_location||''}] : []);
+  return list.map(x => `${x.start||''}〜${x.end||''}${x.location?`（${x.location}）`:''}`).join('、');
+}
+
 function exportDailyReportCsv() {
   const from = document.getElementById('drListFrom')?.value || '';
   const to = document.getElementById('drListTo')?.value || '';
@@ -7188,7 +7227,7 @@ function exportDailyReportCsv() {
   const list = filteredDailyReportsForExport();
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
   const headers = ['日付','車番','乗務員','出発地点','出発時刻','到着地点','到着時刻','走行距離(km)','種別',
-    '休憩地点','休憩開始','休憩終了',
+    '休憩',
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器','体調(前)','体調(後)',
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
     '宅急便','ネコポス','チャーター','その他','備考',
@@ -7197,7 +7236,7 @@ function exportDailyReportCsv() {
     r.date,r.car,r.driver_name,
     r.start_location||'',r.start_time||'',r.end_location||'',r.end_time||'',
     r.distance_km||0, typeShort(r.type),
-    r.rest_location||'',r.rest_start||'',r.rest_end||'',
+    formatRests(r),
     r.alc_before??'',r.alc_after??'',r.alc_device||'',
     healthLabel[r.health_before||'good'], healthLabel[r.health_after||'good'],
     r.wait_flag?'あり':'', r.wait_start||'', r.wait_end||'', r.wait_location||'',
@@ -7262,7 +7301,7 @@ function buildDailyReportHtml(r) {
       <tr><th>乗務開始</th><td>${r.start_time||'—'}${r.start_location?`（${r.start_location}）`:''}</td>
           <th>乗務終了</th><td>${r.end_time||'—'}${r.end_location?`（${r.end_location}）`:''}</td></tr>
       <tr><th>走行距離</th><td>${r.distance_km??''} km</td>
-          <th>休憩</th><td>${r.rest_start?`${r.rest_start}〜${r.rest_end||''}${r.rest_location?`（${r.rest_location}）`:''}`:'—'}</td></tr>
+          <th>休憩</th><td>${formatRests(r) || '—'}</td></tr>
     </table>
 
     <div class="drp-section-title">② アルコール検知・健康確認</div>
