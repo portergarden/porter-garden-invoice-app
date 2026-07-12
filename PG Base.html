@@ -1692,6 +1692,7 @@ td.dim{color:var(--text2)}
         <option value="rejected">差戻し</option>
       </select>
       <button class="btn sml" onclick="exportDailyReportCsv()">⬇ CSV</button>
+      <button class="btn sml pri" onclick="printDailyReports()" title="表示中の絞り込み条件に一致する日報を、日付順で印刷用書式にまとめます">🖨 印刷</button>
     </div>
     <div id="dailyListBody" style="padding:6px 14px"></div>
   </div>
@@ -1936,8 +1937,9 @@ td.dim{color:var(--text2)}
         <button class="btn sml grn" onclick="showDailyForm()">＋ 新規入力</button>
       </div>
       <div id="drvDailyListArea">
-        <div style="padding:6px 14px;border-bottom:0.5px solid var(--border)">
+        <div style="padding:6px 14px;border-bottom:0.5px solid var(--border);display:flex;gap:8px;align-items:center">
           <input type="month" id="drvDailyMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="loadDriverDailyList()">
+          <button class="btn sml pri" onclick="printDriverDailyReports()" title="表示中の月の日報を日付順で印刷用書式にまとめます">🖨 印刷</button>
         </div>
         <div id="drvDailyList" style="padding:8px 14px"></div>
       </div>
@@ -7142,32 +7144,166 @@ async function deleteDailyReport(id) {
   } catch(e) { showT('エラー: '+e.message,'ter'); }
 }
 
+// 現在の絞り込み条件（日付範囲・ドライバー・ステータス）に一致する日報を、日付の古い順（時系列）で返す
+function filteredDailyReportsForExport() {
+  const drvFilter = document.getElementById('drListDrv')?.value || '';
+  const statusFilter = document.getElementById('drListStatus')?.value || '';
+  const from = document.getElementById('drListFrom')?.value || '';
+  const to = document.getElementById('drListTo')?.value || '';
+  let list = dailyReports;
+  if (from) list = list.filter(r=>r.date&&r.date>=from);
+  if (to) list = list.filter(r=>r.date&&r.date<=to);
+  if (drvFilter) { const drv = drvs.find(d=>d.id==drvFilter); if (drv) list = list.filter(r => (drv.cars||[]).some(c=>nm(c)===nm(r.car))); }
+  if (statusFilter) list = list.filter(r=>r.status===statusFilter);
+  return [...list].sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.id-b.id));
+}
+
 function exportDailyReportCsv() {
   const from = document.getElementById('drListFrom')?.value || '';
   const to = document.getElementById('drListTo')?.value || '';
   const month = (from||to) ? `${from}〜${to}` : '';
-  let list = dailyReports;
-  if (from) list = list.filter(r=>r.date&&r.date>=from);
-  if (to) list = list.filter(r=>r.date&&r.date<=to);
-  const headers = ['日付','車番','乗務員','開始','終了','走行距離(km)','種別',
+  const list = filteredDailyReportsForExport();
+  const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
+  const headers = ['日付','車番','乗務員','出発地点','出発時刻','到着地点','到着時刻','走行距離(km)','種別',
+    '休憩地点','休憩開始','休憩終了',
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器','体調(前)','体調(後)',
-    '宅急便','ネコポス','その他','運賃','高速','立替','備考','ステータス'];
+    '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
+    '宅急便','ネコポス','その他','運賃','高速','立替','備考',
+    '事故あり','事故原因','再発防止策','ステータス'];
   const rows = list.map(r=>[
-    r.date,r.car,r.driver_name,r.start_time||'',r.end_time||'',r.distance_km||0,
-    typeShort(r.type),
+    r.date,r.car,r.driver_name,
+    r.start_location||'',r.start_time||'',r.end_location||'',r.end_time||'',
+    r.distance_km||0, typeShort(r.type),
+    r.rest_location||'',r.rest_start||'',r.rest_end||'',
     r.alc_before??'',r.alc_after??'',r.alc_device||'',
-    {good:'良好',normal:'普通',bad:'不調'}[r.health_before||'good'],
-    {good:'良好',normal:'普通',bad:'不調'}[r.health_after||'good'],
+    healthLabel[r.health_before||'good'], healthLabel[r.health_after||'good'],
+    r.wait_flag?'あり':'', r.wait_start||'', r.wait_end||'', r.wait_location||'',
+    r.cargo_work_flag?'あり':'', r.cargo_work_start||'', r.cargo_work_end||'',
+    r.shipper_confirmed?'確認済':'',
     r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_other||0,
     r.fare||0,r.hw||0,r.oth||0,
     (r.note||'').replace(/\n/g,' '),
+    r.incident_flag?'あり':'', r.incident_cause||'', r.incident_prevention||'',
     {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending']
-  ].join(','));
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
   const bom = new Uint8Array([0xEF,0xBB,0xBF]);
   const blob = new Blob([bom,[headers.join(','),...rows].join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=`乗務日報_${month||'全期間'}.csv`;a.click();
   addLog('日報CSV出力', month||'全期間');
+}
+
+/* ===== 乗務日報 印刷用書式（紙の日報に近いレイアウト） ===== */
+function dailyReportPrintCss() {
+  return `
+  *{box-sizing:border-box}
+  body{font-family:"Noto Sans JP","Hiragino Sans",sans-serif;margin:0;padding:0;color:#1a1a1a;font-size:12px}
+  .drp-page{padding:14mm 12mm;page-break-after:always}
+  .drp-page:last-child{page-break-after:auto}
+  .drp-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin-bottom:10px}
+  .drp-title{font-size:20px;font-weight:700;letter-spacing:2px}
+  .drp-sub{font-size:11px;color:#555}
+  table.drp-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px}
+  table.drp-table th,table.drp-table td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}
+  table.drp-table th{background:#f0f0f0;font-weight:600;width:15%;white-space:nowrap}
+  .drp-section-title{font-size:11px;font-weight:700;background:#e6f1fb;padding:3px 6px;margin:10px 0 6px}
+  .drp-insp{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;font-size:10px;margin-bottom:4px}
+  .drp-insp span{border:1px solid #ccc;padding:2px 4px;display:block}
+  .drp-insp span.ng{background:#fce8e8;color:#a32d2d;font-weight:600}
+  .drp-print-bar{text-align:right;padding:8px 16px}
+  .drp-print-bar button{font-size:13px;padding:6px 14px;cursor:pointer}
+  @media print{.drp-print-bar{display:none}}
+  `;
+}
+function buildDailyReportHtml(r) {
+  const cli = lkC(r.cli);
+  const statusLabel = {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending'];
+  const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
+  const inspList = [['insp_tire','タイヤ'],['insp_brake','ブレーキ'],['insp_light','灯火類'],['insp_wiper','ワイパー'],['insp_engine','エンジン'],
+    ['insp_mirror','ミラー'],['insp_horn','ホーン'],['insp_battery','バッテリー'],['insp_cargo','積載装置'],['insp_fuel','燃料']];
+  const inspHtml = inspList.map(([k,label]) => {
+    const ok = r[k] !== false;
+    return `<span class="${ok?'':'ng'}">${ok?'✓':'✕'} ${label}</span>`;
+  }).join('');
+  return `<div class="drp-page">
+    <div class="drp-head">
+      <div><div class="drp-title">乗務日報</div><div class="drp-sub">貨物軽自動車運送事業 法定様式準拠</div></div>
+      <div class="drp-sub">発行日: ${fmtLocalDate(new Date())}</div>
+    </div>
+    <table class="drp-table">
+      <tr><th>乗務日</th><td>${r.date||''}</td><th>車両番号</th><td>${r.car||''}</td></tr>
+      <tr><th>乗務員名</th><td>${r.driver_name||''}</td><th>乗務形態</th><td>${typeShort(r.type)}</td></tr>
+    </table>
+
+    <div class="drp-section-title">① 乗務記録</div>
+    <table class="drp-table">
+      <tr><th>乗務開始</th><td>${r.start_time||'—'}${r.start_location?`（${r.start_location}）`:''}</td>
+          <th>乗務終了</th><td>${r.end_time||'—'}${r.end_location?`（${r.end_location}）`:''}</td></tr>
+      <tr><th>走行距離</th><td>${r.distance_km??''} km</td>
+          <th>休憩</th><td>${r.rest_start?`${r.rest_start}〜${r.rest_end||''}${r.rest_location?`（${r.rest_location}）`:''}`:'—'}</td></tr>
+    </table>
+
+    <div class="drp-section-title">② アルコール検知・健康確認</div>
+    <table class="drp-table">
+      <tr><th>アルコール（前）</th><td>${r.alc_before??''} mg/L</td><th>アルコール（後）</th><td>${r.alc_after??''} mg/L</td></tr>
+      <tr><th>検知器/測定者</th><td>${r.alc_device||''}</td><th>体調（前／後）</th><td>${healthLabel[r.health_before||'good']} ／ ${healthLabel[r.health_after||'good']}</td></tr>
+    </table>
+
+    ${(r.wait_flag||r.cargo_work_flag) ? `
+    <div class="drp-section-title">③ 荷待ち・付帯作業</div>
+    <table class="drp-table">
+      ${r.wait_flag?`<tr><th>荷待ち</th><td>${r.wait_start||''}〜${r.wait_end||''}${r.wait_location?`（${r.wait_location}）`:''}</td></tr>`:''}
+      ${r.cargo_work_flag?`<tr><th>荷役・付帯作業</th><td>${r.cargo_work_start||''}〜${r.cargo_work_end||''}</td></tr>`:''}
+      <tr><th>荷主確認</th><td>${r.shipper_confirmed?'確認済':'未確認'}</td></tr>
+    </table>` : ''}
+
+    <div class="drp-section-title">④ 業務内容</div>
+    <table class="drp-table">
+      <tr><th>取引先</th><td>${cli?cli.name:'—'}</td><th>個数</th><td>宅急便${r.qty_takkyubin||0} ／ ネコポス${r.qty_nekopos||0} ／ その他${r.qty_other||0}</td></tr>
+      <tr><th>運賃</th><td>${yen(r.fare||0)}</td><th>高速代／立替</th><td>${yen(r.hw||0)} ／ ${yen(r.oth||0)}</td></tr>
+    </table>
+
+    <div class="drp-section-title">⑤ 車両日常点検</div>
+    <div class="drp-insp">${inspHtml}</div>
+    ${r.insp_note?`<div style="font-size:11px;margin-bottom:8px">点検異常内容: ${r.insp_note}</div>`:''}
+
+    <div class="drp-section-title">⑥ 特記事項</div>
+    <table class="drp-table"><tr><td style="min-height:32px">${(r.note||'').replace(/\n/g,'<br>')||'—'}</td></tr></table>
+    ${r.incident_flag?`<table class="drp-table"><tr><th>事故原因</th><td>${r.incident_cause||'—'}</td></tr><tr><th>再発防止策</th><td>${r.incident_prevention||'—'}</td></tr></table>`:''}
+
+    <table class="drp-table">
+      <tr><th>ステータス</th><td>${statusLabel}</td><th>承認者</th><td>${r.reviewed_by||'—'}${r.reviewed_at?`（${(r.reviewed_at||'').slice(0,16).replace('T',' ')}）`:''}</td></tr>
+    </table>
+  </div>`;
+}
+// 複数日報を日付の古い順（時系列）にまとめ、1つの印刷用ドキュメントにする
+function buildDailyReportsPrintDoc(reports) {
+  const sorted = [...reports].sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.id-b.id));
+  const pages = sorted.map(r => buildDailyReportHtml(r)).join('');
+  const label = sorted.length ? `${sorted[0].date}${sorted.length>1?`〜${sorted[sorted.length-1].date}`:''}` : '';
+  return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>乗務日報_${label}</title>
+  <style>${dailyReportPrintCss()}</style></head><body>
+  <div class="drp-print-bar"><button onclick="window.print()">🖨 印刷 / PDF保存</button></div>
+  ${pages}
+  </body></html>`;
+}
+// 管理画面: 現在の絞り込み条件（日付範囲・ドライバー・ステータス）に一致する日報を印刷
+function printDailyReports() {
+  const list = filteredDailyReportsForExport();
+  if (!list.length) { alert('対象の日報がありません'); return; }
+  const win = window.open('', '_blank');
+  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
+  win.document.open(); win.document.write(buildDailyReportsPrintDoc(list)); win.document.close();
+  addLog('日報印刷', `${list.length}件`);
+}
+// ドライバーポータル: 現在表示中の月の自分の日報を印刷（loadDriverDailyListがdailyReportsに反映済み）
+function printDriverDailyReports() {
+  if (!dailyReports.length) { alert('対象の日報がありません'); return; }
+  const win = window.open('', '_blank');
+  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
+  win.document.open(); win.document.write(buildDailyReportsPrintDoc(dailyReports)); win.document.close();
 }
 
 /* initMob互換 - 日報一覧の月デフォルトセット */
@@ -8232,6 +8368,8 @@ async function loadDriverDailyList() {
   try {
     const {data, error} = await q.limit(60);
     if (error) throw error;
+    // 編集ボタン（showDailyForm）はdailyReportsから該当行を探すため、ここでも共有配列に反映しておく
+    dailyReports = data || [];
     const el = document.getElementById('drvDailyList');
     if (!el) return;
     if (!data?.length) { el.innerHTML='<div style="color:var(--text2);padding:20px;text-align:center;font-size:12px">日報がありません</div>'; return; }
