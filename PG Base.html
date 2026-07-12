@@ -7307,7 +7307,8 @@ function dailyReportPrintCss() {
   `;
 }
 function buildDailyReportHtml(r) {
-  const cli = lkC(r.cli);
+  // 取引先名: 管理者はclients、ドライバー（clientsを読めない）はRPCで取得済みのdriverClientNamesから解決する
+  const cli = lkC(r.cli) || (r.cli ? (driverClientNames||[]).find(c=>c.id===r.cli) : null);
   const statusLabel = {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending'];
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
   const inspList = [['insp_tire','タイヤ'],['insp_brake','ブレーキ'],['insp_light','灯火類'],['insp_wiper','ワイパー'],['insp_engine','エンジン'],
@@ -7389,15 +7390,15 @@ function printDailyReports() {
   addLog('日報印刷', `${list.length}件`);
 }
 // ドライバーポータル: 現在表示中の月の自分の日報を印刷（loadDriverDailyListがdailyReportsに反映済み）
-function printDriverDailyReports() {
+async function printDriverDailyReports() {
   if (!dailyReports.length) { alert('対象の日報がありません'); return; }
   const win = window.open('', '_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
+  // 取引先名の解決用（ドライバーはclientsを読めないためRPC経由の候補が必要）。未取得なら先に読み込む
+  if (me?.role === 'driver' && driverClientNames === null) await populateDriverCliList();
   win.document.open(); win.document.write(buildDailyReportsPrintDoc(dailyReports)); win.document.close();
 }
 
-/* initMob互換 - 日報一覧の月デフォルトセット */
-const _origInitMob = typeof initMob === 'function' ? null : null;
 // 日報は請求集計と違って「今日提出されたものを今すぐ確認する」用途のため、
 // 請求系で使うensureMonthRangeDefault（前月がデフォルト）ではなく今月をデフォルトにする
 function _setDailyListMonth() {
@@ -11705,19 +11706,6 @@ async function showDriverStats(drvId) {
   }
 }
 
-// renderDrv に統計ボタンを追加するためのフック
-const _origRenderDrvV13 = typeof renderDrv === 'function' ? renderDrv : null;
-if (_origRenderDrvV13) {
-  function renderDrv() {
-    _origRenderDrvV13();
-    // 統計ボタンをドライバーカードに追加
-    setTimeout(() => {
-      document.querySelectorAll('.drv-stat-btn').forEach(btn => {
-        btn.style.display = 'inline-flex';
-      });
-    }, 100);
-  }
-}
 </script>
 
 <script>
