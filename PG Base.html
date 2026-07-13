@@ -498,8 +498,8 @@ td.dim{color:var(--text2)}
   </div>
   <!-- グループナビ（上段） -->
   <nav class="nav-group">
+    <div class="gtab" id="gt-analysis" onclick="switchNavGroup('analysis')">📊 ダッシュボード</div>
     <div class="gtab on" id="gt-biz" onclick="switchNavGroup('biz')">📦 業務処理</div>
-    <div class="gtab" id="gt-analysis" onclick="switchNavGroup('analysis')">📊 分析</div>
     <div class="gtab" id="gt-driver" onclick="switchNavGroup('driver')">🚗 ドライバー</div>
     <div class="gtab" id="gt-admin" onclick="switchNavGroup('admin')">⚙ 管理</div>
   </nav>
@@ -515,7 +515,6 @@ td.dim{color:var(--text2)}
   </nav>
   <nav class="nav hide" id="nav-analysis">
     <div class="ntab" id="nt1" onclick="goPage(1,this)">📊 ダッシュボード</div>
-    <div class="ntab" id="nt7" onclick="goPage(7,this)">💹 損益計算書</div>
     <div class="ntab" id="nt13" onclick="goPage(13,this)">📈 年報</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 カレンダー</div>
   </nav>
@@ -1410,26 +1409,6 @@ td.dim{color:var(--text2)}
     </div>
 </div>
 
-<!-- ===== pg7: 損益計算書（分析タブへ移設） ===== -->
-<div id="pg7" class="hide">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:11px;color:var(--text2)">集計期間:</span>
-        <input type="date" id="pnlFrom" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderPnl()">
-        <span style="font-size:11px;color:var(--text2)">〜</span>
-        <input type="date" id="pnlTo" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderPnl()">
-        <button class="btn sml" onclick="monthRangeShift('pnlFrom','pnlTo',-1,renderPnl)" title="前月">◀</button>
-        <button class="btn sml" onclick="monthRangeShift('pnlFrom','pnlTo',1,renderPnl)" title="翌月">▶</button>
-      </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn" onclick="window.print()">🖨 印刷</button>
-        <button class="btn grn" onclick="exportPnlCsv()">⬇ CSV</button>
-        <button class="btn" onclick="printAllPnlPdf()">🖨 全員PDF</button>
-      </div>
-    </div>
-    <div id="pnlSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
-    <div style="padding:8px 14px;overflow-y:auto;max-height:calc(100vh - 200px)" id="pnlList"></div>
-</div>
 
 <!-- ===== pg11: 月次締め（ファイル取込の右へ独立） ===== -->
 <div id="pg11" class="hide">
@@ -1990,7 +1969,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: 明細書配信状況（管理側） -->
 <div class="overlay" id="mStmtStatus">
-  <div class="modal" style="max-width:720px">
+  <div class="modal" style="width:720px;max-width:95vw">
     <div class="mh">明細書 配信状況 <button class="ibtn" onclick="closeM('mStmtStatus')">✕</button></div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:8px">ドライバーポータルに配信した支払明細書の一覧です。ドライバーが開くと「既読」になります。</div>
     <div id="stmtStatusBody" style="max-height:60vh;overflow-y:auto"></div>
@@ -1999,7 +1978,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: ドライバー提出書類（管理側） -->
 <div class="overlay" id="mDrvDocs">
-  <div class="modal" style="max-width:640px">
+  <div class="modal" style="width:640px;max-width:95vw">
     <div class="mh" id="mDrvDocsH">提出書類 <button class="ibtn" onclick="closeM('mDrvDocs')">✕</button></div>
     <div id="drvDocsMBody"></div>
   </div>
@@ -2113,7 +2092,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: 単価マスタ -->
 <div class="overlay" id="mPriceMaster">
-  <div class="modal" style="max-width:560px">
+  <div class="modal" style="width:560px;max-width:95vw">
     <div class="mh">単価マスタ <button class="ibtn" onclick="closeM('mPriceMaster')">✕</button></div>
     <div style="padding:20px;text-align:center;color:var(--text2)">読み込み中...</div>
   </div>
@@ -2121,7 +2100,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: ドライバー稼働統計 -->
 <div class="overlay" id="mDriverStats">
-  <div class="modal" style="max-width:500px">
+  <div class="modal" style="width:500px;max-width:95vw">
     <div class="mh">稼働統計 <button class="ibtn" onclick="closeM('mDriverStats')">✕</button></div>
     <div style="padding:20px;text-align:center;color:var(--text2)">読み込み中...</div>
   </div>
@@ -2363,7 +2342,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: 鑑の発行宛て選択（協力会社のプルダウン＋手入力検索） -->
 <div class="overlay" id="mKanAte">
-  <div class="modal" style="max-width:440px">
+  <div class="modal" style="width:440px;max-width:95vw">
     <div class="mh">鑑の発行宛て <button class="ibtn" onclick="closeKanAte()">✕</button></div>
     <div class="fld">
       <label>発行宛て（協力会社名。候補から選択または手入力。空欄で宛先なし）</label>
@@ -3791,7 +3770,7 @@ const stCls=s=>['s0','s1','s2'][s]||'s0';
 // ページ番号 → 所属グループの対応表
 const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
-  1:'analysis', 13:'analysis', 8:'analysis', 7:'analysis',
+  1:'analysis', 13:'analysis', 8:'analysis',
   10:'driver', 12:'driver', 14:'driver',
   2:'admin', 3:'admin', 15:'admin', 16:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
@@ -3827,7 +3806,6 @@ function goPage(n,el){
   if(n===4)loadLogs();
   if(n===5)renderUsr();
   if(n===6){initAggPay();runAggPay();renderPayMets();}
-  if(n===7){initPnlMonth();renderPnl();}
   if(n===8){initCal();renderCal();}
   if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
   if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
@@ -6306,7 +6284,7 @@ function doDownloadPayCsv(idxs) {
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="width:480px;max-width:95vw">
     <div class="mhd">支払明細書を保存 <button class="ibtn" onclick="closeM('mSlipSave')">✕</button></div>
     <div style="padding:14px">
       <div class="fld" style="margin-bottom:12px">
@@ -6321,7 +6299,7 @@ function doDownloadPayCsv(idxs) {
 
 <!-- 支払明細書 読み込みモーダル -->
 <div id="mSlipLoad" class="overlay">
-  <div class="modal" style="max-width:500px">
+  <div class="modal" style="width:500px;max-width:95vw">
     <div class="mhd">保存済み支払明細書 <button class="ibtn" onclick="closeM('mSlipLoad')">✕</button></div>
     <div style="padding:14px;max-height:420px;overflow-y:auto" id="slipSlotList">
       <div style="text-align:center;color:var(--text2);font-size:12px;padding:20px">読み込み中...</div>
@@ -6331,7 +6309,7 @@ function doDownloadPayCsv(idxs) {
 
 <!-- 請求明細書 保存モーダル -->
 <div id="mInvSlipSave" class="overlay">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="width:480px;max-width:95vw">
     <div class="mhd">請求明細書を保存 <button class="ibtn" onclick="closeM('mInvSlipSave')">✕</button></div>
     <div style="padding:14px">
       <div class="fld" style="margin-bottom:12px">
@@ -6346,7 +6324,7 @@ function doDownloadPayCsv(idxs) {
 
 <!-- 請求明細書 読み込みモーダル -->
 <div id="mInvSlipLoad" class="overlay">
-  <div class="modal" style="max-width:500px">
+  <div class="modal" style="width:500px;max-width:95vw">
     <div class="mhd">保存済み請求明細書 <button class="ibtn" onclick="closeM('mInvSlipLoad')">✕</button></div>
     <div style="padding:14px;max-height:420px;overflow-y:auto" id="invSlipSlotList">
       <div style="text-align:center;color:var(--text2);font-size:12px;padding:20px">読み込み中...</div>
@@ -6392,121 +6370,11 @@ function renderKpiCards() {
   </div>`);
 }
 
-/* ===== ② 損益計算書 ===== */
-function initPnlMonth() {
-  ensureMonthRangeDefault('pnlFrom', 'pnlTo');
-}
-
-function renderPnl() {
-  const from = document.getElementById('pnlFrom')?.value;
-  const to = document.getElementById('pnlTo')?.value;
-  if (!from || !to) return;
-
-  const monthRecs = recs.filter(r => r.date && r.date >= from && r.date <= to);
-  window._pnlGroups = {};
-  const summary = document.getElementById('pnlSummary');
-  const list = document.getElementById('pnlList');
-
-  // 全体サマリー
-  const totalGross = monthRecs.reduce((a,r) => a + (r.fare||0), 0);
-  const totalNet = monthRecs.reduce((a,r) => a + totR(r,taxMode), 0);
-  summary.innerHTML = `
-    <div class="kpi-card"><div class="kpi-label">総売上（税込）</div><div class="kpi-val">${yen(totalNet)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">対象件数</div><div class="kpi-val">${monthRecs.length}件</div></div>
-    <div class="kpi-card"><div class="kpi-label">稼働ドライバー</div><div class="kpi-val">${new Set(monthRecs.map(r=>r.car)).size}台</div></div>
-  `;
-
-  if (!drvs.length) { list.innerHTML = '<div style="color:var(--text2);padding:20px;text-align:center">ドライバー未登録</div>'; return; }
-
-  list.innerHTML = drvs.sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999')).map(d => {
-    const dCars = d.cars || [];
-    const dRecs = monthRecs.filter(r => dCars.some(c => nm(c)===nm(r.car)));
-    const grossAll = dRecs.reduce((a,r) => a+(r.fare||0)+(r.hw||0)+(r.oth||0), 0); // 全明細の税別ベース額（非課税分を含む）
-    const grossTax = dRecs.reduce((a,r) => a+totR(r,'inc'), 0);
-    const nonTax = dRecs.filter(r=>(r.tax||0)===0).reduce((a,r)=>a+sub(r),0);
-    const gross = grossAll - nonTax; // 税別金額（課税対象分のみ。非課税分は業務手数料の対象外）
-    const taxAmt = grossTax - grossAll;
-    const feeRate = d.fee_rate != null ? d.fee_rate : -0.15;
-    const adminFee = d.admin_fee != null ? d.admin_fee : -10000;
-    const vehicleRental = d.vehicle_rental != null ? d.vehicle_rental : -30000;
-    const { bizFeeWithTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
-    const otherTotal = (d.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0);
-    const deductions = bizFeeWithTax + adminFee + vehicleRental + otherTotal;
-    const takeHome = grossTax + deductions;
-    const cnt = dRecs.length;
-    window._pnlGroups[d.id] = dRecs;
-
-    const statusColor = takeHome >= 0 ? 'var(--green)' : 'var(--red)';
-
-    return `<div class="pnl-card">
-      <div class="pnl-head" onclick="togglePnl(this)">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div class="av drv" style="width:24px;height:24px;font-size:10px">${(d.name||'').slice(-2)}</div>
-          <div>
-            <div style="font-size:12px;font-weight:500">${d.name} <span style="color:var(--text2);font-size:10px">${d.supplier_id?'ID:'+d.supplier_id:''}</span></div>
-            <div style="font-size:10px;color:var(--text2)">${cnt}件 · 総売上 ${yen(grossTax)}</div>
-          </div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:14px;font-weight:600;color:${statusColor}">${yen(takeHome)}</div>
-          <div style="font-size:10px;color:var(--text2)">手取り額</div>
-        </div>
-      </div>
-      <div class="pnl-body">
-        ${cnt===0 ? '<div style="color:var(--text2);font-size:11px;padding:6px 0">稼働なし</div>' : `
-        <div class="pnl-row"><span>売上（運賃合計）</span><span>${yen(gross)}</span></div>
-        <div class="pnl-row"><span>消費税（売上分）</span><span>${yen(taxAmt)}</span></div>
-        ${nonTax ? `<div class="pnl-row"><span>非課税額</span><span>${yen(nonTax)}</span></div>` : ''}
-        <div class="pnl-row" style="font-weight:500"><span>税込売上合計</span><span>${yen(grossTax)}</span></div>
-        <div class="pnl-row neg sub"><span>業務手数料（${Math.abs(feeRate*100)}%）＋消費税</span><span>${yen(bizFeeWithTax)}</span></div>
-        <div class="pnl-row neg sub"><span>事務手数料</span><span>${yen(adminFee)}</span></div>
-        <div class="pnl-row neg sub"><span>車両レンタル${d.lease_company?` <span style="color:var(--text2);font-weight:400">（${escHtml(d.lease_company)}）</span>`:''}</span><span>${yen(vehicleRental)}</span></div>
-        ${(d.other_deductions||[]).map(od=>`<div class="pnl-row neg sub"><span>${escHtml(od.name)}</span><span>${yen(Number(od.amount)||0)}</span></div>`).join('')}
-        <div class="pnl-row neg" style="font-weight:500"><span>控除合計</span><span>${yen(deductions)}</span></div>
-        <div class="pnl-row total"><span>手取り額</span><span style="color:${statusColor}">${yen(takeHome)}</span></div>
-        <div style="margin-top:8px;text-align:right">
-          <button class="btn sml" onclick="printPnlPdf(${d.id},null,window._pnlGroups[${d.id}])">🖨 PDF出力</button>
-        </div>
-        <div style="margin-top:8px;border-top:0.5px solid var(--border);padding-top:8px">
-          <div style="font-size:10px;color:var(--text2);margin-bottom:4px">稼働明細</div>
-          ${dRecs.map(r=>`<div class="pnl-row sub"><span>${r.date} ${escHtml(r.car)} ${escHtml(r.note)}</span><span>${yen((r.fare||0)+(r.hw||0)+(r.oth||0))}</span></div>`).join('')}
-        </div>`}
-      </div>
-    </div>`;
-  }).join('');
-}
-
+// togglePnl/printPnlPdfは月次締めページ（差異チェック）・明細フル画面のPDF出力でも使う共通処理のため残置
 function togglePnl(head) {
   const body = head.nextElementSibling;
   body.classList.toggle('open');
   head.querySelector(':scope > div:last-child > div:last-child').textContent = body.classList.contains('open') ? '手取り額 ▲' : '手取り額';
-}
-
-function exportPnlCsv() {
-  const from = document.getElementById('pnlFrom')?.value || '';
-  const to = document.getElementById('pnlTo')?.value || '';
-  const month = from;
-  const monthRecs = recs.filter(r => r.date && r.date >= from && r.date <= to);
-  const lines = [['ドライバー','ドライバーID','件数','税込売上','業務手数料','事務手数料','車両レンタル','その他','手取り額'].join(',')];
-  drvs.forEach(d => {
-    const dCars = d.cars || [];
-    const dRecs = monthRecs.filter(r => dCars.some(c => nm(c)===nm(r.car)));
-    const grossAll = dRecs.reduce((a,r) => a+(r.fare||0)+(r.hw||0)+(r.oth||0), 0); // 全明細の税別ベース額（非課税分を含む）
-    const grossTax = dRecs.reduce((a,r) => a+totR(r,'inc'), 0);
-    const nonTax = dRecs.filter(r=>(r.tax||0)===0).reduce((a,r)=>a+sub(r),0);
-    const gross = grossAll - nonTax; // 税別金額（課税対象分のみ。非課税分は業務手数料の対象外）
-    const taxAmt = grossTax - grossAll;
-    const feeRate = d.fee_rate != null ? d.fee_rate : -0.15;
-    const adminFee = d.admin_fee != null ? d.admin_fee : -10000;
-    const vehicleRental = d.vehicle_rental != null ? d.vehicle_rental : -30000;
-    const { bizFeeWithTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
-    const otherTotal = (d.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0);
-    const takeHome = grossTax + bizFeeWithTax + adminFee + vehicleRental + otherTotal;
-    lines.push([d.name, d.supplier_id||'', dRecs.length, grossTax, bizFeeWithTax, adminFee, vehicleRental, otherTotal, takeHome].join(','));
-  });
-  const bom = new Uint8Array([0xEF,0xBB,0xBF]);
-  const blob = new Blob([bom, lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `損益計算書_${month}.csv`; a.click();
 }
 
 /* ===== ③ 稼働カレンダー ===== */
@@ -9365,18 +9233,6 @@ function printInvoicePdf(cliId, month, explicitRows) {
 }
 </script>
 
-<script>
-function printAllPnlPdf() {
-  const from = document.getElementById('pnlFrom')?.value;
-  const to = document.getElementById('pnlTo')?.value;
-  if (!from || !to) { alert('集計期間を選択してください'); return; }
-  const groups = drvs.map(d => recs.filter(r=>r.date>=from&&r.date<=to&&(d.cars||[]).some(c=>nm(c)===nm(r.car)))).filter(rows=>rows.length);
-  if (!groups.length) { showT('対象データがありません','twa'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  writeStatementWindow(win, () => buildStatementHtmlMulti('payment', groups));
-}
-</script>
 
 
 <script>
