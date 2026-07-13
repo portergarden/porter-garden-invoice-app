@@ -2089,9 +2089,8 @@ td.dim{color:var(--text2)}
     <div class="fld">
       <label>表示するドライバーを絞り込む（任意。何も選ばなければ全員に表示）</label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
-        <input type="month" id="boardTargetMonth" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
-        <button type="button" class="btn sml" onclick="selectBoardTargetBySales()" title="選択した月に売上（受注データ）があるドライバーを選出します">🔍 売上のあるドライバーを選出</button>
-        <button type="button" class="btn sml" onclick="selectBoardTargetByDailyReport()" title="選択した月に日報が提出されているドライバーを選出します">📋 日報提出済みドライバーを選出</button>
+        <select id="boardTargetClientSel" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"><option value="">取引先を選択</option></select>
+        <button type="button" class="btn sml" onclick="selectBoardTargetByClient()" title="選択した取引先向けの実績があるドライバーを選出します">🎯 取引先で選出</button>
         <button type="button" class="btn sml" onclick="clearBoardTarget()">絞り込み解除（全員）</button>
       </div>
       <div id="boardTargetCount" style="font-size:11px;color:var(--text2);margin-bottom:4px"></div>
@@ -8713,12 +8712,6 @@ function renderBoardTo(elId) {
 
 // 掲示板の配属先絞り込み（対象ドライバーのIDの集合）。投稿モーダルを開いている間だけ保持する一時状態
 let pendBoardTargetIds = new Set();
-function monthRangeBounds(month) {
-  const [y,m] = month.split('-').map(Number);
-  const from = `${month}-01`;
-  const to = m===12 ? `${y+1}-01-01` : `${y}-${String(m+1).padStart(2,'0')}-01`;
-  return { from, to };
-}
 function renderBoardTargetDrvList() {
   const listEl = document.getElementById('boardTargetDrvList');
   const cntEl = document.getElementById('boardTargetCount');
@@ -8734,32 +8727,15 @@ function toggleBoardTargetDrv(id) {
   renderBoardTargetDrvList();
 }
 function clearBoardTarget() { pendBoardTargetIds = new Set(); renderBoardTargetDrvList(); }
-// 選択した月に売上（invoices）がある車番から、紐づくドライバーを選出する
-async function selectBoardTargetBySales() {
-  const month = document.getElementById('boardTargetMonth')?.value;
-  if (!month) { alert('対象月を選択してください'); return; }
+// 選択した取引先向けの実績（invoices.cli）がある車番から、紐づくドライバーを選出する
+async function selectBoardTargetByClient() {
+  const cliId = +document.getElementById('boardTargetClientSel')?.value || null;
+  if (!cliId) { alert('取引先を選択してください'); return; }
   try {
-    const { from, to } = monthRangeBounds(month);
-    const { data, error } = await sb.from('invoices').select('car').gte('date', from).lt('date', to);
+    const { data, error } = await sb.from('invoices').select('car').eq('cli', cliId);
     if (error) throw error;
     const cars = [...new Set((data||[]).map(r=>r.car).filter(Boolean))];
     pendBoardTargetIds = new Set(drvs.filter(d => (d.cars||[]).some(c => cars.some(rc=>nm(rc)===nm(c)))).map(d=>d.id));
-    renderBoardTargetDrvList();
-    showT(`${pendBoardTargetIds.size}名を選出しました`);
-  } catch(e) { showT('選出エラー: '+e.message, 'ter'); }
-}
-// 選択した月に日報が提出されているドライバーを選出する（drv_id優先、未設定行は車番で照合）
-async function selectBoardTargetByDailyReport() {
-  const month = document.getElementById('boardTargetMonth')?.value;
-  if (!month) { alert('対象月を選択してください'); return; }
-  try {
-    const { from, to } = monthRangeBounds(month);
-    const { data, error } = await sb.from('daily_reports').select('drv_id,car').gte('date', from).lt('date', to);
-    if (error) throw error;
-    const idsFromDrvId = (data||[]).map(r=>r.drv_id).filter(Boolean);
-    const carsNoId = (data||[]).filter(r=>!r.drv_id).map(r=>r.car).filter(Boolean);
-    const idsFromCar = drvs.filter(d => (d.cars||[]).some(c => carsNoId.some(rc=>nm(rc)===nm(c)))).map(d=>d.id);
-    pendBoardTargetIds = new Set([...idsFromDrvId, ...idsFromCar]);
     renderBoardTargetDrvList();
     showT(`${pendBoardTargetIds.size}名を選出しました`);
   } catch(e) { showT('選出エラー: '+e.message, 'ter'); }
@@ -8769,9 +8745,8 @@ function openBoardPost() {
   document.getElementById('boardTitle').value='';
   document.getElementById('boardBody').value='';
   document.getElementById('boardPriority').value='normal';
-  const now = new Date();
-  const monthEl = document.getElementById('boardTargetMonth');
-  if (monthEl) monthEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const cliSel = document.getElementById('boardTargetClientSel');
+  if (cliSel) cliSel.innerHTML = '<option value="">取引先を選択</option>' + [...clients].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja')).map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
   pendBoardTargetIds = new Set();
   renderBoardTargetDrvList();
   document.getElementById('mBoard').classList.add('on');
