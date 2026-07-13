@@ -1208,8 +1208,16 @@ td.dim{color:var(--text2)}
   </div>
   <div id="pg4" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:0.5px solid var(--border)">
-      <span style="font-size:11px;color:var(--text2)">全操作履歴（最新100件）</span>
+      <span style="font-size:11px;color:var(--text2)" id="logAreaLabel">全操作履歴（最新100件）</span>
       <button class="btn sml" onclick="loadLogs()">更新</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;padding:6px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;background:var(--bg2)">
+      <input type="text" id="logSearchKw" placeholder="操作・内容で検索" style="flex:1;min-width:120px;padding:4px 8px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')loadLogs()">
+      <input type="text" id="logSearchWho" placeholder="操作者" style="width:100px;padding:4px 8px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')loadLogs()">
+      <input type="date" id="logSearchFrom" style="padding:4px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+      <input type="date" id="logSearchTo" style="padding:4px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+      <button class="btn sml pri" onclick="loadLogs()">検索</button>
+      <button class="btn sml" onclick="clearLogSearch()">クリア</button>
     </div>
     <div style="padding:8px 14px;max-height:500px;overflow-y:auto" id="logArea"></div>
   </div>
@@ -2563,15 +2571,42 @@ async function applyLogin(data) {
   }
   goPage(0, document.getElementById('nt0'));
   switchP0Tab(1);
-  setTimeout(checkSchedAlerts, 1500);
-  setTimeout(()=>{ checkDriverDocAlerts().catch(()=>{}); }, 3000);
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
-  setTimeout(()=>{ checkBoardAlerts().catch(()=>{}); }, 3500);
+  setTimeout(()=>{ runLoginNotifications().catch(()=>{}); }, 1500);
+}
+
+// Supabaseが無料プランで自動バックアップが無いため、手動バックアップ（backupAllData）の実行間隔が
+// 空きすぎていないかをブラウザのlocalStorageで簡易チェックする（この端末で行った最終バックアップ日時のみ把握）
+const BACKUP_REMINDER_DAYS = 14;
+function checkBackupReminder() {
+  const lastAt = localStorage.getItem('pgbase_last_backup_at');
+  if (!lastAt) return '💾 この端末からのバックアップ記録がありません（セットアップタブから作成できます）';
+  const days = Math.floor((Date.now() - new Date(lastAt).getTime()) / 86400000);
+  if (days >= BACKUP_REMINDER_DAYS) return `💾 最終バックアップから${days}日経過しています（セットアップタブから作成してください）`;
+  return null;
+}
+
+// 未配車・未確認請求書・支払予定・書類期限・掲示板新着・バックアップ状況をまとめて1つの通知パネル（notOv）で表示する。
+// 以前はそれぞれ別々のタイミングでトーストが出ていたが、ログイン直後に4つ連続で流れて見落とされやすかったため統合した
+async function runLoginNotifications() {
+  const lines = [];
   const unC = recs.filter(r=>!recDrv(r)).length, pend = recs.filter(r=>r.st===0).length;
-  if (unC>0||pend>0) {
+  if (unC) lines.push(`未配車の車番: ${unC}件`);
+  if (pend) lines.push(`未確認の請求明細書: ${pend}件`);
+  const schedMsg = checkSchedAlerts();
+  if (schedMsg) lines.push(schedMsg.trim());
+  const [docMsg, boardMsg] = await Promise.all([
+    checkDriverDocAlerts().catch(()=>null),
+    checkBoardAlerts().catch(()=>null),
+  ]);
+  if (docMsg) lines.push(docMsg);
+  if (boardMsg) lines.push(boardMsg);
+  const backupMsg = checkBackupReminder();
+  if (backupMsg) lines.push(backupMsg);
+  if (lines.length) {
     document.getElementById('notTitle').textContent = '確認が必要な項目があります';
-    document.getElementById('notBody').textContent = (unC?`未配車の車番: ${unC}件\n`:'')+(pend?`未確認の請求明細書: ${pend}件`:'');
+    document.getElementById('notBody').textContent = lines.join('\n');
     document.getElementById('notOv').classList.add('on');
   }
 }
@@ -2650,11 +2685,29 @@ async function loadAll(){
 }
 async function loadLogs(){
   const la=document.getElementById('logArea');if(!la)return;
+  const kw = document.getElementById('logSearchKw')?.value.trim().toLowerCase() || '';
+  const who = document.getElementById('logSearchWho')?.value.trim() || '';
+  const from = document.getElementById('logSearchFrom')?.value || '';
+  const to = document.getElementById('logSearchTo')?.value || '';
+  const hasFilter = kw || who || from || to;
+  const labelEl = document.getElementById('logAreaLabel');
+  if (labelEl) labelEl.textContent = hasFilter ? '検索結果（最大500件）' : '全操作履歴（最新100件）';
   try{
-    const{data}=await sb.from('audit_logs').select('*').order('created_at',{ascending:false}).limit(100);
-    if(!data||!data.length){la.innerHTML='<div style="color:var(--text2);font-size:11px;padding:10px 0">操作ログがありません</div>';return;}
-    la.innerHTML=data.map(l=>`<div class="lrow"><div class="ltime">${l.ts}</div><div class="lwho">${l.who||'—'}</div><div style="flex:1">${l.action}: <span style="color:var(--text2)">${l.detail||''}</span></div></div>`).join('');
+    let q = sb.from('audit_logs').select('*').order('created_at',{ascending:false}).limit(hasFilter?500:100);
+    if (who) q = q.ilike('who', `%${who}%`);
+    if (from) q = q.gte('created_at', from);
+    if (to) q = q.lte('created_at', to+'T23:59:59');
+    const{data,error}=await q;
+    if (error) throw error;
+    let rows = data||[];
+    if (kw) rows = rows.filter(l=>(l.action||'').toLowerCase().includes(kw)||(l.detail||'').toLowerCase().includes(kw));
+    if(!rows.length){la.innerHTML=`<div style="color:var(--text2);font-size:11px;padding:10px 0">${hasFilter?'該当するログがありません':'操作ログがありません'}</div>`;return;}
+    la.innerHTML=rows.map(l=>`<div class="lrow"><div class="ltime">${escHtml(l.ts)}</div><div class="lwho">${escHtml(l.who||'—')}</div><div style="flex:1">${escHtml(l.action)}: <span style="color:var(--text2)">${escHtml(l.detail||'')}</span></div></div>`).join('');
   }catch(e){la.innerHTML='<div style="color:var(--text2);font-size:11px;padding:10px 0">ログ読み込みエラー</div>';}
+}
+function clearLogSearch(){
+  ['logSearchKw','logSearchWho','logSearchFrom','logSearchTo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  loadLogs();
 }
 async function addLog(action,detail){
   if(!sb)return;
@@ -5950,22 +6003,53 @@ function openSlipSave() {
   document.getElementById('mSlipSave').classList.add('on');
 }
 
+/* ===== payment_slips / invoice_slips 共通CRUDヘルパー（保存名・対象月の列名が違うだけで処理は同じ） ===== */
+async function saveSlipRow(table, monthField, label, month, rows) {
+  const { error } = await sb.from(table).insert({
+    label, [monthField]: month || null, rows, saved_at: new Date().toISOString(), saved_by: me?.name || '—',
+  });
+  if (error) throw error;
+}
+async function listSlipRows(table, monthField) {
+  const { data, error } = await sb.from(table)
+    .select(`id,label,${monthField},saved_at,saved_by`)
+    .order('saved_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return data || [];
+}
+async function getSlipRow(table, id) {
+  const { data, error } = await sb.from(table).select('*').eq('id', id).single();
+  if (error) throw error;
+  return data;
+}
+async function deleteSlipRow(table, id) {
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if (error) throw error;
+}
+function renderSlipSlotList(el, rows, monthField, loadFn, delFn) {
+  if (!rows.length) { el.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:12px;padding:20px">保存済みデータがありません</div>'; return; }
+  el.innerHTML = rows.map(s => {
+    const dt = new Date(s.saved_at).toLocaleString('ja-JP', { hour12: false });
+    return `<div class="slip-slot">
+      <div class="slip-slot-info">
+        <div class="slip-slot-label">${escHtml(s.label)}</div>
+        <div class="slip-slot-meta">${s[monthField] ? s[monthField] + ' ／ ' : ''}${dt}  保存者: ${escHtml(s.saved_by||'—')}</div>
+      </div>
+      <button class="btn" style="font-size:11px;white-space:nowrap" onclick="${loadFn}(${s.id})">📂 読み込み</button>
+      <button class="ibtn" style="color:#e05b5b" onclick="${delFn}(${s.id}, this)" title="削除">🗑</button>
+    </div>`;
+  }).join('');
+}
+
 async function doSaveSlip() {
   const label = document.getElementById('slipSaveLabel').value.trim();
   if (!label) { alert('保存名を入力してください'); return; }
   if (!payRows || payRows.length === 0) { alert('保存するデータがありません'); return; }
   const mo = paySelectedMonth || '';
-  const saved_at = new Date().toISOString();
   showLoad(true);
   try {
-    const { error } = await sb.from('payment_slips').insert({
-      label,
-      pay_month: mo || null,
-      rows: payRows,
-      saved_at,
-      saved_by: me?.name || '—',
-    });
-    if (error) throw error;
+    await saveSlipRow('payment_slips', 'pay_month', label, mo, payRows);
     closeM('mSlipSave');
     await addLog('支払明細書保存', label + ' ' + payRows.length + '件');
     showT('保存しました: ' + label);
@@ -5986,26 +6070,8 @@ async function openSlipLoad() {
   const list = document.getElementById('slipSlotList');
   list.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:12px;padding:20px">読み込み中...</div>';
   try {
-    const { data, error } = await sb.from('payment_slips')
-      .select('id,label,pay_month,saved_at,saved_by')
-      .order('saved_at', { ascending: false })
-      .limit(50);
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      list.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:12px;padding:20px">保存済みデータがありません</div>';
-      return;
-    }
-    list.innerHTML = data.map(s => {
-      const dt = new Date(s.saved_at).toLocaleString('ja-JP', { hour12: false });
-      return `<div class="slip-slot">
-        <div class="slip-slot-info">
-          <div class="slip-slot-label">${s.label}</div>
-          <div class="slip-slot-meta">${s.pay_month ? s.pay_month + ' ／ ' : ''}${dt}  保存者: ${s.saved_by||'—'}</div>
-        </div>
-        <button class="btn" style="font-size:11px;white-space:nowrap" onclick="loadSlip(${s.id})">📂 読み込み</button>
-        <button class="ibtn" style="color:#e05b5b" onclick="deleteSlip(${s.id}, this)" title="削除">🗑</button>
-      </div>`;
-    }).join('');
+    const rows = await listSlipRows('payment_slips', 'pay_month');
+    renderSlipSlotList(list, rows, 'pay_month', 'loadSlip', 'deleteSlip');
   } catch(e) {
     if (e.message && e.message.includes('does not exist')) {
       list.innerHTML = '<div style="color:#e05b5b;font-size:11px;padding:10px">payment_slipsテーブルが未作成です。</div>';
@@ -6019,8 +6085,7 @@ async function openSlipLoad() {
 async function loadSlip(id) {
   showLoad(true);
   try {
-    const { data, error } = await sb.from('payment_slips').select('*').eq('id', id).single();
-    if (error) throw error;
+    const data = await getSlipRow('payment_slips', id);
     payRows = data.rows || [];
     paySourceMode = 'xlsx';
     // 対象期間をセット
@@ -6046,8 +6111,7 @@ async function loadSlip(id) {
 async function deleteSlip(id, btn) {
   if (!confirm('この保存データを削除しますか？')) return;
   try {
-    const { error } = await sb.from('payment_slips').delete().eq('id', id);
-    if (error) throw error;
+    await deleteSlipRow('payment_slips', id);
     btn.closest('.slip-slot').remove();
     showT('削除しました');
     await addLog('支払明細書削除', 'id:' + id);
@@ -6076,14 +6140,7 @@ async function doSaveInvoiceSlip() {
   const month = rows[0]?.date?.slice(0,7) || '';
   showLoad(true);
   try {
-    const { error } = await sb.from('invoice_slips').insert({
-      label,
-      invoice_month: month || null,
-      rows,
-      saved_at: new Date().toISOString(),
-      saved_by: me?.name || '—',
-    });
-    if (error) throw error;
+    await saveSlipRow('invoice_slips', 'invoice_month', label, month, rows);
     closeM('mInvSlipSave');
     await addLog('請求明細書保存', label + ' ' + rows.length + '件');
     showT('保存しました: ' + label);
@@ -6098,26 +6155,8 @@ async function openInvoiceSlipLoad() {
   const list = document.getElementById('invSlipSlotList');
   list.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:12px;padding:20px">読み込み中...</div>';
   try {
-    const { data, error } = await sb.from('invoice_slips')
-      .select('id,label,invoice_month,saved_at,saved_by')
-      .order('saved_at', { ascending: false })
-      .limit(50);
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      list.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:12px;padding:20px">保存済みデータがありません</div>';
-      return;
-    }
-    list.innerHTML = data.map(s => {
-      const dt = new Date(s.saved_at).toLocaleString('ja-JP', { hour12: false });
-      return `<div class="slip-slot">
-        <div class="slip-slot-info">
-          <div class="slip-slot-label">${s.label}</div>
-          <div class="slip-slot-meta">${s.invoice_month ? s.invoice_month + ' ／ ' : ''}${dt}  保存者: ${s.saved_by||'—'}</div>
-        </div>
-        <button class="btn" style="font-size:11px;white-space:nowrap" onclick="loadInvoiceSlip(${s.id})">📂 読み込み</button>
-        <button class="ibtn" style="color:#e05b5b" onclick="deleteInvoiceSlip(${s.id}, this)" title="削除">🗑</button>
-      </div>`;
-    }).join('');
+    const rows = await listSlipRows('invoice_slips', 'invoice_month');
+    renderSlipSlotList(list, rows, 'invoice_month', 'loadInvoiceSlip', 'deleteInvoiceSlip');
   } catch(e) {
     list.innerHTML = `<div style="color:#e05b5b;font-size:11px;padding:10px">読み込みエラー: ${e.message}</div>`;
   }
@@ -6126,8 +6165,7 @@ async function openInvoiceSlipLoad() {
 async function loadInvoiceSlip(id) {
   showLoad(true);
   try {
-    const { data, error } = await sb.from('invoice_slips').select('*').eq('id', id).single();
-    if (error) throw error;
+    const data = await getSlipRow('invoice_slips', id);
     _aggDetailSide = 'billing';
     _aggDetailRows = data.rows || [];
     _aggDetailSelected = new Set(_aggDetailRows.map(r=>r.id));
@@ -6146,8 +6184,7 @@ async function loadInvoiceSlip(id) {
 async function deleteInvoiceSlip(id, btn) {
   if (!confirm('この保存データを削除しますか？')) return;
   try {
-    const { error } = await sb.from('invoice_slips').delete().eq('id', id);
-    if (error) throw error;
+    await deleteSlipRow('invoice_slips', id);
     btn.closest('.slip-slot').remove();
     showT('削除しました');
     await addLog('請求明細書削除', 'id:' + id);
@@ -6684,8 +6721,7 @@ async function bulkMarkSchedDone(){
   if(!confirm(`${ids.length}件を支払済にしますか？`))return;
   showLoad(true);
   try{
-    const{error}=await sb.from('payment_schedules').update({done:true}).in('id',ids);
-    if(error)throw error;
+    await scheduleSetDone('payment_schedules', ids, true);
     ids.forEach(id=>{const it=schedData.find(s=>s.id===id);if(it)it.done=true;});
     schedSelIds.clear();renderSched();
     addLog('支払済一括マーク',`${ids.length}件`);showT(`${ids.length}件を支払済にしました`);
@@ -6698,8 +6734,7 @@ async function bulkUnmarkSchedDone(){
   if(!confirm(`${ids.length}件の支払済を取り消しますか？`))return;
   showLoad(true);
   try{
-    const{error}=await sb.from('payment_schedules').update({done:false}).in('id',ids);
-    if(error)throw error;
+    await scheduleSetDone('payment_schedules', ids, false);
     ids.forEach(id=>{const it=schedData.find(s=>s.id===id);if(it)it.done=false;});
     schedSelIds.clear();renderSched();
     addLog('支払済一括取消',`${ids.length}件`);showT(`${ids.length}件の支払済を取り消しました`);
@@ -7691,16 +7726,15 @@ async function markMonthApproved() {
 }
 
 /* ===== スケジュールアラートチェック（ログイン時） ===== */
+// トースト表示はせず、確認事項があれば文字列を返すだけにする（ログイン時の通知パネルでまとめて表示するため）
 function checkSchedAlerts() {
   const today = fmtLocalDate(new Date());
   const soon = new Date(); soon.setDate(soon.getDate()+7); const soonStr = fmtLocalDate(soon);
   const alerts = schedData.filter(s => !s.done && s.date <= soonStr);
-  if (alerts.length) {
-    const overdue = alerts.filter(s=>s.date<today);
-    const msg = (overdue.length ? `⚠ 期限超過の支払予定: ${overdue.length}件\n` : '') +
-                (alerts.length - overdue.length ? `📅 7日以内の支払予定: ${alerts.length - overdue.length}件` : '');
-    if (msg) showT(msg, overdue.length ? 'ter' : 'twa');
-  }
+  if (!alerts.length) return null;
+  const overdue = alerts.filter(s=>s.date<today);
+  return (overdue.length ? `⚠ 期限超過の支払予定: ${overdue.length}件\n` : '') +
+         (alerts.length - overdue.length ? `📅 7日以内の支払予定: ${alerts.length - overdue.length}件` : '');
 }
 </script>
 
@@ -8097,6 +8131,9 @@ function applyDriverPortal() {
 
   goDrvPage(3, document.getElementById('dnt3'));
 
+  // 自分の提出書類の期限切れ・期限間近をログイン時に知らせる
+  setTimeout(()=>{ checkDriverOwnDocAlerts().catch(()=>{}); }, 1500);
+
   // 未読の明細書があればログイン時に知らせる（タブ自体を非表示にしているドライバーには出さない）
   if (me?.driver_id && sb && !hideStatement) {
     sb.from('driver_statements').select('id').eq('drv_id', me.driver_id).is('read_at', null)
@@ -8332,16 +8369,33 @@ function summarizeDocAlerts() {
   });
   return issues;
 }
-// ログイン後に書類期限をチェックしてトーストで知らせる（詳細はドライバー管理タブのバナー＋一覧）
+// ログイン後に書類期限をチェックする（詳細はドライバー管理タブのバナー＋一覧。通知パネルでまとめて表示するため文字列を返すだけにする）
 async function checkDriverDocAlerts() {
-  if (!sb || !drvs.length) return;
+  if (!sb || !drvs.length) return null;
   await loadDriverDocs();
   const issues = summarizeDocAlerts();
-  if (!issues.length) return;
+  if (document.getElementById('pg2')?.style.display !== 'none') renderDrv();
+  if (!issues.length) return null;
   const expired = issues.filter(i => i.st.cls === 'expired').length;
   const soon = issues.filter(i => i.st.cls === 'soon').length;
-  showT(`📄 書類期限: ${expired ? `期限切れ${expired}件` : ''}${expired && soon ? ' / ' : ''}${soon ? `期限間近${soon}件` : ''}（ドライバー管理で確認）`, 'twa');
-  if (document.getElementById('pg2')?.style.display !== 'none') renderDrv();
+  return `📄 書類期限: ${expired ? `期限切れ${expired}件` : ''}${expired && soon ? ' / ' : ''}${soon ? `期限間近${soon}件` : ''}（ドライバー管理で確認）`;
+}
+// ドライバー本人へ、自分の提出書類の期限切れ・期限間近をログイン時に知らせる（管理側とは別に本人にも直接注意喚起する）
+async function checkDriverOwnDocAlerts() {
+  if (!sb || !me?.driver_id) return;
+  try {
+    const { data, error } = await sb.from('driver_documents').select('*').eq('drv_id', me.driver_id);
+    if (error) throw error;
+    const myDocs = data || [];
+    const issues = DRIVER_DOC_TYPES
+      .map(t => ({ t, st: docStatusOf(myDocs.find(d=>d.doc_type===t.key)) }))
+      .filter(x => x.st.cls === 'expired' || x.st.cls === 'soon');
+    if (!issues.length) return;
+    const expired = issues.filter(i => i.st.cls === 'expired').map(i=>i.t.label);
+    const soon = issues.filter(i => i.st.cls === 'soon').map(i=>i.t.label);
+    const msg = `📄 ${expired.length?`期限切れ: ${expired.join('、')}`:''}${expired.length&&soon.length?' / ':''}${soon.length?`期限間近: ${soon.join('、')}`:''}（書類タブから更新してください）`;
+    showT(msg, 'twa');
+  } catch(e) { console.warn('checkDriverOwnDocAlerts:', e.message); }
 }
 function renderDocStatusBody() {
   const el = document.getElementById('docStatusBody');
@@ -8670,12 +8724,13 @@ function markBoardSeen() {
 }
 // ログイン時に新着の掲示板投稿があればトーストで知らせる
 async function checkBoardAlerts() {
-  if (!sb || !me) return;
+  if (!sb || !me) return null;
   await loadBoard();
-  if (!boardPosts.length) return;
+  if (!boardPosts.length) return null;
   const lastSeen = localStorage.getItem(boardSeenKey()) || '';
   const unseen = boardPosts.filter(p => (p.created_at||'') > lastSeen);
-  if (unseen.length) showT(`📢 新着の掲示板投稿が${unseen.length}件あります: ${unseen[0].title}`, 'twa');
+  if (!unseen.length) return null;
+  return `📢 新着の掲示板投稿が${unseen.length}件あります: ${unseen[0].title}`;
 }
 
 function renderBoardTo(elId) {
@@ -8934,6 +8989,7 @@ async function backupAllData() {
     a.href=URL.createObjectURL(blob);
     a.download=`PGBase_backup_${fmtLocalDate(new Date())}.json`;
     a.click();
+    localStorage.setItem('pgbase_last_backup_at', new Date().toISOString());
     addLog('バックアップ', `全データ ${backup.invoices.length}件`);
     showT('バックアップを作成しました');
   } catch(e) { showT('バックアップエラー: '+e.message,'ter'); }
@@ -9454,17 +9510,15 @@ async function autoGenPaySchedule() {
 async function loadSched() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('payment_schedules').select('*').order('date');
-    if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) {
-        const local = JSON.parse(localStorage.getItem('pg_sched_bak')||'[]');
-        if (local.length) { schedData = local; showT('⚠ payment_schedulesテーブルが未作成です','twa'); }
-        return;
-      }
-      throw error;
+    schedData = await scheduleLoadAll('payment_schedules');
+  } catch(e) {
+    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+      const local = JSON.parse(localStorage.getItem('pg_sched_bak')||'[]');
+      if (local.length) { schedData = local; showT('⚠ payment_schedulesテーブルが未作成です','twa'); }
+      return;
     }
-    schedData = data || [];
-  } catch(e) { console.warn('loadSched:', e.message); }
+    console.warn('loadSched:', e.message);
+  }
 }
 
 async function migrateSchedFromLocal(localData) {
@@ -9502,8 +9556,7 @@ async function markSchedDone(id) {
   const item = schedData.find(s=>s.id===id);
   if (!item) return;
   try {
-    const {error} = await sb.from('payment_schedules').update({done:true}).eq('id',id);
-    if (error) throw error;
+    await scheduleSetDone('payment_schedules', id, true);
     item.done = true;
     renderSched();
     addLog('支払済マーク',(item.drv_name||item.drvName||'')+' '+item.date);
@@ -9516,8 +9569,7 @@ async function unmarkSchedDone(id) {
   const item = schedData.find(s=>s.id===id);
   if (!item) return;
   try {
-    const {error} = await sb.from('payment_schedules').update({done:false}).eq('id',id);
-    if (error) throw error;
+    await scheduleSetDone('payment_schedules', id, false);
     item.done = false;
     renderSched();
     addLog('支払済取消',(item.drv_name||item.drvName||'')+' '+item.date);
@@ -9528,13 +9580,29 @@ async function unmarkSchedDone(id) {
 async function deleteSchedItem(id) {
   if (!confirm('削除しますか？')) return;
   try {
-    const {error} = await sb.from('payment_schedules').delete().eq('id',id);
-    if (error) throw error;
+    await scheduleDelete('payment_schedules', id);
     schedData = schedData.filter(s=>s.id!==id);
     renderSched();
     addLog('支払予定削除','id:'+id);
     showT('削除しました');
   } catch(e) { showT('エラー: '+e.message,'ter'); }
+}
+
+/* ===== payment_schedules / receipt_schedules 共通CRUDヘルパー =====
+   入金側はdone切替時にpayment_inへの自動反映という追加の副作用を持つため、
+   このヘルパーはDB更新の共通部分だけを担い、副作用は呼び出し側にそのまま残す */
+async function scheduleSetDone(table, ids, done) {
+  const { error } = await sb.from(table).update({done}).in('id', Array.isArray(ids)?ids:[ids]);
+  if (error) throw error;
+}
+async function scheduleDelete(table, id) {
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if (error) throw error;
+}
+async function scheduleLoadAll(table) {
+  const { data, error } = await sb.from(table).select('*').order('date');
+  if (error) throw error;
+  return data || [];
 }
 
 /* ===== 入金スケジュール（支払スケジュールと同構造・取引先向け） ===== */
@@ -9552,9 +9620,7 @@ function openReceiptSchedM() {
 async function loadReceiptSched() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('receipt_schedules').select('*').order('date');
-    if (error) throw error;
-    receiptSchedData = data || [];
+    receiptSchedData = await scheduleLoadAll('receipt_schedules');
   } catch(e) { console.warn('loadReceiptSched:', e.message); }
 }
 
@@ -9597,8 +9663,7 @@ async function bulkMarkReceiptSchedDone(){
   if(!confirm(`${ids.length}件を入金済にしますか？`))return;
   showLoad(true);
   try{
-    const{error}=await sb.from('receipt_schedules').update({done:true}).in('id',ids);
-    if(error)throw error;
+    await scheduleSetDone('receipt_schedules', ids, true);
     const items=ids.map(id=>receiptSchedData.find(s=>s.id===id)).filter(Boolean);
     items.forEach(it=>it.done=true);
     try{
@@ -9622,8 +9687,7 @@ async function bulkUnmarkReceiptSchedDone(){
   if(!confirm(`${ids.length}件の入金済を取り消しますか？`))return;
   showLoad(true);
   try{
-    const{error}=await sb.from('receipt_schedules').update({done:false}).in('id',ids);
-    if(error)throw error;
+    await scheduleSetDone('receipt_schedules', ids, false);
     const items=ids.map(id=>receiptSchedData.find(s=>s.id===id)).filter(Boolean);
     items.forEach(it=>it.done=false);
     try{
@@ -9669,8 +9733,7 @@ async function markReceiptSchedDone(id) {
   const item = receiptSchedData.find(s=>s.id===id);
   if (!item) return;
   try {
-    const {error} = await sb.from('receipt_schedules').update({done:true}).eq('id',id);
-    if (error) throw error;
+    await scheduleSetDone('receipt_schedules', id, true);
     item.done = true;
     // 入金管理（実績台帳）にも自動反映し、二重に手入力しなくて済むようにする
     try {
@@ -9693,8 +9756,7 @@ async function unmarkReceiptSchedDone(id) {
   const item = receiptSchedData.find(s=>s.id===id);
   if (!item) return;
   try {
-    const {error} = await sb.from('receipt_schedules').update({done:false}).eq('id',id);
-    if (error) throw error;
+    await scheduleSetDone('receipt_schedules', id, false);
     item.done = false;
     // 済みにした際に自動作成した入金記録があれば一緒に取り消す（手動追加分は残す）
     try {
@@ -9715,8 +9777,7 @@ async function unmarkReceiptSchedDone(id) {
 async function deleteReceiptSchedItem(id) {
   if (!confirm('削除しますか？')) return;
   try {
-    const {error} = await sb.from('receipt_schedules').delete().eq('id',id);
-    if (error) throw error;
+    await scheduleDelete('receipt_schedules', id);
     receiptSchedData = receiptSchedData.filter(s=>s.id!==id);
     renderReceiptSched();
     addLog('入金予定削除','id:'+id);
