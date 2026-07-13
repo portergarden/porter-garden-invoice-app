@@ -520,7 +520,7 @@ td.dim{color:var(--text2)}
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 カレンダー</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
-    <div class="ntab" id="nt10" onclick="goPage(10,this)">📱 日報入力</div>
+    <div class="ntab" id="nt10" onclick="goPage(10,this)">📱 日報管理</div>
     <div class="ntab" id="nt12" onclick="goPage(12,this)">📊 月報</div>
     <div class="ntab" id="nt14" onclick="goPage(14,this)">📢 掲示板</div>
   </nav>
@@ -2075,7 +2075,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: 掲示板投稿 -->
 <div class="overlay" id="mBoard">
-  <div class="modal">
+  <div class="modal" style="max-width:560px">
     <div class="mh">掲示板 投稿 <button class="ibtn" onclick="closeM('mBoard')">✕</button></div>
     <div class="fld"><label>タイトル</label><input type="text" id="boardTitle" placeholder="タイトルを入力"></div>
     <div class="fld"><label>本文</label><textarea id="boardBody" rows="5" style="width:100%;padding:8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);resize:vertical"></textarea></div>
@@ -2086,8 +2086,16 @@ td.dim{color:var(--text2)}
         <option value="urgent">緊急</option>
       </select>
     </div>
-    <div class="fld"><label>配属先（絞り込み・任意）</label>
-      <select id="boardTargetCompany"><option value="">全員に表示</option></select>
+    <div class="fld">
+      <label>表示するドライバーを絞り込む（任意。何も選ばなければ全員に表示）</label>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+        <input type="month" id="boardTargetMonth" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        <button type="button" class="btn sml" onclick="selectBoardTargetBySales()" title="選択した月に売上（受注データ）があるドライバーを選出します">🔍 売上のあるドライバーを選出</button>
+        <button type="button" class="btn sml" onclick="selectBoardTargetByDailyReport()" title="選択した月に日報が提出されているドライバーを選出します">📋 日報提出済みドライバーを選出</button>
+        <button type="button" class="btn sml" onclick="clearBoardTarget()">絞り込み解除（全員）</button>
+      </div>
+      <div id="boardTargetCount" style="font-size:11px;color:var(--text2);margin-bottom:4px"></div>
+      <div id="boardTargetDrvList" style="max-height:160px;overflow-y:auto;border:0.5px solid var(--border2);border-radius:var(--radius);padding:6px"></div>
     </div>
     <div class="mfoot">
       <button class="btn" onclick="closeM('mBoard')">キャンセル</button>
@@ -8674,9 +8682,9 @@ async function checkBoardAlerts() {
 function renderBoardTo(elId) {
   const el = document.getElementById(elId);
   if (!el) return;
-  // ドライバー側は「全員」または自分の配属先（協力会社）宛の投稿のみ表示する。管理側は絞り込みの確認のため全件表示する
+  // ドライバー側は「全員」または自分（drv_id）が対象に含まれる投稿のみ表示する。管理側は絞り込みの確認のため全件表示する
   const list = elId === 'drvBoardList'
-    ? boardPosts.filter(p => !p.target_company || p.target_company === me?.driver_data?.company)
+    ? boardPosts.filter(p => !(p.target_driver_ids||[]).length || (p.target_driver_ids||[]).includes(me?.driver_id))
     : boardPosts;
   if (!list.length) { el.innerHTML='<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">投稿がありません</div>'; return; }
   const canDel = me && (me.role==='admin'||me.role==='editor');
@@ -8684,11 +8692,13 @@ function renderBoardTo(elId) {
     const priColor = p.priority==='urgent'?'var(--red)':p.priority==='important'?'var(--amber-text)':'var(--blue)';
     const priLabel = {urgent:'緊急',important:'重要',normal:'通常'}[p.priority||'normal'];
     const dt = p.created_at ? new Date(p.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    const targetCnt = (p.target_driver_ids||[]).length;
+    const targetNames = targetCnt ? drvs.filter(d=>p.target_driver_ids.includes(d.id)).map(d=>d.name).join('、') : '';
     return `<div style="border:0.5px solid ${p.priority==='urgent'?'var(--red)':p.priority==='important'?'var(--amber-border)':'var(--border)'};border-radius:var(--radius-lg);padding:10px 12px;margin-bottom:8px;background:var(--bg)${p.priority==='urgent'?';background:var(--red-bg)':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
           <span style="font-size:10px;padding:1px 6px;border-radius:99px;border:0.5px solid ${priColor};color:${priColor}">${priLabel}</span>
-          ${p.target_company?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="この投稿の配属先絞り込み">🎯 ${escHtml(p.target_company)}</span>`:''}
+          ${targetCnt?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="${escHtml(targetNames)}">🎯 ${targetCnt}名限定</span>`:''}
           <span style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
@@ -8701,15 +8711,69 @@ function renderBoardTo(elId) {
   }).join('');
 }
 
+// 掲示板の配属先絞り込み（対象ドライバーのIDの集合）。投稿モーダルを開いている間だけ保持する一時状態
+let pendBoardTargetIds = new Set();
+function monthRangeBounds(month) {
+  const [y,m] = month.split('-').map(Number);
+  const from = `${month}-01`;
+  const to = m===12 ? `${y+1}-01-01` : `${y}-${String(m+1).padStart(2,'0')}-01`;
+  return { from, to };
+}
+function renderBoardTargetDrvList() {
+  const listEl = document.getElementById('boardTargetDrvList');
+  const cntEl = document.getElementById('boardTargetCount');
+  if (!listEl) return;
+  const sorted = [...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999));
+  listEl.innerHTML = sorted.map(d => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer">
+    <input type="checkbox" style="width:auto" ${pendBoardTargetIds.has(d.id)?'checked':''} onchange="toggleBoardTargetDrv(${d.id})">${escHtml(d.name)}${d.company?`<span style="color:var(--text2);font-size:10.5px">（${escHtml(d.company)}）</span>`:''}
+  </label>`).join('') || '<div style="font-size:11px;color:var(--text2)">ドライバーが登録されていません</div>';
+  cntEl.textContent = pendBoardTargetIds.size ? `${pendBoardTargetIds.size}名を選択中（未選択の場合は全員に表示されます）` : '未選択（全員に表示）';
+}
+function toggleBoardTargetDrv(id) {
+  if (pendBoardTargetIds.has(id)) pendBoardTargetIds.delete(id); else pendBoardTargetIds.add(id);
+  renderBoardTargetDrvList();
+}
+function clearBoardTarget() { pendBoardTargetIds = new Set(); renderBoardTargetDrvList(); }
+// 選択した月に売上（invoices）がある車番から、紐づくドライバーを選出する
+async function selectBoardTargetBySales() {
+  const month = document.getElementById('boardTargetMonth')?.value;
+  if (!month) { alert('対象月を選択してください'); return; }
+  try {
+    const { from, to } = monthRangeBounds(month);
+    const { data, error } = await sb.from('invoices').select('car').gte('date', from).lt('date', to);
+    if (error) throw error;
+    const cars = [...new Set((data||[]).map(r=>r.car).filter(Boolean))];
+    pendBoardTargetIds = new Set(drvs.filter(d => (d.cars||[]).some(c => cars.some(rc=>nm(rc)===nm(c)))).map(d=>d.id));
+    renderBoardTargetDrvList();
+    showT(`${pendBoardTargetIds.size}名を選出しました`);
+  } catch(e) { showT('選出エラー: '+e.message, 'ter'); }
+}
+// 選択した月に日報が提出されているドライバーを選出する（drv_id優先、未設定行は車番で照合）
+async function selectBoardTargetByDailyReport() {
+  const month = document.getElementById('boardTargetMonth')?.value;
+  if (!month) { alert('対象月を選択してください'); return; }
+  try {
+    const { from, to } = monthRangeBounds(month);
+    const { data, error } = await sb.from('daily_reports').select('drv_id,car').gte('date', from).lt('date', to);
+    if (error) throw error;
+    const idsFromDrvId = (data||[]).map(r=>r.drv_id).filter(Boolean);
+    const carsNoId = (data||[]).filter(r=>!r.drv_id).map(r=>r.car).filter(Boolean);
+    const idsFromCar = drvs.filter(d => (d.cars||[]).some(c => carsNoId.some(rc=>nm(rc)===nm(c)))).map(d=>d.id);
+    pendBoardTargetIds = new Set([...idsFromDrvId, ...idsFromCar]);
+    renderBoardTargetDrvList();
+    showT(`${pendBoardTargetIds.size}名を選出しました`);
+  } catch(e) { showT('選出エラー: '+e.message, 'ter'); }
+}
+
 function openBoardPost() {
   document.getElementById('boardTitle').value='';
   document.getElementById('boardBody').value='';
   document.getElementById('boardPriority').value='normal';
-  const targetSel = document.getElementById('boardTargetCompany');
-  if (targetSel) {
-    const companies = [...new Set(drvs.map(d=>d.company).filter(Boolean))].sort();
-    targetSel.innerHTML = '<option value="">全員に表示</option>' + companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}のみ</option>`).join('');
-  }
+  const now = new Date();
+  const monthEl = document.getElementById('boardTargetMonth');
+  if (monthEl) monthEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  pendBoardTargetIds = new Set();
+  renderBoardTargetDrvList();
   document.getElementById('mBoard').classList.add('on');
 }
 
@@ -8717,10 +8781,10 @@ async function submitBoardPost() {
   const title = document.getElementById('boardTitle').value.trim();
   const body = document.getElementById('boardBody').value.trim();
   const priority = document.getElementById('boardPriority').value;
-  const targetCompany = document.getElementById('boardTargetCompany')?.value || null;
+  const targetIds = pendBoardTargetIds.size ? [...pendBoardTargetIds] : null;
   if (!title||!body) { alert('タイトルと本文は必須です'); return; }
   try {
-    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_company:targetCompany}).select().single();
+    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_driver_ids:targetIds}).select().single();
     if (error) throw error;
     boardPosts.unshift(data);
     closeM('mBoard');
@@ -11953,7 +12017,7 @@ CREATE TABLE IF NOT EXISTS board_posts (
   id bigserial PRIMARY KEY, title text NOT NULL, body text,
   priority text DEFAULT 'normal', author text,
   created_at timestamptz DEFAULT now(),
-  target_company text
+  target_driver_ids integer[]
 );
 
 -- 手入力テンプレート
