@@ -1309,8 +1309,7 @@ td.dim{color:var(--text2)}
           <tr style="background:var(--bg2);color:var(--text3);text-align:center;white-space:nowrap;font-size:10.5px">
             <th colspan="6" style="padding:4px 8px;font-weight:500"></th>
             <th colspan="3" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">税込金額の内訳</th>
-            <th colspan="2" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">控除・差引合計</th>
-            <th colspan="1" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border)"></th>
+            <th colspan="3" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">控除・差引合計</th>
             <th colspan="3" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">非課税項目</th>
             <th colspan="1" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border)"></th>
             <th style="padding:4px 8px"></th>
@@ -1327,7 +1326,7 @@ td.dim{color:var(--text2)}
             <th style="padding:6px 8px;text-align:right">税別金額</th>
             <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)" title="税別金額（課税分）×手数料率">業務手数料</th>
             <th style="padding:6px 8px;text-align:right" title="（税別金額−業務手数料）＋その消費税10%。支払明細書の「合計＋消費税」と同じ値">差引合計(税込)</th>
-            <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)" title="追加料金として入力した高速代・立替の合計">高速・立替代</th>
+            <th style="padding:6px 8px;text-align:right" title="追加料金として入力した高速代・立替の合計">高速・立替代</th>
             <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">事務手数料</th>
             <th style="padding:6px 8px;text-align:right">車両代</th>
             <th style="padding:6px 8px;text-align:right" title="その他の控除＋非課税で入力した明細・追加料金の合計">その他</th>
@@ -1917,10 +1916,10 @@ td.dim{color:var(--text2)}
   </div>
   <!-- ドライバー用ナビ -->
   <nav style="display:flex;gap:2px;padding:4px 8px;border-bottom:0.5px solid var(--border);overflow-x:auto">
-    <div class="ntab on" id="dnt0" onclick="goDrvPage(0,this)">📋 日報</div>
+    <div class="ntab on" id="dnt3" onclick="goDrvPage(3,this)">📢 掲示板</div>
+    <div class="ntab" id="dnt0" onclick="goDrvPage(0,this)">📋 日報</div>
     <div class="ntab" id="dnt1" onclick="goDrvPage(1,this)">📊 月報</div>
     <div class="ntab" id="dnt2" onclick="goDrvPage(2,this)">💴 手取り明細</div>
-    <div class="ntab" id="dnt3" onclick="goDrvPage(3,this)">📢 掲示板</div>
     <div class="ntab" id="dnt4" onclick="goDrvPage(4,this)">📷 書類</div>
   </nav>
   <!-- ドライバー用コンテンツ -->
@@ -2546,6 +2545,7 @@ async function applyLogin(data) {
   setTimeout(()=>{ checkDriverDocAlerts().catch(()=>{}); }, 3000);
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
+  setTimeout(()=>{ checkBoardAlerts().catch(()=>{}); }, 3500);
   const unC = recs.filter(r=>!recDrv(r)).length, pend = recs.filter(r=>r.st===0).length;
   if (unC>0||pend>0) {
     document.getElementById('notTitle').textContent = '確認が必要な項目があります';
@@ -3760,7 +3760,7 @@ function goPage(n,el){
   if(n===11){initClose();}
   if(n===12){initMonthlyReport();renderMonthlyReport();}
   if(n===13){initYearReport();renderYearReport();}
-  if(n===14){loadBoard();}
+  if(n===14){loadBoard(true);}
   if(n===15){initPaymentIn();}
   if(n===16){initExpense();}
   if(n===17){renderSetupPage();}
@@ -5031,7 +5031,7 @@ function runAggPay() {
       <td style="padding:6px 8px;text-align:right">${yen(gross)}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${bizFee<0?'#e05b5b':'inherit'}" title="税別金額（課税分）×手数料率${(feeRate*100).toFixed(1)}%">${yen(bizFee)}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:500" title="（税別金額−業務手数料）＋消費税10%">${yen(netIncl)}</td>
-      <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(advHwSum)}</td>
+      <td style="padding:6px 8px;text-align:right">${yen(advHwSum)}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${adminFee<0?'#e05b5b':'inherit'}">${yen(adminFee)}</td>
       <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}</td>
       <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="その他控除${nonTaxSum?'＋非課税分'+yen(nonTaxSum):''}">${yen(nonTaxSum + otherTotal)}</td>
@@ -5051,7 +5051,7 @@ function runAggPay() {
     <td style="padding:6px 8px;text-align:right">${yen(gGross)}</td>
     <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(gBizFee)}</td>
     <td style="padding:6px 8px;text-align:right">${yen(gNetIncl)}</td>
-    <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(gAdvHw)}</td>
+    <td style="padding:6px 8px;text-align:right">${yen(gAdvHw)}</td>
     <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(gAdminFee)}</td>
     <td style="padding:6px 8px;text-align:right">${yen(gVehRental)}</td>
     <td style="padding:6px 8px;text-align:right">${yen(gNonTax + gOther)}</td>
@@ -8002,7 +8002,7 @@ function applyDriverPortal() {
   const drvDmEl = document.getElementById('drvDailyMonth');
   if (drvDmEl) drvDmEl.value = thisM;
 
-  goDrvPage(0, document.getElementById('dnt0'));
+  goDrvPage(3, document.getElementById('dnt3'));
 
   // 未読の明細書があればログイン時に知らせる
   if (me?.driver_id && sb) {
@@ -8010,6 +8010,8 @@ function applyDriverPortal() {
       .then(({data}) => { if (data?.length) showT(`📬 未読の支払明細書が${data.length}件あります（手取り明細タブで確認）`, 'twa'); })
       .catch?.(()=>{});
   }
+  // 掲示板は既定タブとしてログイン直後に表示されるため（goDrvPage(3,...)がloadBoardとmarkBoardSeenを行う）、
+  // ここで別途トースト通知は出さない
 }
 
 function goDrvPage(n, el) {
@@ -8022,7 +8024,7 @@ function goDrvPage(n, el) {
   if (n===0) loadDriverDailyList();
   if (n===1) renderDriverMonthly();
   if (n===2) { renderDriverPnl(); loadDriverStatements(); }
-  if (n===3) { loadBoard(); renderBoardTo('drvBoardList'); }
+  if (n===3) { loadBoard(true); renderBoardTo('drvBoardList'); }
   if (n===4) renderDriverPortalDocs();
 }
 
@@ -8541,7 +8543,8 @@ function exportDriverMonthlyCsv() {
 /* ===== 掲示板 ===== */
 let boardPosts = [];
 
-async function loadBoard() {
+// markSeen=true: このタブを実際に開いたときに呼び、既読位置（localStorage）を更新する
+async function loadBoard(markSeen) {
   if (!sb) return;
   try {
     const {data, error} = await sb.from('board_posts').select('*').order('created_at', {ascending:false}).limit(50);
@@ -8556,6 +8559,7 @@ async function loadBoard() {
     boardPosts = data || [];
     renderBoardTo('boardList');
     renderBoardTo('drvBoardList');
+    if (markSeen) markBoardSeen();
     // 投稿ボタンは管理者/editorのみ
     const bBtn = document.getElementById('bBoardPost');
     if (bBtn) bBtn.style.display = me&&(me.role==='admin'||me.role==='editor') ? 'block' : 'none';
@@ -8563,6 +8567,21 @@ async function loadBoard() {
     const el = document.getElementById('boardList');
     if (el) el.innerHTML = `<div style="color:var(--red);font-size:11px;padding:12px">${e.message}</div>`;
   }
+}
+// 掲示板の既読位置はユーザーごとにブラウザのlocalStorageで管理する（既読管理用のテーブルは持たない簡易実装）
+function boardSeenKey() { return `pgbase_board_seen_${me?.id||''}`; }
+function markBoardSeen() {
+  if (!me || !boardPosts.length) return;
+  localStorage.setItem(boardSeenKey(), boardPosts[0].created_at || new Date().toISOString());
+}
+// ログイン時に新着の掲示板投稿があればトーストで知らせる
+async function checkBoardAlerts() {
+  if (!sb || !me) return;
+  await loadBoard();
+  if (!boardPosts.length) return;
+  const lastSeen = localStorage.getItem(boardSeenKey()) || '';
+  const unseen = boardPosts.filter(p => (p.created_at||'') > lastSeen);
+  if (unseen.length) showT(`📢 新着の掲示板投稿が${unseen.length}件あります: ${unseen[0].title}`, 'twa');
 }
 
 function renderBoardTo(elId) {
