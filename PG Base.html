@@ -8030,10 +8030,11 @@ function goDrvPage(n, el) {
 
 /* ===== ドライバー提出書類（免許証・車検証・自賠責・任意保険） ===== */
 const DRIVER_DOC_TYPES = [
-  { key:'license', label:'運転免許証',   expLabel:'有効期限' },
-  { key:'shaken',  label:'車検証',       expLabel:'車検満了日' },
-  { key:'jibai',   label:'自賠責保険',   expLabel:'保険期間満了日' },
-  { key:'nini',    label:'任意保険',     expLabel:'保険期間満了日' },
+  { key:'license',    label:'運転免許証',       expLabel:'有効期限' },
+  { key:'shaken',     label:'車検証',           expLabel:'車検満了日' },
+  { key:'jibai',      label:'自賠責保険',       expLabel:'保険期間満了日' },
+  { key:'nini',       label:'任意保険',         expLabel:'保険期間満了日' },
+  { key:'anzenkanri', label:'安全管理者証明書', expLabel:'有効期限' },
 ];
 const DOC_WARN_DAYS = 30; // 期限の何日前から「期限間近」扱いにするか
 let driverDocs = []; // driver_documents全件キャッシュ
