@@ -1301,6 +1301,7 @@ td.dim{color:var(--text2)}
       <select id="aggPayPartnerSel" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></select>
       <button class="btn sml grn" onclick="exportPartnerCover('excel')" title="Excel鑑を発行" style="padding:3px 10px">📊 Excel</button>
       <button class="btn sml pri" onclick="exportPartnerCover('pdf')" title="PDF鑑を発行" style="padding:3px 10px">📑 PDF</button>
+      <button class="btn sml" style="margin-left:8px" onclick="openLeaseAggM()" title="現在集計中の期間で、車両リース代をリース会社ごとに合計します">🚗 リース会社別集計</button>
     </div>
 
     <div style="overflow-x:auto">
@@ -1996,6 +1997,15 @@ td.dim{color:var(--text2)}
   </div>
 </div>
 
+<!-- モーダル: リース会社別集計 -->
+<div class="overlay" id="mLeaseAgg">
+  <div class="modal" style="max-width:520px">
+    <div class="mh">🚗 リース会社別集計 <button class="ibtn" onclick="closeM('mLeaseAgg')">✕</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">支払明細書作成タブで集計中の期間・絞り込み条件をもとに、車両リース代をリース会社ごとに合計します。</div>
+    <div id="leaseAggBody" style="max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <!-- モーダル: 書類状況一覧（全ドライバー） -->
 <div class="overlay" id="mDocStatus">
   <div class="modal" style="max-width:760px">
@@ -2196,6 +2206,7 @@ td.dim{color:var(--text2)}
         <div class="fld"><label>事務手数料（円）</label><input type="number" id="dAdminFee" placeholder="例: -10000" step="1"></div>
       </div>
       <div class="fld"><label>車両リース代（円）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1"></div>
+      <div class="fld"><label>リース会社（任意）</label><input type="text" id="dLeaseCompany" list="leaseCompanyList" placeholder="例: 〇〇リース（車両代の支払先を集計する際に使用）"><datalist id="leaseCompanyList"></datalist></div>
       <div class="fld">
         <label>その他の控除項目（保険料・家賃など、複数追加可）</label>
         <div id="dOtherDeductions" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px"></div>
@@ -3038,7 +3049,7 @@ function buildStatementSheetData(side, rows) {
       ['消費税（10%）', netTax],
       ...(extraFeeTotal ? [['追加料金（高速代・立替など）', extraFeeTotal]] : []),
       ['事務手数料', adminFee],
-      ['車両リース代', vehRental],
+      [d?.lease_company ? `車両リース代（${d.lease_company}）` : '車両リース代', vehRental],
       ...(d?.other_deductions||[]).map(od=>[od.name, Number(od.amount)||0]),
       ['支払合計金額', takeHome],
     ];
@@ -4085,7 +4096,9 @@ function switchModalTab(prefix, tab) {
 }
 // 取引先管理で「協力会社」として登録した会社名を、ドライバー登録の協力会社欄の入力候補に反映する
 function populatePartnerList(){const dl=document.getElementById('partnerList');if(dl)dl.innerHTML=clients.filter(c=>c.is_partner).map(c=>`<option value="${c.name}">`).join('');}
-function openDrvM(){populatePartnerList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+// リース会社の入力候補: 既存ドライバーで使われているリース会社名から重複入力を防ぐ（clients側にマスタは持たない軽量実装）
+function populateLeaseCompanyList(){const dl=document.getElementById('leaseCompanyList');if(dl)dl.innerHTML=[...new Set(drvs.map(d=>d.lease_company).filter(Boolean))].map(n=>`<option value="${n}">`).join('');}
+function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt','dLeaseCompany'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 function addTag(){const v=document.getElementById('dCi').value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);document.getElementById('dCi').value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
 function renderTags(){document.getElementById('cTags').innerHTML=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');}
@@ -4109,7 +4122,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dLeaseCompany').value=d.lease_company||'';document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -4143,6 +4156,7 @@ async function saveDrv(){
     fee_rate:(+document.getElementById('dFeeRate').value||0)/100,
     admin_fee:+document.getElementById('dAdminFee').value||0,
     vehicle_rental:+document.getElementById('dVehRental').value||0,
+    lease_company:document.getElementById('dLeaseCompany').value.trim()||null,
     pay_month_offset:+document.getElementById('dPayMonthOffset').value||0,
     pay_day:document.getElementById('dPayDay').value||'end',
     invoice_no:document.getElementById('dInvoiceNo').value.trim()||null,
@@ -5033,7 +5047,7 @@ function runAggPay() {
       <td style="padding:6px 8px;text-align:right;font-weight:500" title="（税別金額−業務手数料）＋消費税10%">${yen(netIncl)}</td>
       <td style="padding:6px 8px;text-align:right">${yen(advHwSum)}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${adminFee<0?'#e05b5b':'inherit'}">${yen(adminFee)}</td>
-      <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}</td>
+      <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}${d.lease_company?`<div style="font-size:9.5px;color:var(--text2);font-weight:400">${escHtml(d.lease_company)}</div>`:''}</td>
       <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="その他控除${nonTaxSum?'＋非課税分'+yen(nonTaxSum):''}">${yen(nonTaxSum + otherTotal)}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--blue);border-left:0.5px solid var(--border)">${yen(takeHome)}</td>
       <td style="padding:6px 8px;white-space:nowrap">
@@ -5189,6 +5203,48 @@ function populateAggPayPartnerSel(groups) {
     ? companies.map(c=>`<option value="${c}">${c}</option>`).join('')
     : '<option value="">（該当する協力会社なし）</option>';
   if (companies.includes(cur)) sel.value = cur;
+}
+
+// 現在集計中の支払データ（window._aggPayGroups）をもとに、車両リース代をリース会社ごとに合計して表示する
+function openLeaseAggM() {
+  const groups = window._aggPayGroups;
+  if (!groups || !Object.keys(groups).length) { alert('先に支払明細書作成タブで「集計」を行ってください'); return; }
+  renderLeaseAggBody(groups);
+  document.getElementById('mLeaseAgg').classList.add('on');
+}
+function renderLeaseAggBody(groups) {
+  const el = document.getElementById('leaseAggBody');
+  if (!el) return;
+  const buckets = {};
+  Object.values(groups).forEach(g => {
+    const d = g.drv;
+    const amt = Math.abs(d.vehicle_rental ?? -30000);
+    const key = d.lease_company || '未設定';
+    if (!buckets[key]) buckets[key] = { total: 0, drivers: [] };
+    buckets[key].total += amt;
+    buckets[key].drivers.push(d.name);
+  });
+  const rows = Object.entries(buckets).sort(([,a],[,b]) => b.total - a.total);
+  if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">対象データがありません</div>'; return; }
+  const grandTotal = rows.reduce((s,[,v])=>s+v.total,0);
+  const grandCnt = rows.reduce((s,[,v])=>s+v.drivers.length,0);
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:var(--bg2);color:var(--text2);text-align:left">
+      <th style="padding:6px 8px">リース会社</th>
+      <th style="padding:6px 8px;text-align:right">台数</th>
+      <th style="padding:6px 8px;text-align:right">合計金額</th>
+    </tr></thead>
+    <tbody>${rows.map(([name,v])=>`<tr style="border-bottom:0.5px solid var(--border)">
+      <td style="padding:6px 8px" title="${escHtml(v.drivers.join('、'))}">${escHtml(name)}</td>
+      <td style="padding:6px 8px;text-align:right">${v.drivers.length}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:500">${yen(v.total)}</td>
+    </tr>`).join('')}</tbody>
+    <tfoot><tr style="font-weight:600;border-top:1px solid var(--border)">
+      <td style="padding:6px 8px">合計</td>
+      <td style="padding:6px 8px;text-align:right">${grandCnt}</td>
+      <td style="padding:6px 8px;text-align:right">${yen(grandTotal)}</td>
+    </tr></tfoot>
+  </table>`;
 }
 
 // 「出力形式」セレクト（通常／鑑）に応じてExcel・PDFボタンの動作を振り分ける（ボタン数を増やさず集約するため）。
@@ -6335,7 +6391,7 @@ function renderPnl() {
         <div class="pnl-row" style="font-weight:500"><span>税込売上合計</span><span>${yen(grossTax)}</span></div>
         <div class="pnl-row neg sub"><span>業務手数料（${Math.abs(feeRate*100)}%）＋消費税</span><span>${yen(bizFeeWithTax)}</span></div>
         <div class="pnl-row neg sub"><span>事務手数料</span><span>${yen(adminFee)}</span></div>
-        <div class="pnl-row neg sub"><span>車両レンタル</span><span>${yen(vehicleRental)}</span></div>
+        <div class="pnl-row neg sub"><span>車両レンタル${d.lease_company?` <span style="color:var(--text2);font-weight:400">（${escHtml(d.lease_company)}）</span>`:''}</span><span>${yen(vehicleRental)}</span></div>
         ${(d.other_deductions||[]).map(od=>`<div class="pnl-row neg sub"><span>${escHtml(od.name)}</span><span>${yen(Number(od.amount)||0)}</span></div>`).join('')}
         <div class="pnl-row neg" style="font-weight:500"><span>控除合計</span><span>${yen(deductions)}</span></div>
         <div class="pnl-row total"><span>手取り額</span><span style="color:${statusColor}">${yen(takeHome)}</span></div>
@@ -8522,7 +8578,7 @@ async function renderDriverPnl() {
     <div class="pnl-row"><span>税込売上合計</span><span>${yen(grossTax)}</span></div>
     <div class="pnl-row neg sub"><span>業務手数料（${Math.abs(feeRate*100)}%）＋消費税</span><span>${yen(bizFeeWithTax)}</span></div>
     <div class="pnl-row neg sub"><span>事務手数料</span><span>${yen(adminFee)}</span></div>
-    <div class="pnl-row neg sub"><span>車両レンタル</span><span>${yen(vehRental)}</span></div>
+    <div class="pnl-row neg sub"><span>車両レンタル${drvData.lease_company?` <span style="color:var(--text2);font-weight:400">（${escHtml(drvData.lease_company)}）</span>`:''}</span><span>${yen(vehRental)}</span></div>
     ${(drvData.other_deductions||[]).map(od=>`<div class="pnl-row neg sub"><span>${escHtml(od.name)}</span><span>${yen(Number(od.amount)||0)}</span></div>`).join('')}
     <div class="pnl-row total"><span>お支払い金額（手取り）</span><span style="color:${takeHome>=0?'var(--green)':'var(--red)'};font-size:16px">${yen(takeHome)}</span></div>
     <div style="margin-top:16px;border-top:0.5px solid var(--border);padding-top:8px">
@@ -8921,7 +8977,7 @@ function getCompanyBlock() {
 function buildStatementDocInner(side, rows) {
   const d = buildStatementSheetData(side, rows);
   const isBilling = side === 'billing';
-  const notesHtml = (d.notes || 'なし').replace(/\n/g, '<br>');
+  const notesHtml = escHtml(d.notes || 'なし').replace(/\n/g, '<br>');
   const itemRows = d.items.map(it=>`<tr>
     <td>${it.no}</td><td>${it.date.slice(5).replace('-','/')}</td><td>${it.car}${it.driverName?' '+it.driverName:''}</td>
     <td class="task">${it.task}</td>
@@ -8973,7 +9029,7 @@ function buildStatementDocInner(side, rows) {
     <table class="bottom-table"><tbody>
       ${d.breakdownRows.length ? d.breakdownRows.map(([label,val], i) => `<tr>
         ${i===0 ? `<td class="notes-cell" rowspan="${d.breakdownRows.length}"><div class="lbl">（備考）</div>${notesHtml}</td>` : ''}
-        <td class="breakdown-cell${i===d.breakdownRows.length-1?' last':''}"><span class="lbl2">${label}</span><span class="val${val<0?' neg':''}">${yen(val)}</span></td>
+        <td class="breakdown-cell${i===d.breakdownRows.length-1?' last':''}"><span class="lbl2">${escHtml(label)}</span><span class="val${val<0?' neg':''}">${yen(val)}</span></td>
       </tr>`).join('') : `<tr><td class="notes-cell"><div class="lbl">（備考）</div>${notesHtml}</td><td class="breakdown-cell"></td></tr>`}
     </tbody></table>
   </div>`;
@@ -11759,7 +11815,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   vehicle_rental int DEFAULT -30000,
   pay_month_offset int DEFAULT 2, pay_day text DEFAULT 'end',
   invoice_no text, other_deductions jsonb NOT NULL DEFAULT '[]',
-  bank text, company text, note text
+  bank text, company text, note text, lease_company text
 );
 
 -- ユーザー（認証はSupabase Auth。pwは廃止済み・互換用にnullable列のみ残置）
