@@ -1310,7 +1310,8 @@ td.dim{color:var(--text2)}
             <th colspan="6" style="padding:4px 8px;font-weight:500"></th>
             <th colspan="3" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">税込金額の内訳</th>
             <th colspan="2" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">控除・差引合計</th>
-            <th colspan="4" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">非課税項目</th>
+            <th colspan="1" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border)"></th>
+            <th colspan="3" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border);border-bottom:0.5px solid var(--border2)">非課税項目</th>
             <th colspan="1" style="padding:4px 8px;font-weight:500;border-left:0.5px solid var(--border)"></th>
             <th style="padding:4px 8px"></th>
           </tr>
@@ -1327,7 +1328,7 @@ td.dim{color:var(--text2)}
             <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)" title="税別金額（課税分）×手数料率">業務手数料</th>
             <th style="padding:6px 8px;text-align:right" title="（税別金額−業務手数料）＋その消費税10%。支払明細書の「合計＋消費税」と同じ値">差引合計(税込)</th>
             <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)" title="追加料金として入力した高速代・立替の合計">高速・立替代</th>
-            <th style="padding:6px 8px;text-align:right">事務手数料</th>
+            <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">事務手数料</th>
             <th style="padding:6px 8px;text-align:right">車両代</th>
             <th style="padding:6px 8px;text-align:right" title="その他の控除＋非課税で入力した明細・追加料金の合計">その他</th>
             <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">支払合計金額</th>
@@ -5031,7 +5032,7 @@ function runAggPay() {
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${bizFee<0?'#e05b5b':'inherit'}" title="税別金額（課税分）×手数料率${(feeRate*100).toFixed(1)}%">${yen(bizFee)}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:500" title="（税別金額−業務手数料）＋消費税10%">${yen(netIncl)}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(advHwSum)}</td>
-      <td style="padding:6px 8px;text-align:right;color:${adminFee<0?'#e05b5b':'inherit'}">${yen(adminFee)}</td>
+      <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${adminFee<0?'#e05b5b':'inherit'}">${yen(adminFee)}</td>
       <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}</td>
       <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="その他控除${nonTaxSum?'＋非課税分'+yen(nonTaxSum):''}">${yen(nonTaxSum + otherTotal)}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--blue);border-left:0.5px solid var(--border)">${yen(takeHome)}</td>
@@ -5051,7 +5052,7 @@ function runAggPay() {
     <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(gBizFee)}</td>
     <td style="padding:6px 8px;text-align:right">${yen(gNetIncl)}</td>
     <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(gAdvHw)}</td>
-    <td style="padding:6px 8px;text-align:right">${yen(gAdminFee)}</td>
+    <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(gAdminFee)}</td>
     <td style="padding:6px 8px;text-align:right">${yen(gVehRental)}</td>
     <td style="padding:6px 8px;text-align:right">${yen(gNonTax + gOther)}</td>
     <td style="padding:6px 8px;text-align:right;color:var(--blue);border-left:0.5px solid var(--border)">${yen(gTakeHome)}</td>
