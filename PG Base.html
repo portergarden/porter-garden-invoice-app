@@ -2086,6 +2086,9 @@ td.dim{color:var(--text2)}
         <option value="urgent">緊急</option>
       </select>
     </div>
+    <div class="fld"><label>配属先（絞り込み・任意）</label>
+      <select id="boardTargetCompany"><option value="">全員に表示</option></select>
+    </div>
     <div class="mfoot">
       <button class="btn" onclick="closeM('mBoard')">キャンセル</button>
       <button class="btn pri" onclick="submitBoardPost()">投稿する</button>
@@ -2206,7 +2209,8 @@ td.dim{color:var(--text2)}
         <div class="fld"><label>事務手数料（円）</label><input type="number" id="dAdminFee" placeholder="例: -10000" step="1"></div>
       </div>
       <div class="fld"><label>車両リース代（円）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1"></div>
-      <div class="fld"><label>リース会社（任意）</label><input type="text" id="dLeaseCompany" list="leaseCompanyList" placeholder="例: 〇〇リース（車両代の支払先を集計する際に使用）"><datalist id="leaseCompanyList"></datalist></div>
+      <div class="fld"><label>リース会社（任意・車両代の支払先を集計する際に使用）</label><select id="dLeaseCompany" onchange="onLeaseCompanySelChange()"><option value="">（未設定）</option></select></div>
+      <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dHideStatement" style="width:auto"> 支払明細書をドライバーポータルに表示しない（協力会社経由で支払う場合など）</label></div>
       <div class="fld">
         <label>その他の控除項目（保険料・家賃など、複数追加可）</label>
         <div id="dOtherDeductions" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px"></div>
@@ -4096,9 +4100,29 @@ function switchModalTab(prefix, tab) {
 }
 // 取引先管理で「協力会社」として登録した会社名を、ドライバー登録の協力会社欄の入力候補に反映する
 function populatePartnerList(){const dl=document.getElementById('partnerList');if(dl)dl.innerHTML=clients.filter(c=>c.is_partner).map(c=>`<option value="${c.name}">`).join('');}
-// リース会社の入力候補: 既存ドライバーで使われているリース会社名から重複入力を防ぐ（clients側にマスタは持たない軽量実装）
-function populateLeaseCompanyList(){const dl=document.getElementById('leaseCompanyList');if(dl)dl.innerHTML=[...new Set(drvs.map(d=>d.lease_company).filter(Boolean))].map(n=>`<option value="${n}">`).join('');}
-function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt','dLeaseCompany'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+// リース会社をプルダウン化: 既存ドライバーで使われているリース会社名から選ぶ（clients側にマスタは持たない軽量実装）。
+// 一覧に無い会社は「＋ 新しいリース会社を追加...」から都度追加する
+function populateLeaseCompanyList(selected){
+  const sel = document.getElementById('dLeaseCompany');
+  if (!sel) return;
+  const companies = [...new Set(drvs.map(d=>d.lease_company).filter(Boolean))].sort();
+  if (selected && !companies.includes(selected)) companies.push(selected);
+  sel.innerHTML = '<option value="">（未設定）</option>'
+    + companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')
+    + '<option value="__new__">＋ 新しいリース会社を追加...</option>';
+  sel.value = selected || '';
+}
+function onLeaseCompanySelChange(){
+  const sel = document.getElementById('dLeaseCompany');
+  if (!sel || sel.value !== '__new__') return;
+  const name = (prompt('新しいリース会社名を入力してください:')||'').trim();
+  if (!name) { sel.value = ''; return; }
+  const opt = document.createElement('option');
+  opt.value = name; opt.textContent = name;
+  sel.insertBefore(opt, sel.lastElementChild);
+  sel.value = name;
+}
+function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 function addTag(){const v=document.getElementById('dCi').value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);document.getElementById('dCi').value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
 function renderTags(){document.getElementById('cTags').innerHTML=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');}
@@ -4122,7 +4146,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dLeaseCompany').value=d.lease_company||'';document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -4157,6 +4181,7 @@ async function saveDrv(){
     admin_fee:+document.getElementById('dAdminFee').value||0,
     vehicle_rental:+document.getElementById('dVehRental').value||0,
     lease_company:document.getElementById('dLeaseCompany').value.trim()||null,
+    hide_statement:document.getElementById('dHideStatement').checked,
     pay_month_offset:+document.getElementById('dPayMonthOffset').value||0,
     pay_day:document.getElementById('dPayDay').value||'end',
     invoice_no:document.getElementById('dInvoiceNo').value.trim()||null,
@@ -8058,10 +8083,15 @@ function applyDriverPortal() {
   const drvDmEl = document.getElementById('drvDailyMonth');
   if (drvDmEl) drvDmEl.value = thisM;
 
+  // 協力会社経由で支払うなど、ポータルで支払明細書を見せないドライバーは「手取り明細」タブごと非表示にする
+  const hideStatement = !!me?.driver_data?.hide_statement;
+  const stmtTabEl = document.getElementById('dnt2');
+  if (stmtTabEl) stmtTabEl.style.display = hideStatement ? 'none' : '';
+
   goDrvPage(3, document.getElementById('dnt3'));
 
-  // 未読の明細書があればログイン時に知らせる
-  if (me?.driver_id && sb) {
+  // 未読の明細書があればログイン時に知らせる（タブ自体を非表示にしているドライバーには出さない）
+  if (me?.driver_id && sb && !hideStatement) {
     sb.from('driver_statements').select('id').eq('drv_id', me.driver_id).is('read_at', null)
       .then(({data}) => { if (data?.length) showT(`📬 未読の支払明細書が${data.length}件あります（手取り明細タブで確認）`, 'twa'); })
       .catch?.(()=>{});
@@ -8644,9 +8674,13 @@ async function checkBoardAlerts() {
 function renderBoardTo(elId) {
   const el = document.getElementById(elId);
   if (!el) return;
-  if (!boardPosts.length) { el.innerHTML='<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">投稿がありません</div>'; return; }
+  // ドライバー側は「全員」または自分の配属先（協力会社）宛の投稿のみ表示する。管理側は絞り込みの確認のため全件表示する
+  const list = elId === 'drvBoardList'
+    ? boardPosts.filter(p => !p.target_company || p.target_company === me?.driver_data?.company)
+    : boardPosts;
+  if (!list.length) { el.innerHTML='<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">投稿がありません</div>'; return; }
   const canDel = me && (me.role==='admin'||me.role==='editor');
-  el.innerHTML = boardPosts.map(p => {
+  el.innerHTML = list.map(p => {
     const priColor = p.priority==='urgent'?'var(--red)':p.priority==='important'?'var(--amber-text)':'var(--blue)';
     const priLabel = {urgent:'緊急',important:'重要',normal:'通常'}[p.priority||'normal'];
     const dt = p.created_at ? new Date(p.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
@@ -8654,6 +8688,7 @@ function renderBoardTo(elId) {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
           <span style="font-size:10px;padding:1px 6px;border-radius:99px;border:0.5px solid ${priColor};color:${priColor}">${priLabel}</span>
+          ${p.target_company?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="この投稿の配属先絞り込み">🎯 ${escHtml(p.target_company)}</span>`:''}
           <span style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
@@ -8670,6 +8705,11 @@ function openBoardPost() {
   document.getElementById('boardTitle').value='';
   document.getElementById('boardBody').value='';
   document.getElementById('boardPriority').value='normal';
+  const targetSel = document.getElementById('boardTargetCompany');
+  if (targetSel) {
+    const companies = [...new Set(drvs.map(d=>d.company).filter(Boolean))].sort();
+    targetSel.innerHTML = '<option value="">全員に表示</option>' + companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}のみ</option>`).join('');
+  }
   document.getElementById('mBoard').classList.add('on');
 }
 
@@ -8677,9 +8717,10 @@ async function submitBoardPost() {
   const title = document.getElementById('boardTitle').value.trim();
   const body = document.getElementById('boardBody').value.trim();
   const priority = document.getElementById('boardPriority').value;
+  const targetCompany = document.getElementById('boardTargetCompany')?.value || null;
   if (!title||!body) { alert('タイトルと本文は必須です'); return; }
   try {
-    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||''}).select().single();
+    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_company:targetCompany}).select().single();
     if (error) throw error;
     boardPosts.unshift(data);
     closeM('mBoard');
@@ -11815,7 +11856,8 @@ CREATE TABLE IF NOT EXISTS drivers (
   vehicle_rental int DEFAULT -30000,
   pay_month_offset int DEFAULT 2, pay_day text DEFAULT 'end',
   invoice_no text, other_deductions jsonb NOT NULL DEFAULT '[]',
-  bank text, company text, note text, lease_company text
+  bank text, company text, note text, lease_company text,
+  hide_statement boolean NOT NULL DEFAULT false
 );
 
 -- ユーザー（認証はSupabase Auth。pwは廃止済み・互換用にnullable列のみ残置）
@@ -11910,7 +11952,8 @@ CREATE TABLE IF NOT EXISTS receipt_schedules (
 CREATE TABLE IF NOT EXISTS board_posts (
   id bigserial PRIMARY KEY, title text NOT NULL, body text,
   priority text DEFAULT 'normal', author text,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  target_company text
 );
 
 -- 手入力テンプレート
