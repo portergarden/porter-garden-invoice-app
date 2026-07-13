@@ -2007,7 +2007,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: リース会社別集計 -->
 <div class="overlay" id="mLeaseAgg">
-  <div class="modal" style="max-width:520px">
+  <div class="modal" style="width:520px;max-width:95vw">
     <div class="mh">🚗 リース会社別集計 <button class="ibtn" onclick="closeM('mLeaseAgg')">✕</button></div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:8px">支払明細書作成タブで集計中の期間・絞り込み条件をもとに、車両リース代をリース会社ごとに合計します。</div>
     <div id="leaseAggBody" style="max-height:60vh;overflow-y:auto"></div>
@@ -2016,7 +2016,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: 書類状況一覧（全ドライバー） -->
 <div class="overlay" id="mDocStatus">
-  <div class="modal" style="max-width:760px">
+  <div class="modal" style="width:960px;max-width:95vw">
     <div class="mh">書類状況一覧 <button class="ibtn" onclick="closeM('mDocStatus')">✕</button></div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:8px">各ドライバーの提出状況と有効期限。期限30日前から「期限間近」になります。行の📄から登録・更新できます。</div>
     <div id="docStatusBody" style="max-height:60vh;overflow-y:auto"></div>
@@ -2083,7 +2083,7 @@ td.dim{color:var(--text2)}
 
 <!-- モーダル: 掲示板投稿 -->
 <div class="overlay" id="mBoard">
-  <div class="modal" style="max-width:560px">
+  <div class="modal" style="width:560px;max-width:95vw">
     <div class="mh">掲示板 投稿 <button class="ibtn" onclick="closeM('mBoard')">✕</button></div>
     <div class="fld"><label>タイトル</label><input type="text" id="boardTitle" placeholder="タイトルを入力"></div>
     <div class="fld"><label>本文</label><textarea id="boardBody" rows="5" style="width:100%;padding:8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);resize:vertical"></textarea></div>
@@ -8416,7 +8416,8 @@ function renderDocStatusBody() {
       <td style="${cellStyle};text-align:left;font-weight:500">${d.name}</td>
       ${DRIVER_DOC_TYPES.map(t => {
         const doc = findDriverDoc(d.id, t.key);
-        return `<td style="${cellStyle}">${docStatusPill(doc)}${doc?.expiry_date?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${doc.expiry_date}</div>`:''}</td>`;
+        const clickable = !!doc?.file_path;
+        return `<td style="${cellStyle}${clickable?';cursor:pointer' : ''}"${clickable?` onclick="viewDriverDoc(${d.id},'${t.key}')" title="クリックして書類を表示"`:''}>${docStatusPill(doc)}${doc?.expiry_date?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${doc.expiry_date}</div>`:''}</td>`;
       }).join('')}
       <td style="${cellStyle}"><button class="ibtn" title="書類を開く" onclick="closeM('mDocStatus');openDrvDocsM(${d.id})">📄</button></td>
     </tr>`).join('')}</tbody>
