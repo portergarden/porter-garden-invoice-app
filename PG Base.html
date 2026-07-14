@@ -3707,7 +3707,7 @@ function renderAggDetailFull() {
   const allSelected = _aggDetailRows.length > 0 && _aggDetailRows.every(r=>_aggDetailSelected.has(r.id));
   const wrapCell = 'white-space:normal;word-break:break-word;overflow-wrap:break-word';
   thead.innerHTML = `<tr style="background:var(--bg2);border-bottom:0.5px solid var(--border);color:var(--text2);text-align:left">
-    <th style="padding:8px;width:24px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600"><input type="checkbox" ${allSelected?'checked':''} onchange="toggleAggDetailSelAll(this.checked)"></th>
+    <th style="padding:8px;width:24px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600"><input type="checkbox" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)" ${allSelected?'checked':''} onchange="toggleAggDetailSelAll(this.checked)"></th>
     ${cols.map(c=>`<th style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600;${wrapCell};${(c.num||c.right)?'text-align:right':''}">${c.label}</th>`).join('')}
     <th style="padding:8px;width:76px;vertical-align:middle;font-size:13px;font-weight:600">操作</th>
   </tr>`;
@@ -3717,7 +3717,7 @@ function renderAggDetailFull() {
     return;
   }
   tbody.innerHTML = _aggDetailRows.map(r=>`<tr style="border-bottom:0.5px solid var(--border);cursor:pointer" title="ダブルクリックで修正画面を開きます" ondblclick="openEditInvoice(${r.id})">
-    <td style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle"><input type="checkbox" ${_aggDetailSelected.has(r.id)?'checked':''} onchange="toggleAggDetailRowSel(${r.id},this.checked)" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"></td>
+    <td style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle;background:var(--bg2)"><input type="checkbox" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)" ${_aggDetailSelected.has(r.id)?'checked':''} onchange="toggleAggDetailRowSel(${r.id},this.checked)" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"></td>
     ${cols.map(c=>{
       const v = c.get(r, _aggDetailSide);
       const alignStyle = (c.num||c.right)?'text-align:right':'text-align:left';
@@ -8722,10 +8722,16 @@ CREATE TABLE IF NOT EXISTS board_posts (
   body text,
   priority text DEFAULT 'normal',
   author text,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  target_driver_ids integer[],
+  attachment_path text,
+  attachment_name text
 );
 ALTER TABLE board_posts ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON board_posts FOR ALL USING (true) WITH CHECK (true);`;
+CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING (true);
+CREATE POLICY "board_posts_insert" ON board_posts FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "board_posts_update" ON board_posts FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "board_posts_delete" ON board_posts FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));`;
   const win = window.open('','_blank','width=660,height=400');
   win.document.write(`<html><body style="font-family:monospace;padding:20px"><h3>SQL Editor で実行</h3><pre style="background:#f5f5f5;padding:12px;font-size:12px">${sql}</pre><button onclick="navigator.clipboard.writeText(\`${sql}\`)">コピー</button></body></html>`);
 }
