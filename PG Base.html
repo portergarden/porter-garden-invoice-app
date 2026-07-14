@@ -2807,7 +2807,8 @@ const AGG_DETAIL_COLS = [
   {key:'invPayDate', label:'支払日', default:false, get:r=>r.invoice_payment_date||''},
   {key:'status', label:'ステータス', default:true, get:r=>{
     const canEd = me && me.role !== 'viewer', canAp = me && me.role === 'admin';
-    return `<span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>${canEd&&r.st<1?`<button class="ibtn" title="確認済にする" onclick="advSt(${r.id},1)">✓</button>`:''}${canAp&&r.st<2?`<button class="ibtn" title="承認する" onclick="advSt(${r.id},2)">✓✓</button>`:''}`;
+    const canRevert = (canAp&&r.st===2)||(canEd&&r.st===1);
+    return `<span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>${canEd&&r.st<1?`<button class="ibtn" title="確認済にする" onclick="advSt(${r.id},1)">✓</button>`:''}${canAp&&r.st<2?`<button class="ibtn" title="承認する" onclick="advSt(${r.id},2)">✓✓</button>`:''}${canRevert?`<button class="ibtn" title="取り消す" onclick="revertSt(${r.id})">↩</button>`:''}`;
   }},
   {key:'note', label:'備考', default:false, get:r=>r.note||''},
 ];
@@ -3941,7 +3942,7 @@ function renderInv(){
       <td><span class="bdg ${typeBadge(r.type)}">${typeShort(r.type)}</span></td>
       ${nz(r.fare)}${nz(fb.hw)}${nz(fb.oth)}
       <td class="r" style="font-weight:500">${yen(tot_)}<div style="font-size:9px;color:var(--text2)">${r.tax===0?'非課税':r.tax+'%'}</div></td>
-      <td><span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>${canEd&&r.st<1?`<button class="ibtn" title="確認済にする" onclick="advSt(${r.id},1)">✓</button>`:''}${canAp&&r.st<2?`<button class="ibtn" title="承認する" onclick="advSt(${r.id},2)">✓✓</button>`:''}</td>
+      <td><span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>${canEd&&r.st<1?`<button class="ibtn" title="確認済にする" onclick="advSt(${r.id},1)">✓</button>`:''}${canAp&&r.st<2?`<button class="ibtn" title="承認する" onclick="advSt(${r.id},2)">✓✓</button>`:''}${(canAp&&r.st===2)||(canEd&&r.st===1)?`<button class="ibtn" title="取り消す" onclick="revertSt(${r.id})">↩</button>`:''}</td>
       <td class="dim" style="max-width:54px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.note)}</td>
       <td style="white-space:nowrap">${canEd?`<button class="ibtn" onclick="editInv(${r.id})">✎</button><button class="ibtn" onclick="delInv(${r.id})">🗑</button>`:''}</td>
     </tr>`;
@@ -4014,6 +4015,21 @@ async function advSt(id,st){
     renderInv();
     if (!document.getElementById('pg20')?.classList.contains('hide')) renderAggDetailFull();
     showT(`${stLbl(st)}に変更しました`);
+  }catch(e){showT('更新エラー: '+e.message,'ter');}
+}
+// 確認・承認は一段階ずつ取り消せるようにする（承認済→確認済、確認済→未確認）。
+// 承認の取消は承認と同じ権限（admin）、確認の取消は確認と同じ権限（viewer以外）を要求する
+async function revertSt(id){
+  const r=recs.find(x=>x.id===id);
+  if(!r||r.st<=0)return;
+  const newSt=r.st-1;
+  try{
+    const{error}=await sb.from('invoices').update({st:newSt}).eq('id',id);
+    if(error)throw error;
+    const old=r.st;r.st=newSt;addLog('ステータス取消',`${r.car}: ${stLbl(old)}→${stLbl(newSt)}`);
+    renderInv();
+    if (!document.getElementById('pg20')?.classList.contains('hide')) renderAggDetailFull();
+    showT(`${stLbl(newSt)}に戻しました`);
   }catch(e){showT('更新エラー: '+e.message,'ter');}
 }
 
