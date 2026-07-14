@@ -2049,6 +2049,11 @@ td.dim{color:var(--text2)}
       </select>
     </div>
     <div class="fld">
+      <label>添付ファイル（任意・PDF/画像、10MBまで）</label>
+      <input type="file" id="boardAttachFile" accept="application/pdf,image/jpeg,image/png,image/webp" onchange="document.getElementById('boardAttachName').textContent=this.files[0]?('選択中: '+this.files[0].name):''">
+      <div id="boardAttachName" style="font-size:11px;color:var(--text2);margin-top:3px"></div>
+    </div>
+    <div class="fld">
       <label>表示するドライバーを絞り込む（任意。何も選ばなければ全員に表示）</label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
         <select id="boardTargetClientSel" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"><option value="">取引先を選択</option></select>
@@ -8589,6 +8594,7 @@ function renderBoardTo(elId) {
         </div>
       </div>
       <div style="font-size:12px;white-space:pre-wrap;line-height:1.6">${escHtml(p.body)}</div>
+      ${p.attachment_path?`<button class="btn sml" style="margin-top:6px" onclick="openBoardAttachment('${escHtml(p.attachment_path)}')">📎 ${escHtml(p.attachment_name||'添付ファイル')}</button>`:''}
     </div>`;
   }).join('');
 }
@@ -8628,6 +8634,10 @@ function openBoardPost() {
   document.getElementById('boardTitle').value='';
   document.getElementById('boardBody').value='';
   document.getElementById('boardPriority').value='normal';
+  const fileEl = document.getElementById('boardAttachFile');
+  if (fileEl) fileEl.value = '';
+  const nameEl = document.getElementById('boardAttachName');
+  if (nameEl) nameEl.textContent = '';
   const cliSel = document.getElementById('boardTargetClientSel');
   if (cliSel) cliSel.innerHTML = '<option value="">取引先を選択</option>' + [...clients].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja')).map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
   pendBoardTargetIds = new Set();
@@ -8640,9 +8650,18 @@ async function submitBoardPost() {
   const body = document.getElementById('boardBody').value.trim();
   const priority = document.getElementById('boardPriority').value;
   const targetIds = pendBoardTargetIds.size ? [...pendBoardTargetIds] : null;
+  const file = document.getElementById('boardAttachFile')?.files?.[0] || null;
   if (!title||!body) { alert('タイトルと本文は必須です'); return; }
+  showLoad(true);
   try {
-    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_driver_ids:targetIds}).select().single();
+    let attachment_path = null, attachment_name = null;
+    if (file) {
+      const path = `${Date.now()}_${file.name}`;
+      const { error: upErr } = await sb.storage.from('board-attachments').upload(path, file);
+      if (upErr) throw new Error('添付ファイルのアップロードに失敗しました: ' + upErr.message);
+      attachment_path = path; attachment_name = file.name;
+    }
+    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_driver_ids:targetIds,attachment_path,attachment_name}).select().single();
     if (error) throw error;
     boardPosts.unshift(data);
     closeM('mBoard');
@@ -8650,13 +8669,24 @@ async function submitBoardPost() {
     addLog('掲示板投稿', title);
     showT('投稿しました');
   } catch(e) { showT('エラー: '+e.message,'ter'); }
+  showLoad(false);
+}
+
+async function openBoardAttachment(path) {
+  try {
+    const { data, error } = await sb.storage.from('board-attachments').createSignedUrl(path, 3600);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
 }
 
 async function deleteBoardPost(id) {
   if (!confirm('この投稿を削除しますか？')) return;
   try {
+    const post = boardPosts.find(p=>p.id===id);
     const {error} = await sb.from('board_posts').delete().eq('id',id);
     if (error) throw error;
+    if (post?.attachment_path) await sb.storage.from('board-attachments').remove([post.attachment_path]);
     boardPosts = boardPosts.filter(p=>p.id!==id);
     renderBoardTo('boardList');
     renderBoardTo('drvBoardList');
@@ -11871,7 +11901,7 @@ CREATE TABLE IF NOT EXISTS board_posts (
   id bigserial PRIMARY KEY, title text NOT NULL, body text,
   priority text DEFAULT 'normal', author text,
   created_at timestamptz DEFAULT now(),
-  target_driver_ids integer[]
+  target_driver_ids integer[], attachment_path text, attachment_name text
 );
 
 -- 手入力テンプレート
@@ -12170,13 +12200,14 @@ DROP POLICY IF EXISTS "driver_statements_delete" ON driver_statements;
 CREATE POLICY "driver_statements_delete" ON driver_statements FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
 -- ============================================================
--- 4. Storage（ドライバー提出書類・支払明細書PDF置き場）
---    バケットはSQL Editorから作成できないため、Dashboard > Storage で
---    以下の2つを「Private」で作成してください:
---      driver-docs        (許可MIME: image/jpeg, image/png, image/webp, application/pdf / 上限10MB)
---      driver-statements  (許可MIME: text/html, application/pdf / 上限10MB)
---    作成後、以下のポリシーを実行してください
+-- 4. Storage（ドライバー提出書類・支払明細書PDF・掲示板添付ファイル置き場）
 -- ============================================================
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES
+  ('driver-docs', 'driver-docs', false, 10485760, ARRAY['image/jpeg','image/png','image/webp','application/pdf']),
+  ('driver-statements', 'driver-statements', false, 10485760, ARRAY['text/html','application/pdf']),
+  ('board-attachments', 'board-attachments', false, 10485760, ARRAY['image/jpeg','image/png','image/webp','application/pdf'])
+ON CONFLICT (id) DO NOTHING;
+
 DROP POLICY IF EXISTS "driver_docs_storage_select" ON storage.objects;
 CREATE POLICY "driver_docs_storage_select" ON storage.objects FOR SELECT TO authenticated USING (
   bucket_id = 'driver-docs' AND ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR (storage.foldername(name))[1] = 'drv' || (SELECT driver_id::text FROM users WHERE auth_uid = auth.uid()))
@@ -12205,6 +12236,20 @@ CREATE POLICY "driver_stmt_storage_insert" ON storage.objects FOR INSERT TO auth
 DROP POLICY IF EXISTS "driver_stmt_storage_delete" ON storage.objects;
 CREATE POLICY "driver_stmt_storage_delete" ON storage.objects FOR DELETE TO authenticated USING (
   bucket_id = 'driver-statements' AND "current_role"() = ANY(ARRAY['admin','editor'])
+);
+
+-- 掲示板の添付ファイルは投稿自体の閲覧範囲がクライアント側の絞り込みのため、閲覧は認証済みユーザー全員に許可する
+DROP POLICY IF EXISTS "board_attachments_select" ON storage.objects;
+CREATE POLICY "board_attachments_select" ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'board-attachments'
+);
+DROP POLICY IF EXISTS "board_attachments_insert" ON storage.objects;
+CREATE POLICY "board_attachments_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (
+  bucket_id = 'board-attachments' AND "current_role"() = ANY(ARRAY['admin','editor'])
+);
+DROP POLICY IF EXISTS "board_attachments_delete" ON storage.objects;
+CREATE POLICY "board_attachments_delete" ON storage.objects FOR DELETE TO authenticated USING (
+  bucket_id = 'board-attachments' AND "current_role"() = ANY(ARRAY['admin','editor'])
 );
 
 -- ============================================================
