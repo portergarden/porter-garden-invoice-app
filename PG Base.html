@@ -4093,8 +4093,10 @@ function renderDash(){
   const ch=dashRecs.filter(r=>r.type==='charter').length,re=dashRecs.filter(r=>r.type==='regular').length,ot=dashRecs.length-ch-re,tot_=dashRecs.length||1;
   const sCnt=[0,1,2].map(s=>dashRecs.filter(r=>r.st===s).length);
   const totAmt=dashRecs.reduce((a,r)=>a+sub(r),0),totTax=dashRecs.reduce((a,r)=>a+rtax(r),0);
+  // 年を選択している場合は、下部の年間サマリー（buildYearReportHtml）に同じ内容がより詳しく出るため、
+  // この3セクション（月別売上・取引先別集計・ドライバー別売上）は全期間表示のときだけ出す（重複表示防止）
   da.innerHTML=`
-    <div class="cwrap" style="grid-column:1/-1">
+    ${!dashYear?`<div class="cwrap" style="grid-column:1/-1">
       <div class="ctitle">📅 月別売上（${taxMode==='inc'?'税込':'税別'}）</div>
       ${months.length?months.map(m=>{const p=Math.round(byM[m].s/maxM*100);return`<div class="brow"><div class="blbl">${m}</div><div class="btrack"><div class="bfill" style="width:${p}%;background:var(--blue)"></div></div><div class="bval">${yen(byM[m].s)} <span style="color:var(--text2)">${byM[m].cnt}件</span></div></div>`;}).join(''):'<div style="color:var(--text2);font-size:11px;padding:6px 0">データなし</div>'}
     </div>
@@ -4109,8 +4111,8 @@ function renderDash(){
     <div class="cwrap">
       <div class="ctitle">👥 ドライバー別 売上</div>
       ${drvEnt.map(([name,d])=>{const p=Math.round(d.s/maxD*100);return`<div class="brow"><div class="blbl" title="${name}">${name}</div><div class="btrack"><div class="bfill" style="width:${p}%;background:${d.un?'#F09595':'#1D9E75'}"></div></div><div class="bval">${yen(d.s)} <span style="color:var(--text2)">${d.cnt}件</span></div></div>`;}).join('')}
-    </div>
-    <div class="cwrap">
+    </div>`:''}
+    <div class="cwrap"${dashYear?' style="grid-column:1/-1"':''}>
       <div class="ctitle">📊 内訳・ステータス</div>
       <div style="font-size:10px;color:var(--text2);margin-bottom:5px">税込合計: <b>${yen(totAmt+totTax)}</b>（消費税 ${yen(totTax)}）</div>
       <div style="margin-bottom:7px"><div style="font-size:10px;color:var(--text2);margin-bottom:3px">種別</div>
