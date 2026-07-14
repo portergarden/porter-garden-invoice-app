@@ -268,17 +268,17 @@ input:focus,select:focus{border-color:var(--blue)}
 .conn-dot.loading{background:#EF9F27;animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .nav{display:flex;border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
-.ntab{padding:7px 11px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0}
+.ntab{padding:7px 11px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;position:relative}
 .ntab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:500}
 .ntab:hover{color:var(--text)}
-.nav-warn-dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0}
+.nav-warn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red)}
 .nav-group{display:flex;background:var(--bg2);border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
 /* 受注入力（手入力）の全画面表示モード：ヘッダー・ナビを隠して入力欄を広く使う */
 body.entry-fullscreen .sbar,
 body.entry-fullscreen .topbar,
 body.entry-fullscreen .nav-group,
 body.entry-fullscreen .nav{display:none}
-.gtab{padding:9px 16px;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text2);white-space:nowrap;flex-shrink:0;border-bottom:2.5px solid transparent;display:flex;align-items:center;gap:5px}
+.gtab{padding:9px 16px;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text2);white-space:nowrap;flex-shrink:0;border-bottom:2.5px solid transparent;display:flex;align-items:center;gap:5px;position:relative}
 .gtab.on{color:var(--blue);border-bottom-color:var(--blue);background:var(--bg)}
 .gtab:hover{color:var(--text)}
 .mets{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)}
@@ -4767,9 +4767,18 @@ async function importCsv(){
 function mkPrev(rows,heads,fn){return`<div style="max-height:120px;overflow-y:auto;border:0.5px solid var(--border);border-radius:var(--radius);font-size:11px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--bg2)">${heads.map(h=>`<th style="padding:4px 7px;font-weight:500;text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${fn(r).map((v,i)=>`<td style="padding:3px 7px;border-top:0.5px solid var(--border)${i>1?';text-align:right':''}">${v}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
 function closeM(id){document.getElementById(id).classList.remove('on');}
 function showT(msg,cls='tok'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+cls;t.style.display='block';setTimeout(()=>t.style.display='none',2800);}
-// タブに小さな赤丸を付け外しする（期限切れ等、開かなくても分かるようにする警告表示）
+// タブに小さな赤丸を付け外しする（期限切れ等、開かなくても分かるようにする警告表示）。
+// サブタブ（ntXX）の場合は、そのタブが属するグループタブ（gt-xxx＝大枠）にも同じ考え方で反映する
 function setNavWarnDot(tabId, show) {
-  const el = document.getElementById(tabId);
+  applyWarnDot(document.getElementById(tabId), show);
+  const m = tabId.match(/^nt(\d+)$/);
+  const grp = m ? PAGE_GROUP[+m[1]] : null;
+  if (!grp) return;
+  const navEl = document.getElementById('nav-'+grp);
+  const groupHasWarn = navEl ? !!navEl.querySelector('.nav-warn-dot') : show;
+  applyWarnDot(document.getElementById('gt-'+grp), groupHasWarn);
+}
+function applyWarnDot(el, show) {
   if (!el) return;
   let dot = el.querySelector('.nav-warn-dot');
   if (show && !dot) { dot = document.createElement('span'); dot.className = 'nav-warn-dot'; el.appendChild(dot); }
