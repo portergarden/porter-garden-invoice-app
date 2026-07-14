@@ -8791,7 +8791,16 @@ function buildYearStats(year) {
   return { monthlyAmt, monthlyCnt, drvRows };
 }
 
-// 旧・年報タブの内容（年間KPI＋ドライバー別月次実績マトリクス）。renderDashから年選択時のみ呼ばれる
+// 前年・前月など「過去との比較」表示で共通利用する差分バッジ（▲/▼と増減率・増減件数）
+function periodDiffBadge(diff, pct, unit, eqLabel) {
+  if (diff === 0) return `<span class="kpi-eq">— ${eqLabel}</span>`;
+  const cls = diff>0 ? 'kpi-up' : 'kpi-dn', arrow = diff>0 ? '▲' : '▼';
+  const pctPart = (pct!=null && isFinite(pct) && pct!==0) ? `${pct>0?'+':''}${pct}% ` : '';
+  return `<span class="${cls}">${arrow} ${pctPart}${unit==='yen'?yen(Math.abs(diff)):Math.abs(diff)+'件'}</span>`;
+}
+
+// 旧・年報タブの内容（年間KPI＋ドライバー別月次実績マトリクス＋月次推移）。renderDashから年選択時のみ呼ばれる。
+// 前年同期間との比較（過去データとの比較）も併せて表示する
 function buildYearReportHtml(year) {
   const { monthlyAmt, monthlyCnt, drvRows } = buildYearStats(year);
   const totalAmt = monthlyAmt.reduce((a,v)=>a+v,0);
@@ -8800,14 +8809,38 @@ function buildYearReportHtml(year) {
   const avgAmt = activeMonths ? Math.round(totalAmt/activeMonths) : 0;
   const peakM = monthlyAmt.indexOf(Math.max(...monthlyAmt));
 
+  // 前年比較（同じ年内の月までで揃える。例えば今年が7月までのデータなら前年も1〜7月で比較する）
+  const prevYear = String(+year - 1);
+  const prevStats = buildYearStats(prevYear);
+  const lastActiveM = monthlyAmt.reduce((last,v,i)=>v>0?i:last, -1);
+  const cmpUpTo = lastActiveM>=0 ? lastActiveM+1 : 12;
+  const amtSoFar = monthlyAmt.slice(0,cmpUpTo).reduce((a,v)=>a+v,0);
+  const cntSoFar = monthlyCnt.slice(0,cmpUpTo).reduce((a,v)=>a+v,0);
+  const prevAmtSoFar = prevStats.monthlyAmt.slice(0,cmpUpTo).reduce((a,v)=>a+v,0);
+  const prevCntSoFar = prevStats.monthlyCnt.slice(0,cmpUpTo).reduce((a,v)=>a+v,0);
+  const diffAmt = amtSoFar - prevAmtSoFar, diffCnt = cntSoFar - prevCntSoFar;
+  const diffAmtPct = prevAmtSoFar>0 ? Math.round(diffAmt/prevAmtSoFar*100) : null;
+  const hasPrevData = prevStats.monthlyAmt.some(v=>v>0);
+
   const kpiHtml = `<div class="cwrap" style="grid-column:1/-1">
     <div class="ctitle">📈 ${year}年 年間サマリー（税込）</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
-      <div class="kpi-card"><div class="kpi-label">年間売上</div><div class="kpi-val">${yen(totalAmt)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">年間売上</div><div class="kpi-val">${yen(totalAmt)}</div>${hasPrevData?`<div class="kpi-diff">${periodDiffBadge(diffAmt,diffAmtPct,'yen',`${prevYear}年同期間比同額`)}</div>`:''}</div>
       <div class="kpi-card"><div class="kpi-label">月平均売上（稼働月）</div><div class="kpi-val">${yen(avgAmt)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">年間件数</div><div class="kpi-val">${totalCnt}件</div></div>
+      <div class="kpi-card"><div class="kpi-label">年間件数</div><div class="kpi-val">${totalCnt}件</div>${hasPrevData?`<div class="kpi-diff">${periodDiffBadge(diffCnt,null,'cnt',`${prevYear}年同期間比同数`)}</div>`:''}</div>
       <div class="kpi-card"><div class="kpi-label">最高月</div><div class="kpi-val" style="font-size:12px">${totalAmt ? `${peakM+1}月 ${yen(monthlyAmt[peakM])}` : '—'}</div></div>
     </div>
+    ${hasPrevData?`<div style="font-size:10px;color:var(--text2);margin-top:6px">${prevYear}年 1〜${cmpUpTo}月 実績: ${yen(prevAmtSoFar)}（${prevCntSoFar}件）と比較</div>`:''}
+  </div>`;
+
+  const maxMonthAmt = Math.max(1, ...monthlyAmt, ...prevStats.monthlyAmt);
+  const barHtml = `<div class="cwrap" style="grid-column:1/-1">
+    <div class="ctitle">📅 月次売上推移（${year}年・税込）</div>
+    ${Array.from({length:12},(_,i)=>{
+      const pct = Math.round(monthlyAmt[i]/maxMonthAmt*100);
+      const prevAmt = prevStats.monthlyAmt[i];
+      return `<div class="brow"><div class="blbl">${i+1}月</div><div class="btrack"><div class="bfill" style="width:${pct}%;background:var(--blue)"></div></div><div class="bval">${yen(monthlyAmt[i])} <span style="color:var(--text2)">${monthlyCnt[i]}件${prevAmt?` ／前年${yen(prevAmt)}`:''}</span></div></div>`;
+    }).join('')}
   </div>`;
 
   const cell = 'padding:5px 4px;text-align:right;border-bottom:0.5px solid var(--border)';
@@ -8834,7 +8867,7 @@ function buildYearReportHtml(year) {
     </table></div>` : '<div style="color:var(--text2);font-size:11px;padding:6px 0">この年の実績データがありません</div>'}
   </div>`;
 
-  return kpiHtml + matrixHtml;
+  return kpiHtml + barHtml + matrixHtml;
 }
 
 function exportYearCsv() {
