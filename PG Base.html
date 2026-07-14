@@ -515,7 +515,6 @@ td.dim{color:var(--text2)}
   </nav>
   <nav class="nav hide" id="nav-analysis">
     <div class="ntab" id="nt1" onclick="goPage(1,this)">📊 ダッシュボード</div>
-    <div class="ntab" id="nt13" onclick="goPage(13,this)">📈 年報</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 カレンダー</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
@@ -1158,7 +1157,7 @@ td.dim{color:var(--text2)}
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:10px;color:var(--text2)">対象年:</span>
         <select id="dashYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDash()"></select>
-        <button class="btn sml" onclick="goPage(13,document.getElementById('nt13'))" title="年間サマリー・CSV出力は年報タブへ">📈 年報を見る</button>
+        <button class="btn sml" id="dashYearCsvBtn" onclick="exportYearCsv()" title="選択中の年のドライバー別月次実績をCSV出力します" style="display:none">⬇ 年報CSV</button>
       </div>
     </div>
     <div id="dashArea" class="dashgrid"></div>
@@ -1705,26 +1704,6 @@ td.dim{color:var(--text2)}
 
   <!-- ドライバー別月報カード一覧 -->
   <div id="mrBody" style="padding:8px 14px;overflow-y:auto;max-height:calc(100vh - 200px)"></div>
-</div>
-
-<!-- ===== pg13: 年報 ===== -->
-<div id="pg13" class="hide">
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
-    <span style="font-size:13px;font-weight:500">📈 年報・年次サマリー</span>
-    <div style="display:flex;gap:6px;align-items:center">
-      <select id="yrYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderYearReport()"></select>
-      <button class="btn sml" onclick="exportYearCsv()">⬇ CSV</button>
-    </div>
-  </div>
-  <div id="yrKpi" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
-  <div style="padding:8px 14px;border-bottom:0.5px solid var(--border)">
-    <div style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:6px">月次売上推移</div>
-    <div id="yrBarChart" class="bar-chart" style="padding:0"></div>
-  </div>
-  <div style="padding:8px 14px">
-    <div style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:6px">ドライバー別年間実績</div>
-    <div id="yrDrvTable" style="overflow-x:auto"></div>
-  </div>
 </div>
 
 <!-- ===== pg14: 掲示板 ===== -->
@@ -3770,7 +3749,7 @@ const stCls=s=>['s0','s1','s2'][s]||'s0';
 // ページ番号 → 所属グループの対応表
 const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
-  1:'analysis', 13:'analysis', 8:'analysis',
+  1:'analysis', 8:'analysis',
   10:'driver', 12:'driver', 14:'driver',
   2:'admin', 3:'admin', 15:'admin', 16:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
@@ -3812,7 +3791,6 @@ function goPage(n,el){
   if(n===10){_setDailyListMonth();initMob();}
   if(n===11){initClose();}
   if(n===12){initMonthlyReport();renderMonthlyReport();}
-  if(n===13){initYearReport();renderYearReport();}
   if(n===14){loadBoard(true);}
   if(n===15){initPaymentIn();}
   if(n===16){initExpense();}
@@ -4125,6 +4103,10 @@ function renderDash(){
         <div class="pirow"><div class="dot" style="background:var(--green)"></div>承認済<span style="margin-left:auto;font-weight:500">${sCnt[2]}件</span></div>
       </div>
     </div>`;
+  // 年を選択している場合のみ、旧・年報タブの内容（年間サマリー＋ドライバー別月次実績）を末尾に追加表示する
+  const yrCsvBtn = document.getElementById('dashYearCsvBtn');
+  if (yrCsvBtn) yrCsvBtn.style.display = dashYear ? '' : 'none';
+  if (dashYear) da.insertAdjacentHTML('beforeend', buildYearReportHtml(dashYear));
   renderKpiCards();
 }
 function setTaxDash(m){taxMode=m;renderDash();}
@@ -8756,82 +8738,83 @@ function populateYearSelect(selId, includeAll) {
   sel.value = cur || (includeAll ? '' : String(now));
 }
 
-/* ===== 年報 ===== */
-function initYearReport() {
-  populateYearSelect('yrYear', false);
+/* ===== 年報（ダッシュボードに統合済み。年を選択したときだけ年間サマリー＋月次実績を表示する） ===== */
+// 指定年の年間集計を1パスで作る（月別売上・件数、ドライバー別の月次内訳）。
+// KPI・マトリクス表・CSVで共有し、レコード数×ドライバー数×12回の走査を避ける
+function buildYearStats(year) {
+  const monthlyAmt = new Array(12).fill(0), monthlyCnt = new Array(12).fill(0);
+  const byDrv = new Map(); // drv.id -> { d, amts:[12] }
+  recs.forEach(r => {
+    if (!r.date?.startsWith(year)) return;
+    const mi = +r.date.slice(5,7) - 1;
+    if (mi < 0 || mi > 11) return;
+    const amt = totR(r,'inc');
+    monthlyAmt[mi] += amt; monthlyCnt[mi]++;
+    const d = recDrv(r);
+    if (!d) return;
+    if (!byDrv.has(d.id)) byDrv.set(d.id, { d, amts: new Array(12).fill(0) });
+    byDrv.get(d.id).amts[mi] += amt;
+  });
+  const drvRows = [...byDrv.values()].sort((a,b)=>(a.d.supplier_id||'999').localeCompare(b.d.supplier_id||'999'));
+  return { monthlyAmt, monthlyCnt, drvRows };
 }
 
-function renderYearReport() {
-  const year = document.getElementById('yrYear')?.value;
-  if (!year) return;
-
-  const months = Array.from({length:12},(_,i)=>`${year}-${String(i+1).padStart(2,'0')}`);
-
-  // 月別売上
-  const monthlyAmt = months.map(m => recs.filter(r=>r.date?.startsWith(m)).reduce((a,r)=>a+totR(r,'inc'),0));
-  const monthlyCnt = months.map(m => recs.filter(r=>r.date?.startsWith(m)).length);
+// 旧・年報タブの内容（年間KPI＋ドライバー別月次実績マトリクス）。renderDashから年選択時のみ呼ばれる
+function buildYearReportHtml(year) {
+  const { monthlyAmt, monthlyCnt, drvRows } = buildYearStats(year);
   const totalAmt = monthlyAmt.reduce((a,v)=>a+v,0);
-  const maxAmt = Math.max(...monthlyAmt, 1);
+  const totalCnt = monthlyCnt.reduce((a,v)=>a+v,0);
+  const activeMonths = monthlyAmt.filter(v=>v>0).length;
+  const avgAmt = activeMonths ? Math.round(totalAmt/activeMonths) : 0;
   const peakM = monthlyAmt.indexOf(Math.max(...monthlyAmt));
-  const avgAmt = Math.round(totalAmt/12);
 
-  // 年間KPI
-  document.getElementById('yrKpi').innerHTML = `
-    <div class="kpi-card"><div class="kpi-label">${year}年 年間売上</div><div class="kpi-val">${yen(totalAmt)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">月平均売上</div><div class="kpi-val">${yen(avgAmt)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">年間件数</div><div class="kpi-val">${monthlyCnt.reduce((a,v)=>a+v,0)}件</div></div>
-    <div class="kpi-card"><div class="kpi-label">最高月</div><div class="kpi-val" style="font-size:12px">${peakM+1}月 ${yen(monthlyAmt[peakM])}</div></div>
-  `;
+  const kpiHtml = `<div class="cwrap" style="grid-column:1/-1">
+    <div class="ctitle">📈 ${year}年 年間サマリー（税込）</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+      <div class="kpi-card"><div class="kpi-label">年間売上</div><div class="kpi-val">${yen(totalAmt)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">月平均売上（稼働月）</div><div class="kpi-val">${yen(avgAmt)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">年間件数</div><div class="kpi-val">${totalCnt}件</div></div>
+      <div class="kpi-card"><div class="kpi-label">最高月</div><div class="kpi-val" style="font-size:12px">${totalAmt ? `${peakM+1}月 ${yen(monthlyAmt[peakM])}` : '—'}</div></div>
+    </div>
+  </div>`;
 
-  // 月次棒グラフ
-  const barHtml = months.map((m,i)=>{
-    const pct = Math.round(monthlyAmt[i]/maxAmt*100);
-    return `<div class="bar-row">
-      <div class="bar-label">${i+1}月</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--blue)"></div></div>
-      <div class="bar-val">${yen(monthlyAmt[i])} <span style="color:var(--text2)">${monthlyCnt[i]}件</span></div>
-    </div>`;
-  }).join('');
-  document.getElementById('yrBarChart').innerHTML = barHtml;
+  const cell = 'padding:5px 4px;text-align:right;border-bottom:0.5px solid var(--border)';
+  const colTotals = new Array(12).fill(0);
+  drvRows.forEach(e => e.amts.forEach((v,i)=>colTotals[i]+=v));
+  const matrixHtml = `<div class="cwrap" style="grid-column:1/-1">
+    <div class="ctitle">👥 ドライバー別 月次実績（${year}年・税込）</div>
+    ${drvRows.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap">
+      <thead><tr style="background:var(--bg2)">
+        <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">ドライバー</th>
+        ${Array.from({length:12},(_,i)=>`<th style="${cell}">${i+1}月</th>`).join('')}
+        <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">合計</th>
+      </tr></thead>
+      <tbody>${drvRows.map(({d,amts}) => `<tr>
+        <td style="padding:5px 8px;border-bottom:0.5px solid var(--border);font-weight:500">${escHtml(d.name)}</td>
+        ${amts.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
+        <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${yen(amts.reduce((a,v)=>a+v,0))}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="font-weight:600;background:var(--bg2)">
+        <td style="padding:5px 8px">合計</td>
+        ${colTotals.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
+        <td style="padding:5px 8px;text-align:right">${yen(colTotals.reduce((a,v)=>a+v,0))}</td>
+      </tr></tfoot>
+    </table></div>` : '<div style="color:var(--text2);font-size:11px;padding:6px 0">この年の実績データがありません</div>'}
+  </div>`;
 
-  // ドライバー別年間テーブル
-  const yearRecs = recs.filter(r=>r.date?.startsWith(year));
-  let tblHtml = `<table style="width:100%;border-collapse:collapse;font-size:11px">
-    <thead><tr style="background:var(--bg2)">
-      <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">ドライバー</th>
-      ${months.map((_,i)=>`<th style="padding:5px 4px;text-align:right;border-bottom:0.5px solid var(--border)">${i+1}月</th>`).join('')}
-      <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">合計</th>
-    </tr></thead><tbody>`;
-
-  drvs.sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999')).forEach(d => {
-    const mAmts = months.map(m => recs.filter(r=>r.date?.startsWith(m)&&recDrv(r)?.id===d.id).reduce((a,r)=>a+totR(r,'inc'),0));
-    const total = mAmts.reduce((a,v)=>a+v,0);
-    if (!total) return;
-    tblHtml += `<tr>
-      <td style="padding:5px 8px;border-bottom:0.5px solid var(--border);font-weight:500">${d.name}</td>
-      ${mAmts.map(v=>`<td style="padding:5px 4px;text-align:right;border-bottom:0.5px solid var(--border);font-size:10px">${v?yen(v):''}</td>`).join('')}
-      <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${yen(total)}</td>
-    </tr>`;
-  });
-
-  tblHtml += '</tbody></table>';
-  document.getElementById('yrDrvTable').innerHTML = tblHtml;
+  return kpiHtml + matrixHtml;
 }
 
 function exportYearCsv() {
-  const year = document.getElementById('yrYear')?.value;
-  const months = Array.from({length:12},(_,i)=>`${year}-${String(i+1).padStart(2,'0')}`);
-  const headers = ['ドライバー', ...months.map((_,i)=>`${i+1}月`), '合計'];
-  const rows = [];
-  drvs.forEach(d => {
-    const mAmts = months.map(m=>recs.filter(r=>r.date?.startsWith(m)&&recDrv(r)?.id===d.id).reduce((a,r)=>a+totR(r,'inc'),0));
-    const total = mAmts.reduce((a,v)=>a+v,0);
-    if (!total) return;
-    rows.push([d.name,...mAmts,total].join(','));
-  });
+  const year = document.getElementById('dashYear')?.value;
+  if (!year) { alert('年を選択してください（全期間ではCSV出力できません）'); return; }
+  const { drvRows } = buildYearStats(year);
+  const headers = ['ドライバー', ...Array.from({length:12},(_,i)=>`${i+1}月`), '合計'];
+  const rows = drvRows.map(({d,amts}) => [d.name, ...amts, amts.reduce((a,v)=>a+v,0)].join(','));
   const bom=new Uint8Array([0xEF,0xBB,0xBF]);
   const blob=new Blob([bom,[headers.join(','),...rows].join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`年報_${year}.csv`;a.click();
+  addLog('年報CSV出力', year+'年');
 }
 
 /* ===== バックアップ・復元 =====
