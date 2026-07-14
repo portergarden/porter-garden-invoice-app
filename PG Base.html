@@ -2523,8 +2523,7 @@ async function applyLogin(data) {
     // 未配車・未確認請求書の通知は管理者向けのため、ドライバーには出さない
     return;
   }
-  goPage(0, document.getElementById('nt0'));
-  switchP0Tab(1);
+  goPage(1, document.getElementById('nt1'));
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
   setTimeout(()=>{ runLoginNotifications().catch(()=>{}); }, 1500);
