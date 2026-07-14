@@ -272,6 +272,10 @@ input:focus,select:focus{border-color:var(--blue)}
 .ntab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:500}
 .ntab:hover{color:var(--text)}
 .nav-warn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red)}
+/* 明細フル画面の選択チェックボックス: ネイティブのborderは効かないため、appearanceを外して自前で描画する */
+.big-chk{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid var(--text2);border-radius:3px;background:var(--bg);cursor:pointer;vertical-align:middle;position:relative}
+.big-chk:checked{background:var(--blue);border-color:var(--blue)}
+.big-chk:checked::after{content:'✓';position:absolute;top:50%;left:50%;transform:translate(-50%,-56%);color:#fff;font-size:13px;font-weight:700;line-height:1}
 .nav-group{display:flex;background:var(--bg2);border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
 /* 受注入力（手入力）の全画面表示モード：ヘッダー・ナビを隠して入力欄を広く使う */
 body.entry-fullscreen .sbar,
@@ -3707,7 +3711,7 @@ function renderAggDetailFull() {
   const allSelected = _aggDetailRows.length > 0 && _aggDetailRows.every(r=>_aggDetailSelected.has(r.id));
   const wrapCell = 'white-space:normal;word-break:break-word;overflow-wrap:break-word';
   thead.innerHTML = `<tr style="background:var(--bg2);border-bottom:0.5px solid var(--border);color:var(--text2);text-align:left">
-    <th style="padding:8px;width:24px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600"><input type="checkbox" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)" ${allSelected?'checked':''} onchange="toggleAggDetailSelAll(this.checked)"></th>
+    <th style="padding:8px;width:32px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600;text-align:center"><input type="checkbox" class="big-chk" ${allSelected?'checked':''} onchange="toggleAggDetailSelAll(this.checked)"></th>
     ${cols.map(c=>`<th style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600;${wrapCell};${(c.num||c.right)?'text-align:right':''}">${c.label}</th>`).join('')}
     <th style="padding:8px;width:76px;vertical-align:middle;font-size:13px;font-weight:600">操作</th>
   </tr>`;
@@ -3717,7 +3721,7 @@ function renderAggDetailFull() {
     return;
   }
   tbody.innerHTML = _aggDetailRows.map(r=>`<tr style="border-bottom:0.5px solid var(--border);cursor:pointer" title="ダブルクリックで修正画面を開きます" ondblclick="openEditInvoice(${r.id})">
-    <td style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle;background:var(--bg2)"><input type="checkbox" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)" ${_aggDetailSelected.has(r.id)?'checked':''} onchange="toggleAggDetailRowSel(${r.id},this.checked)" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"></td>
+    <td style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle;background:var(--bg2);text-align:center"><input type="checkbox" class="big-chk" ${_aggDetailSelected.has(r.id)?'checked':''} onchange="toggleAggDetailRowSel(${r.id},this.checked)" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"></td>
     ${cols.map(c=>{
       const v = c.get(r, _aggDetailSide);
       const alignStyle = (c.num||c.right)?'text-align:right':'text-align:left';
