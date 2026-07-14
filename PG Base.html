@@ -2478,6 +2478,7 @@ async function testConn(){
 let me=null,taxMode='inc',sortMode='asc',eInvId=null,eDrvId=null,eCliId=null,eUsrId=null;
 let pendTags=[],parsedPdf=[],parsedCsv=[],selIds=new Set(),expanded=new Set();
 let yrDrvCliFilter=''; // 年報のドライバー別月次実績を取引先で絞り込む際の選択中取引先ID
+let dashYearSpan=5; // 全体売上表の表示期間（年数）。'all'で全期間
 let pendOtherDeductions=[]; // ドライバー登録モーダルの「その他の控除項目」編集中リスト（{name, amount}の配列）
 let sessionTimer=null,sessionLeft=900;
 let users=[],clients=[],drvs=[],recs=[];
@@ -4068,8 +4069,7 @@ function renderDash(){
   // 月別売上は全期間表示のときだけ出す（重複表示防止）。取引先別・ドライバー別の内訳は分析タブ側にのみ表示する。
   da.innerHTML=`
     <div class="cwrap" id="dashWarnings" style="grid-column:1/-1">
-      <div class="ctitle">⚠ 警告</div>
-      <div style="font-size:11px;color:var(--text2)">確認中…</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)"><span class="ctitle" style="margin-bottom:0">⚠ 警告</span>確認中…</div>
     </div>
     ${!dashYear?`<div class="cwrap" style="grid-column:1/-1">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
@@ -4158,15 +4158,14 @@ async function renderDashWarnings(){
   const box=document.getElementById('dashWarnings');
   if(!box)return;
   if(!items.length){
-    box.innerHTML=`<div class="ctitle">⚠ 警告</div><div style="font-size:11px;color:var(--green-text)">✓ 現在、警告はありません</div>`;
+    box.innerHTML=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--green-text)"><span class="ctitle" style="margin-bottom:0">⚠ 警告</span>✓ 現在、警告はありません</div>`;
     return;
   }
-  box.innerHTML=`<div class="ctitle">⚠ 警告（${items.length}件）</div>
-    <div style="display:flex;flex-direction:column;gap:5px">
-      ${items.map(it=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;background:var(--${it.sev==='red'?'red-bg':'amber-bg'});border:0.5px solid ${it.sev==='red'?'#F09595':'var(--amber-border)'};border-radius:var(--radius)">
-        <span style="font-size:13px">${it.icon}</span>
-        <span style="flex:1;font-size:11px;color:var(--${it.sev==='red'?'red-text':'amber-text'})">${it.text}</span>
-        <button class="btn sml" onclick="goPage(${it.go},document.getElementById('${it.nt}'))">${it.btn}</button>
+  // 1行で横並び表示（項目が多い場合は横スクロール）
+  box.innerHTML=`<div style="display:flex;align-items:center;gap:8px;overflow-x:auto;padding-bottom:2px">
+      <span class="ctitle" style="margin-bottom:0;flex-shrink:0">⚠ 警告（${items.length}）</span>
+      ${items.map(it=>`<div onclick="goPage(${it.go},document.getElementById('${it.nt}'))" title="${it.btn}" style="display:flex;align-items:center;gap:5px;padding:5px 10px;background:var(--${it.sev==='red'?'red-bg':'amber-bg'});border:0.5px solid ${it.sev==='red'?'#F09595':'var(--amber-border)'};border-radius:99px;font-size:11px;color:var(--${it.sev==='red'?'red-text':'amber-text'});white-space:nowrap;flex-shrink:0;cursor:pointer">
+        <span>${it.icon}</span><span>${it.text}</span>
       </div>`).join('')}
     </div>`;
 }
@@ -6437,6 +6436,8 @@ function renderKpiCards() {
   // 既存KPIカード除去
   const old = da.querySelector('.kpi-grid');
   if (old) old.remove();
+  // 警告パネル(dashWarnings)は常に一番上に出したいため、KPIカードはその直後に挿入する
+  const warnBox = document.getElementById('dashWarnings');
 
   const now = new Date();
   const thisM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -6452,12 +6453,14 @@ function renderKpiCards() {
     const cls=v>0?'kpi-up':'kpi-dn',arrow=v>0?'▲':'▼';
     return`<span class="${cls}">${arrow} ${pct>0?pct+'% ':''}${yen(Math.abs(v))}</span>`;
   };
-  da.insertAdjacentHTML('afterbegin',`<div class="kpi-grid" style="grid-column:1/-1">
+  const kpiHtml = `<div class="kpi-grid" style="grid-column:1/-1">
     <div class="kpi-card"><div class="kpi-label">今月売上</div><div class="kpi-val">${yen(thisAmt)}</div><div class="kpi-diff">${kpiDiff(diffAmt,Math.abs(diffPct))}</div></div>
     <div class="kpi-card"><div class="kpi-label">今月件数</div><div class="kpi-val">${thisCnt}件</div><div class="kpi-diff">${diffCnt===0?'<span class="kpi-eq">— 前月同数</span>':`<span class="${diffCnt>0?'kpi-up':'kpi-dn'}">${diffCnt>0?'▲':'▼'} ${Math.abs(diffCnt)}件</span>`}</div></div>
     <div class="kpi-card"><div class="kpi-label">未確認</div><div class="kpi-val" style="color:${pending?'var(--red)':'var(--green)'}">${pending}件</div><div class="kpi-diff"><span class="kpi-eq">要確認</span></div></div>
     <div class="kpi-card"><div class="kpi-label">確認済</div><div class="kpi-val">${confirmed}件</div><div class="kpi-diff"><span class="kpi-eq">全${recs.length}件中</span></div></div>
-  </div>`);
+  </div>`;
+  if (warnBox) warnBox.insertAdjacentHTML('afterend', kpiHtml);
+  else da.insertAdjacentHTML('afterbegin', kpiHtml);
 }
 
 // togglePnl/printPnlPdfは月次締めページ（差異チェック）・明細フル画面のPDF出力でも使う共通処理のため残置
@@ -8907,10 +8910,19 @@ function monthMatrixTableHtml(rows, rowLabelHeader, emptyMsg) {
   </table></div>`;
 }
 
-// 過去5年分の月別売上を横並びで比較できる一覧表
+function setDashYearSpan(v){ dashYearSpan = v==='all' ? 'all' : +v; renderDash(); }
+
+// 選択中の対象年（year）を基準に、表示期間内の各年がどれだけ増減しているかを横並びで比較できる一覧表
 function buildFiveYearTableHtml(year) {
   const y = +year;
-  const years = Array.from({length:5}, (_,i) => y-4+i);
+  let years;
+  if (dashYearSpan === 'all') {
+    const allYears = [...new Set(recs.map(r=>r.date?.slice(0,4)).filter(Boolean).map(Number))];
+    const minYear = allYears.length ? Math.min(...allYears, y) : y;
+    years = Array.from({length: Math.max(1,y-minYear+1)}, (_,i) => minYear+i);
+  } else {
+    years = Array.from({length:dashYearSpan}, (_,i) => y-dashYearSpan+1+i);
+  }
   const cell = 'padding:5px 4px;text-align:right;border-bottom:0.5px solid var(--border)';
   const rows = years.map(yr => {
     const { monthlyAmt } = buildYearStats(String(yr));
@@ -8919,24 +8931,31 @@ function buildFiveYearTableHtml(year) {
   const colTotals = new Array(12).fill(0);
   rows.forEach(r=>r.monthlyAmt.forEach((v,i)=>colTotals[i]+=v));
   const hasAny = rows.some(r=>r.total>0);
+  const baseTotal = rows.find(r=>r.yr===y)?.total ?? 0;
+  const spanOptions = [3,5,10].map(n=>`<option value="${n}" ${dashYearSpan===n?'selected':''}>${n}年</option>`).join('')
+    + `<option value="all" ${dashYearSpan==='all'?'selected':''}>全期間</option>`;
   return `<div class="cwrap" style="grid-column:1/-1">
-    <div class="ctitle">📊 全体売上表（${years[0]}〜${years[years.length-1]}年・税込）</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:6px">
+      <div class="ctitle" style="margin-bottom:0">📊 全体売上表（${years[0]}〜${years[years.length-1]}年・税込）</div>
+      <select onchange="setDashYearSpan(this.value)" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        ${spanOptions}
+      </select>
+    </div>
     ${hasAny ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap">
       <thead><tr style="background:var(--bg2)">
         <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">年</th>
         ${Array.from({length:12},(_,i)=>`<th style="${cell}">${i+1}月</th>`).join('')}
         <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">年間合計</th>
-        <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">前年比</th>
+        <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">${y}年比</th>
       </tr></thead>
-      <tbody>${rows.map((r,i)=>{
-        const prev = i>0 ? rows[i-1] : null;
-        const diff = prev ? r.total-prev.total : null;
-        const pct = (prev && prev.total>0) ? Math.round(diff/prev.total*100) : null;
+      <tbody>${rows.map(r=>{
+        const diff = r.total-baseTotal;
+        const pct = baseTotal>0 ? Math.round(diff/baseTotal*100) : null;
         return `<tr${r.yr===y?' style="background:var(--blue-bg)"':''}>
           <td style="padding:5px 8px;border-bottom:0.5px solid var(--border);font-weight:500">${r.yr}年</td>
           ${r.monthlyAmt.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
           <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${yen(r.total)}</td>
-          <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-size:10px">${diff!=null?periodDiffBadge(diff,pct,'yen','前年と同額'):'—'}</td>
+          <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-size:10px">${periodDiffBadge(diff,pct,'yen',`${y}年と同額`)}</td>
         </tr>`;
       }).join('')}</tbody>
       <tfoot><tr style="font-weight:600;background:var(--bg2)">
@@ -8945,7 +8964,7 @@ function buildFiveYearTableHtml(year) {
         <td style="padding:5px 8px;text-align:right">${yen(colTotals.reduce((a,v)=>a+v,0))}</td>
         <td></td>
       </tr></tfoot>
-    </table></div>` : '<div style="color:var(--text2);font-size:11px;padding:6px 0">過去5年分の実績データがありません</div>'}
+    </table></div>` : `<div style="color:var(--text2);font-size:11px;padding:6px 0">表示期間内の実績データがありません</div>`}
   </div>`;
 }
 
