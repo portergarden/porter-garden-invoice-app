@@ -513,7 +513,8 @@ td.dim{color:var(--text2)}
   </nav>
   <nav class="nav hide" id="nav-analysis">
     <div class="ntab" id="nt1" onclick="goPage(1,this)">📊 ダッシュボード</div>
-    <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先・ドライバー分析</div>
+    <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先分析</div>
+    <div class="ntab" id="nt24" onclick="goPage(24,this)">🚚 ドライバー分析</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 カレンダー</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
@@ -1162,14 +1163,24 @@ td.dim{color:var(--text2)}
   </div>
   <div id="pg23" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
-      <span style="font-size:13px;font-weight:500">🏢 取引先・ドライバー分析</span>
+      <span style="font-size:13px;font-weight:500">🏢 取引先分析</span>
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:10px;color:var(--text2)">対象年:</span>
-        <select id="anaYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderAnalysis()"></select>
-        <button class="btn sml" id="anaYearCsvBtn" onclick="exportYearCsv()" title="選択中の年のドライバー別月次実績をCSV出力します" style="display:none">⬇ 年報CSV</button>
+        <select id="anaCliYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderCliAnalysis()"></select>
       </div>
     </div>
-    <div id="anaArea" class="dashgrid"></div>
+    <div id="anaCliArea" class="dashgrid"></div>
+  </div>
+  <div id="pg24" class="hide">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
+      <span style="font-size:13px;font-weight:500">🚚 ドライバー分析</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:10px;color:var(--text2)">対象年:</span>
+        <select id="anaDrvYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDrvAnalysis()"></select>
+        <button class="btn sml" id="anaDrvYearCsvBtn" onclick="exportYearCsv()" title="選択中の年のドライバー別月次実績をCSV出力します" style="display:none">⬇ 年報CSV</button>
+      </div>
+    </div>
+    <div id="anaDrvArea" class="dashgrid"></div>
   </div>
   <div id="pg2" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px;">
@@ -3727,7 +3738,7 @@ const stCls=s=>['s0','s1','s1'][s]||'s0';
 // ページ番号 → 所属グループの対応表
 const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
-  1:'analysis', 8:'analysis', 23:'analysis',
+  1:'analysis', 8:'analysis', 23:'analysis', 24:'analysis',
   10:'driver', 12:'driver', 14:'driver',
   2:'admin', 3:'admin', 15:'admin', 16:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
@@ -3748,7 +3759,7 @@ function switchNavGroup(group, skipPageSwitch) {
 let _skipHistoryPush = false;
 function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
-  for(let i=0; i<=23; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
+  for(let i=0; i<=24; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
   const target = document.getElementById('pg'+n);
   if(target) target.classList.remove('hide');
@@ -3758,7 +3769,8 @@ function goPage(n,el){
   if (grp) switchNavGroup(grp, true);
   if(n===0)renderInv();
   if(n===1){populateYearSelect('dashYear',true);renderDash();}
-  if(n===23){populateYearSelect('anaYear',true);renderAnalysis();}
+  if(n===23){populateYearSelect('anaCliYear',true);renderCliAnalysis();}
+  if(n===24){populateYearSelect('anaDrvYear',true);renderDrvAnalysis();}
   if(n===2){renderDrv();if(!driverDocs.length)loadDriverDocs().then(()=>renderDrv());}
   if(n===3)renderCli();
   if(n===4)loadLogs();
@@ -4171,35 +4183,49 @@ async function renderDashWarnings(){
 }
 
 function setTaxDash(m){taxMode=m;renderDash();}
-function toggleExp(key){if(expanded.has(key))expanded.delete(key);else expanded.add(key);renderAnalysis();}
-function setTaxAna(m){taxMode=m;renderAnalysis();}
+function toggleExp(key){if(expanded.has(key))expanded.delete(key);else expanded.add(key);renderCliAnalysis();}
+function setTaxAnaCli(m){taxMode=m;renderCliAnalysis();}
+function setTaxAnaDrv(m){taxMode=m;renderDrvAnalysis();}
 
-/* ===== 取引先・ドライバー分析（旧ダッシュボードの取引先別集計・ドライバー別売上を分離） ===== */
-function renderAnalysis(){
-  const aa=document.getElementById('anaArea');
+/* ===== 取引先分析（旧ダッシュボードの取引先別集計を分離） ===== */
+function renderCliAnalysis(){
+  const aa=document.getElementById('anaCliArea');
   if(!aa)return;
-  const anaYear=document.getElementById('anaYear')?.value||'';
+  const anaYear=document.getElementById('anaCliYear')?.value||'';
   const anaRecs=anaYear?recs.filter(r=>r.date&&r.date.startsWith(anaYear)):recs;
-  const byDrv={};anaRecs.forEach(r=>{const d=recDrv(r);const k=d?d.name:'未配車';if(!byDrv[k])byDrv[k]={s:0,cnt:0,un:!d};byDrv[k].s+=totR(r,taxMode);byDrv[k].cnt++;});
-  const drvEnt=Object.entries(byDrv).sort((a,b)=>b[1].s-a[1].s);const maxD=drvEnt[0]?drvEnt[0][1].s:1;
   const byCli={};anaRecs.forEach(r=>{const c=lkC(r.cli);const k=c?c.name:'未設定';if(!byCli[k])byCli[k]={s:0,cnt:0,ch:0,re:0,fare:0,hw:0,oth:0,tax:0};byCli[k].s+=totR(r,taxMode);byCli[k].cnt++;byCli[k].fare+=r.fare||0;byCli[k].hw+=r.hw||0;byCli[k].oth+=r.oth||0;byCli[k].tax+=rtax(r);if(r.type==='charter')byCli[k].ch++;else if(r.type==='regular')byCli[k].re++;});
   const cliEnt=Object.entries(byCli).sort((a,b)=>b[1].s-a[1].s);const maxC=cliEnt[0]?cliEnt[0][1].s:1;
   aa.innerHTML=`
     ${!anaYear?`<div class="cwrap" style="grid-column:1/-1">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
         <div class="ctitle" style="margin-bottom:0">🏢 取引先別 集計</div>
-        <div class="txtog"><button class="${taxMode==='inc'?'on':''}" onclick="setTaxAna('inc')">税込</button><button class="${taxMode==='exc'?'on':''}" onclick="setTaxAna('exc')">税別</button></div>
+        <div class="txtog"><button class="${taxMode==='inc'?'on':''}" onclick="setTaxAnaCli('inc')">税込</button><button class="${taxMode==='exc'?'on':''}" onclick="setTaxAnaCli('exc')">税別</button></div>
       </div>
       <div style="overflow-x:auto"><table class="sumtbl"><thead><tr><th>取引先</th><th class="r">件数</th><th class="r">チャーター</th><th class="r">集配</th><th class="r">運賃計</th><th class="r">高速計</th><th class="r">立替計</th><th class="r">税額</th><th class="r">合計</th><th style="width:90px">割合</th><th style="width:22px"></th></tr></thead>
       <tbody>${cliEnt.map(([name,d])=>{const p=Math.round(d.s/maxC*100);const isE=expanded.has('c_'+name);return`<tr style="cursor:pointer" onclick="toggleExp('c_${name}')"><td style="font-weight:500">${name}</td><td class="r">${d.cnt}件</td><td class="r">${d.ch?d.ch+'件':'—'}</td><td class="r">${d.re?d.re+'件':'—'}</td><td class="r">${yen(d.fare)}</td><td class="r">${d.hw?yen(d.hw):'—'}</td><td class="r">${d.oth?yen(d.oth):'—'}</td><td class="r">${yen(d.tax)}</td><td class="r" style="font-weight:600">${yen(d.s)}</td><td><div style="display:flex;align-items:center;gap:4px"><div style="width:70px;background:var(--bg);border:0.5px solid var(--border);border-radius:2px;height:7px;overflow:hidden"><div style="width:${p}%;height:100%;background:var(--blue);border-radius:2px"></div></div><span style="font-size:10px;color:var(--text2)">${p}%</span></div></td><td style="color:var(--text2);font-size:12px">${isE?'▲':'▼'}</td></tr>${isE?anaRecs.filter(r=>{const c=lkC(r.cli);return(c?c.name:'未設定')===name;}).map(r=>`<tr class="det"><td style="padding-left:14px">${r.date}</td><td>${r.car}</td><td></td><td><span class="bdg ${typeBadge(r.type)}">${typeShort(r.type)}</span></td><td class="r">${yen(r.fare||0)}</td><td class="r">${r.hw?yen(r.hw):'—'}</td><td class="r">${r.oth?yen(r.oth):'—'}</td><td class="r">${yen(rtax(r))}</td><td class="r">${yen(totR(r,taxMode))}</td><td class="dim" colspan="2">${r.note||''}</td></tr>`).join(''):''}`;}).join('')}</tbody></table></div>
-    </div>
-    <div class="cwrap" style="grid-column:1/-1">
-      <div class="ctitle">👥 ドライバー別 売上</div>
+    </div>`:''}`;
+  if(anaYear)aa.insertAdjacentHTML('beforeend', buildCliYearAnalysisHtml(anaYear));
+}
+
+/* ===== ドライバー分析（旧ダッシュボードのドライバー別売上を分離） ===== */
+function renderDrvAnalysis(){
+  const aa=document.getElementById('anaDrvArea');
+  if(!aa)return;
+  const anaYear=document.getElementById('anaDrvYear')?.value||'';
+  const anaRecs=anaYear?recs.filter(r=>r.date&&r.date.startsWith(anaYear)):recs;
+  const byDrv={};anaRecs.forEach(r=>{const d=recDrv(r);const k=d?d.name:'未配車';if(!byDrv[k])byDrv[k]={s:0,cnt:0,un:!d};byDrv[k].s+=totR(r,taxMode);byDrv[k].cnt++;});
+  const drvEnt=Object.entries(byDrv).sort((a,b)=>b[1].s-a[1].s);const maxD=drvEnt[0]?drvEnt[0][1].s:1;
+  aa.innerHTML=`
+    ${!anaYear?`<div class="cwrap" style="grid-column:1/-1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+        <div class="ctitle" style="margin-bottom:0">👥 ドライバー別 売上</div>
+        <div class="txtog"><button class="${taxMode==='inc'?'on':''}" onclick="setTaxAnaDrv('inc')">税込</button><button class="${taxMode==='exc'?'on':''}" onclick="setTaxAnaDrv('exc')">税別</button></div>
+      </div>
       ${drvEnt.map(([name,d])=>{const p=Math.round(d.s/maxD*100);return`<div class="brow"><div class="blbl" title="${name}">${name}</div><div class="btrack"><div class="bfill" style="width:${p}%;background:${d.un?'#F09595':'#1D9E75'}"></div></div><div class="bval">${yen(d.s)} <span style="color:var(--text2)">${d.cnt}件</span></div></div>`;}).join('')}
     </div>`:''}`;
-  const csvBtn=document.getElementById('anaYearCsvBtn');
+  const csvBtn=document.getElementById('anaDrvYearCsvBtn');
   if(csvBtn)csvBtn.style.display=anaYear?'':'none';
-  if(anaYear)aa.insertAdjacentHTML('beforeend', buildYearAnalysisHtml(anaYear));
+  if(anaYear)aa.insertAdjacentHTML('beforeend', buildDrvYearAnalysisHtml(anaYear));
 }
 
 /* ===== DRIVERS ===== */
@@ -8883,7 +8909,7 @@ function periodDiffBadge(diff, pct, unit, eqLabel) {
   return `<span class="${cls}">${arrow} ${pctPart}${unit==='yen'?yen(Math.abs(diff)):Math.abs(diff)+'件'}</span>`;
 }
 
-function setYrDrvCliFilter(v){ yrDrvCliFilter = v ? +v : ''; renderDash(); }
+function setYrDrvCliFilter(v){ yrDrvCliFilter = v ? +v : ''; renderDrvAnalysis(); }
 
 // ドライバー別・取引先別の12ヶ月マトリクス表（右端に合計列・下端に合計行）を共通生成
 function monthMatrixTableHtml(rows, rowLabelHeader, emptyMsg) {
@@ -8969,7 +8995,7 @@ function buildFiveYearTableHtml(year) {
 }
 
 // ダッシュボードの年間サマリー（年間KPI＋月次推移＋5年比較表）。renderDashから年選択時のみ呼ばれる。
-// 取引先別・ドライバー別の内訳は「取引先・ドライバー分析」タブ（buildYearAnalysisHtml）側の担当。
+// 取引先別の内訳は「取引先分析」タブ（buildCliYearAnalysisHtml）、ドライバー別の内訳は「ドライバー分析」タブ（buildDrvYearAnalysisHtml）の担当。
 // 前年同期間との比較（過去データとの比較）も併せて表示する
 function buildYearReportHtml(year) {
   const { monthlyAmt, monthlyCnt } = buildYearStats(year);
@@ -9016,18 +9042,21 @@ function buildYearReportHtml(year) {
   return kpiHtml + barHtml + buildFiveYearTableHtml(year);
 }
 
-// 「取引先・ドライバー分析」タブの年選択時の内容（取引先別/ドライバー別 月次実績マトリクス）。renderAnalysisから呼ばれる。
-function buildYearAnalysisHtml(year) {
-  const { drvRows, cliRows } = buildYearStats(year, yrDrvCliFilter||null);
-
-  const cliMatrixHtml = `<div class="cwrap" style="grid-column:1/-1">
+// 「取引先分析」タブの年選択時の内容（取引先別 月次実績マトリクス）。renderCliAnalysisから呼ばれる。
+function buildCliYearAnalysisHtml(year) {
+  const { cliRows } = buildYearStats(year);
+  return `<div class="cwrap" style="grid-column:1/-1">
     <div class="ctitle">🏢 取引先別 月次実績（${year}年・税込）</div>
     ${monthMatrixTableHtml(cliRows.map(({c,amts})=>({label:c.name,amts})), '取引先', 'この年の実績データがありません')}
   </div>`;
+}
 
+// 「ドライバー分析」タブの年選択時の内容（ドライバー別 月次実績マトリクス、取引先で絞込可）。renderDrvAnalysisから呼ばれる。
+function buildDrvYearAnalysisHtml(year) {
+  const { drvRows } = buildYearStats(year, yrDrvCliFilter||null);
   const cliOptions = [...clients].sort((a,b)=>(parseInt(a.client_no,10)||999999)-(parseInt(b.client_no,10)||999999))
     .map(c=>`<option value="${c.id}" ${yrDrvCliFilter===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('');
-  const matrixHtml = `<div class="cwrap" style="grid-column:1/-1">
+  return `<div class="cwrap" style="grid-column:1/-1">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:6px">
       <div class="ctitle" style="margin-bottom:0">👥 ドライバー別 月次実績（${year}年・税込）</div>
       <select onchange="setYrDrvCliFilter(this.value)" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
@@ -9037,12 +9066,10 @@ function buildYearAnalysisHtml(year) {
     </div>
     ${monthMatrixTableHtml(drvRows.map(({d,amts})=>({label:d.name,amts})), 'ドライバー', yrDrvCliFilter?'この取引先の実績データがありません':'この年の実績データがありません')}
   </div>`;
-
-  return cliMatrixHtml + matrixHtml;
 }
 
 function exportYearCsv() {
-  const year = document.getElementById('anaYear')?.value;
+  const year = document.getElementById('anaDrvYear')?.value;
   if (!year) { alert('年を選択してください（全期間ではCSV出力できません）'); return; }
   const { drvRows } = buildYearStats(year, yrDrvCliFilter||null);
   const headers = ['ドライバー', ...Array.from({length:12},(_,i)=>`${i+1}月`), '合計'];
