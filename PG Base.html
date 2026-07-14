@@ -272,10 +272,6 @@ input:focus,select:focus{border-color:var(--blue)}
 .ntab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:500}
 .ntab:hover{color:var(--text)}
 .nav-warn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red)}
-/* 明細フル画面の選択チェックボックス: ネイティブのborderは効かないため、appearanceを外して自前で描画する */
-.big-chk{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid var(--text2);border-radius:3px;background:var(--bg);cursor:pointer;vertical-align:middle;position:relative}
-.big-chk:checked{background:var(--blue);border-color:var(--blue)}
-.big-chk:checked::after{content:'✓';position:absolute;top:50%;left:50%;transform:translate(-50%,-56%);color:#fff;font-size:13px;font-weight:700;line-height:1}
 .nav-group{display:flex;background:var(--bg2);border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
 /* 受注入力（手入力）の全画面表示モード：ヘッダー・ナビを隠して入力欄を広く使う */
 body.entry-fullscreen .sbar,
@@ -2809,7 +2805,10 @@ const AGG_DETAIL_COLS = [
   {key:'deliveryDone', label:'配送済', default:false, get:r=>r.delivery_done?'済':''},
   {key:'driverNote', label:'Dr連絡', default:false, get:r=>r.driver_note||''},
   {key:'invPayDate', label:'支払日', default:false, get:r=>r.invoice_payment_date||''},
-  {key:'status', label:'ステータス', default:false, get:r=>stLbl(r.st)},
+  {key:'status', label:'ステータス', default:true, get:r=>{
+    const canEd = me && me.role !== 'viewer', canAp = me && me.role === 'admin';
+    return `<span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>${canEd&&r.st<1?`<button class="ibtn" title="確認済にする" onclick="advSt(${r.id},1)">✓</button>`:''}${canAp&&r.st<2?`<button class="ibtn" title="承認する" onclick="advSt(${r.id},2)">✓✓</button>`:''}`;
+  }},
   {key:'note', label:'備考', default:false, get:r=>r.note||''},
 ];
 
@@ -3711,7 +3710,7 @@ function renderAggDetailFull() {
   const allSelected = _aggDetailRows.length > 0 && _aggDetailRows.every(r=>_aggDetailSelected.has(r.id));
   const wrapCell = 'white-space:normal;word-break:break-word;overflow-wrap:break-word';
   thead.innerHTML = `<tr style="background:var(--bg2);border-bottom:0.5px solid var(--border);color:var(--text2);text-align:left">
-    <th style="padding:8px;width:32px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600;text-align:center"><input type="checkbox" class="big-chk" ${allSelected?'checked':''} onchange="toggleAggDetailSelAll(this.checked)"></th>
+    <th style="padding:8px;width:24px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600"><input type="checkbox" ${allSelected?'checked':''} onchange="toggleAggDetailSelAll(this.checked)"></th>
     ${cols.map(c=>`<th style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle;font-size:13px;font-weight:600;${wrapCell};${(c.num||c.right)?'text-align:right':''}">${c.label}</th>`).join('')}
     <th style="padding:8px;width:76px;vertical-align:middle;font-size:13px;font-weight:600">操作</th>
   </tr>`;
@@ -3721,7 +3720,7 @@ function renderAggDetailFull() {
     return;
   }
   tbody.innerHTML = _aggDetailRows.map(r=>`<tr style="border-bottom:0.5px solid var(--border);cursor:pointer" title="ダブルクリックで修正画面を開きます" ondblclick="openEditInvoice(${r.id})">
-    <td style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle;background:var(--bg2);text-align:center"><input type="checkbox" class="big-chk" ${_aggDetailSelected.has(r.id)?'checked':''} onchange="toggleAggDetailRowSel(${r.id},this.checked)" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"></td>
+    <td style="padding:8px;border-right:0.5px solid var(--border);vertical-align:middle"><input type="checkbox" ${_aggDetailSelected.has(r.id)?'checked':''} onchange="toggleAggDetailRowSel(${r.id},this.checked)" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"></td>
     ${cols.map(c=>{
       const v = c.get(r, _aggDetailSide);
       const alignStyle = (c.num||c.right)?'text-align:right':'text-align:left';
@@ -4012,7 +4011,9 @@ async function advSt(id,st){
     const{error}=await sb.from('invoices').update({st}).eq('id',id);
     if(error)throw error;
     const r=recs.find(x=>x.id===id);if(r){const old=r.st;r.st=st;addLog('ステータス変更',`${r.car}: ${stLbl(old)}→${stLbl(st)}`);}
-    renderInv();showT(`${stLbl(st)}に変更しました`);
+    renderInv();
+    if (!document.getElementById('pg20')?.classList.contains('hide')) renderAggDetailFull();
+    showT(`${stLbl(st)}に変更しました`);
   }catch(e){showT('更新エラー: '+e.message,'ter');}
 }
 
