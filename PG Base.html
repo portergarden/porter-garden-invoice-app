@@ -1886,7 +1886,7 @@ td.dim{color:var(--text2)}
     <div class="ntab on" id="dnt3" onclick="goDrvPage(3,this)">📢 掲示板</div>
     <div class="ntab" id="dnt0" onclick="goDrvPage(0,this)">📋 日報</div>
     <div class="ntab" id="dnt1" onclick="goDrvPage(1,this)">📊 月報</div>
-    <div class="ntab" id="dnt2" onclick="goDrvPage(2,this)">💴 手取り明細</div>
+    <div class="ntab" id="dnt2" onclick="goDrvPage(2,this)">💴 支払明細書</div>
     <div class="ntab" id="dnt4" onclick="goDrvPage(4,this)">📷 書類</div>
   </nav>
   <!-- ドライバー用コンテンツ -->
@@ -1916,17 +1916,12 @@ td.dim{color:var(--text2)}
       <div id="drvMonthlyBody" style="padding:8px 14px"></div>
     </div>
 
-    <!-- D2: 手取り明細 -->
+    <!-- D2: 支払明細書（会社発行のもののみ。手取り計算プレビューは廃止） -->
     <div id="dpg2" style="display:none">
-      <div id="drvStmtArea" style="padding:8px 14px;border-bottom:3px solid var(--bg2)">
+      <div id="drvStmtArea" style="padding:8px 14px">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">📬 支払明細書（会社発行）</div>
         <div id="drvStmtList" style="font-size:12px;color:var(--text2)">読み込み中...</div>
       </div>
-      <div style="padding:6px 14px;border-bottom:0.5px solid var(--border);display:flex;gap:8px;align-items:center">
-        <input type="month" id="drvPnlMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDriverPnl()">
-        <button class="btn sml" onclick="window.print()">🖨 印刷</button>
-      </div>
-      <div id="drvPnlBody" style="padding:8px 14px"></div>
     </div>
 
     <!-- D3: 掲示板（閲覧のみ） -->
@@ -2347,7 +2342,7 @@ td.dim{color:var(--text2)}
     </div>
     <div class="fld" id="uDrvFld" style="display:none"><label>紐づけるドライバー <span style="color:var(--red)">*</span></label>
       <select id="uDrvSel" style="width:100%"><option value="">選択してください</option></select>
-      <div style="font-size:10px;color:var(--text2);margin-top:3px">このアカウントでログインすると、選択したドライバーのポータル（日報・月報・手取り明細・書類提出）が表示されます</div>
+      <div style="font-size:10px;color:var(--text2);margin-top:3px">このアカウントでログインすると、選択したドライバーのポータル（日報・月報・支払明細書・書類提出）が表示されます</div>
     </div>
     <div class="mfoot"><button class="btn" onclick="closeM('mUsr')">キャンセル</button><button class="btn pri" onclick="saveUsr()">保存</button></div>
   </div>
@@ -7969,12 +7964,10 @@ function applyDriverPortal() {
   const thisM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const drvMrEl = document.getElementById('drvMrMonth');
   if (drvMrEl) drvMrEl.value = thisM;
-  const drvPnlEl = document.getElementById('drvPnlMonth');
-  if (drvPnlEl) drvPnlEl.value = thisM;
   const drvDmEl = document.getElementById('drvDailyMonth');
   if (drvDmEl) drvDmEl.value = thisM;
 
-  // 協力会社経由で支払うなど、ポータルで支払明細書を見せないドライバーは「手取り明細」タブごと非表示にする
+  // 協力会社経由で支払うなど、ポータルで支払明細書を見せないドライバーは「支払明細書」タブごと非表示にする
   const hideStatement = !!me?.driver_data?.hide_statement;
   const stmtTabEl = document.getElementById('dnt2');
   if (stmtTabEl) stmtTabEl.style.display = hideStatement ? 'none' : '';
@@ -7987,7 +7980,7 @@ function applyDriverPortal() {
   // 未読の明細書があればログイン時に知らせる（タブ自体を非表示にしているドライバーには出さない）
   if (me?.driver_id && sb && !hideStatement) {
     sb.from('driver_statements').select('id').eq('drv_id', me.driver_id).is('read_at', null)
-      .then(({data}) => { if (data?.length) showT(`📬 未読の支払明細書が${data.length}件あります（手取り明細タブで確認）`, 'twa'); })
+      .then(({data}) => { if (data?.length) showT(`📬 未読の支払明細書が${data.length}件あります（支払明細書タブで確認）`, 'twa'); })
       .catch?.(()=>{});
   }
   // 掲示板は既定タブとしてログイン直後に表示されるため（goDrvPage(3,...)がloadBoardとmarkBoardSeenを行う）、
@@ -8003,7 +7996,7 @@ function goDrvPage(n, el) {
   }
   if (n===0) loadDriverDailyList();
   if (n===1) renderDriverMonthly();
-  if (n===2) { renderDriverPnl(); loadDriverStatements(); }
+  if (n===2) { loadDriverStatements(); }
   if (n===3) { loadBoard(true); renderBoardTo('drvBoardList'); }
   if (n===4) renderDriverPortalDocs();
 }
@@ -8491,42 +8484,6 @@ async function renderDriverMonthly() {
         ${reps.map(r=>`<div class="pnl-row sub"><span>${r.date}</span><span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ネコ${r.qty_nekopos||0}</span></div>`).join('')}
       </div>`;
   } catch(e) { el.innerHTML = `<div style="color:var(--red);font-size:11px">${e.message}</div>`; }
-}
-
-async function renderDriverPnl() {
-  const drvData = me?.driver_data;
-  if (!drvData) return;
-  const month = document.getElementById('drvPnlMonth')?.value || '';
-  const el = document.getElementById('drvPnlBody');
-  if (!el) return;
-  const monthRecs = recs.filter(r => r.date && r.date.startsWith(month) && (drvData.cars||[]).some(c=>nm(c)===nm(r.car)));
-  const grossAll = monthRecs.reduce((a,r)=>a+(r.fare||0)+(r.hw||0)+(r.oth||0),0); // 全明細の税別ベース額（非課税分を含む）
-  const grossTax = monthRecs.reduce((a,r)=>a+totR(r,'inc'),0);
-  const nonTax = monthRecs.filter(r=>(r.tax||0)===0).reduce((a,r)=>a+sub(r),0);
-  const gross = grossAll - nonTax; // 税別金額（課税対象分のみ。非課税分は業務手数料の対象外）
-  const taxAmt = grossTax - grossAll;
-  const feeRate = drvData.fee_rate ?? -0.15;
-  const adminFee = drvData.admin_fee ?? -10000;
-  const vehRental = drvData.vehicle_rental ?? -30000;
-  const { bizFeeWithTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
-  const otherTotal = (drvData.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0);
-  const takeHome = grossTax + bizFeeWithTax + adminFee + vehRental + otherTotal;
-  el.innerHTML = `
-    <div style="text-align:center;padding:12px 0 8px;border-bottom:0.5px solid var(--border);margin-bottom:10px">
-      <div style="font-size:11px;color:var(--text2)">ポーターガーデン</div>
-      <div style="font-size:14px;font-weight:600;margin:3px 0">支払明細書（手取り計算）</div>
-      <div style="font-size:11px;color:var(--text2)">${month} / ${drvData.name}</div>
-    </div>
-    <div class="pnl-row"><span>税込売上合計</span><span>${yen(grossTax)}</span></div>
-    <div class="pnl-row neg sub"><span>業務手数料（${Math.abs(feeRate*100)}%）＋消費税</span><span>${yen(bizFeeWithTax)}</span></div>
-    <div class="pnl-row neg sub"><span>事務手数料</span><span>${yen(adminFee)}</span></div>
-    <div class="pnl-row neg sub"><span>車両レンタル${drvData.lease_company?` <span style="color:var(--text2);font-weight:400">（${escHtml(drvData.lease_company)}）</span>`:''}</span><span>${yen(vehRental)}</span></div>
-    ${(drvData.other_deductions||[]).map(od=>`<div class="pnl-row neg sub"><span>${escHtml(od.name)}</span><span>${yen(Number(od.amount)||0)}</span></div>`).join('')}
-    <div class="pnl-row total"><span>お支払い金額（手取り）</span><span style="color:${takeHome>=0?'var(--green)':'var(--red)'};font-size:16px">${yen(takeHome)}</span></div>
-    <div style="margin-top:16px;border-top:0.5px solid var(--border);padding-top:8px">
-      <div style="font-size:10px;color:var(--text2);margin-bottom:4px">稼働明細（${monthRecs.length}件）</div>
-      ${monthRecs.map(r=>`<div class="pnl-row sub"><span>${r.date} ${escHtml(r.note)}</span><span>${yen((r.fare||0)+(r.hw||0)+(r.oth||0))}</span></div>`).join('')}
-    </div>`;
 }
 
 function exportDriverMonthlyCsv() {
