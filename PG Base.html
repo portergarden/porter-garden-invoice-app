@@ -271,6 +271,7 @@ input:focus,select:focus{border-color:var(--blue)}
 .ntab{padding:7px 11px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0}
 .ntab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:500}
 .ntab:hover{color:var(--text)}
+.nav-warn-dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0}
 .nav-group{display:flex;background:var(--bg2);border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
 /* 受注入力（手入力）の全画面表示モード：ヘッダー・ナビを隠して入力欄を広く使う */
 body.entry-fullscreen .sbar,
@@ -4766,6 +4767,14 @@ async function importCsv(){
 function mkPrev(rows,heads,fn){return`<div style="max-height:120px;overflow-y:auto;border:0.5px solid var(--border);border-radius:var(--radius);font-size:11px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--bg2)">${heads.map(h=>`<th style="padding:4px 7px;font-weight:500;text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${fn(r).map((v,i)=>`<td style="padding:3px 7px;border-top:0.5px solid var(--border)${i>1?';text-align:right':''}">${v}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
 function closeM(id){document.getElementById(id).classList.remove('on');}
 function showT(msg,cls='tok'){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+cls;t.style.display='block';setTimeout(()=>t.style.display='none',2800);}
+// タブに小さな赤丸を付け外しする（期限切れ等、開かなくても分かるようにする警告表示）
+function setNavWarnDot(tabId, show) {
+  const el = document.getElementById(tabId);
+  if (!el) return;
+  let dot = el.querySelector('.nav-warn-dot');
+  if (show && !dot) { dot = document.createElement('span'); dot.className = 'nav-warn-dot'; el.appendChild(dot); }
+  else if (!show && dot) { dot.remove(); }
+}
 function showLoad(v){const el=document.getElementById('loadOv');if(el)el.classList.toggle('on',v);}
 
 /* ===== 初期化 ===== */
@@ -7576,8 +7585,9 @@ function checkSchedAlerts() {
   const today = fmtLocalDate(new Date());
   const soon = new Date(); soon.setDate(soon.getDate()+7); const soonStr = fmtLocalDate(soon);
   const alerts = schedData.filter(s => !s.done && s.date <= soonStr);
-  if (!alerts.length) return null;
   const overdue = alerts.filter(s=>s.date<today);
+  setNavWarnDot('nt9', overdue.length>0);
+  if (!alerts.length) return null;
   return (overdue.length ? `⚠ 期限超過の支払予定: ${overdue.length}件\n` : '') +
          (alerts.length - overdue.length ? `📅 7日以内の支払予定: ${alerts.length - overdue.length}件` : '');
 }
@@ -8217,6 +8227,7 @@ async function checkDriverDocAlerts() {
   if (!sb || !drvs.length) return null;
   await loadDriverDocs();
   const issues = summarizeDocAlerts();
+  setNavWarnDot('nt2', issues.length>0);
   if (document.getElementById('pg2')?.style.display !== 'none') renderDrv();
   if (!issues.length) return null;
   const expired = issues.filter(i => i.st.cls === 'expired').length;
@@ -8233,6 +8244,7 @@ async function checkDriverOwnDocAlerts() {
     const issues = DRIVER_DOC_TYPES
       .map(t => ({ t, st: docStatusOf(myDocs.find(d=>d.doc_type===t.key)) }))
       .filter(x => x.st.cls === 'expired' || x.st.cls === 'soon');
+    setNavWarnDot('dnt4', issues.length>0);
     if (!issues.length) return;
     const expired = issues.filter(i => i.st.cls === 'expired').map(i=>i.t.label);
     const soon = issues.filter(i => i.st.cls === 'soon').map(i=>i.t.label);
@@ -11464,7 +11476,7 @@ function loadSlipMappingFromCli(cliId) {
 
 /* ===== ⑤ 日報提出漏れアラート ===== */
 async function checkDailyReportMissing() {
-  if (!sb || !recs.length) return;
+  if (!sb || !recs.length) { setNavWarnDot('nt10', false); return; }
   try {
     const now = new Date();
     const thisM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -11472,7 +11484,7 @@ async function checkDailyReportMissing() {
     const invDates = new Set(
       recs.filter(r=>r.date?.startsWith(thisM)).map(r=>r.date)
     );
-    if (!invDates.size) return;
+    if (!invDates.size) { setNavWarnDot('nt10', false); return; }
 
     // 今月の日報日付一覧
     const [y,m] = thisM.split('-');
@@ -11486,6 +11498,7 @@ async function checkDailyReportMissing() {
 
     // 稼働データはあるが日報がない日
     const missing = [...invDates].filter(d=>!drDates.has(d)).sort();
+    setNavWarnDot('nt10', missing.length>0);
     if (!missing.length) return;
 
     // ダッシュボードに警告を表示
