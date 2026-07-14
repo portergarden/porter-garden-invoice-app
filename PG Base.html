@@ -366,9 +366,6 @@ td.dim{color:var(--text2)}
 .loginwrap{display:flex;align-items:center;justify-content:center;padding:48px 20px;min-height:80vh}
 .lcard{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:24px 28px;width:300px}
 .lerr{font-size:11px;color:var(--red);margin-top:4px;min-height:14px}
-.notov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:150;align-items:center;justify-content:center}
-.notov.on{display:flex}
-.notcard{background:var(--bg);border-radius:var(--radius-lg);padding:20px 24px;width:270px;text-align:center;border:0.5px solid var(--border)}
 .loading-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:300;align-items:center;justify-content:center}
 .loading-overlay.on{display:flex}
 .spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
@@ -2428,16 +2425,6 @@ td.dim{color:var(--text2)}
   </div>
 </div>
 
-<!-- 通知 -->
-<div class="notov" id="notOv">
-  <div class="notcard">
-    <div style="font-size:24px;margin-bottom:8px">⚠️</div>
-    <div style="font-size:13px;font-weight:500;margin-bottom:5px" id="notTitle"></div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:12px;white-space:pre-line" id="notBody"></div>
-    <button class="btn pri" style="width:100%;justify-content:center" onclick="closeNot()">確認</button>
-  </div>
-</div>
-
 <!-- ローディング -->
 <div class="loading-overlay" id="loadOv"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>
@@ -2543,7 +2530,6 @@ async function applyLogin(data) {
   goPage(1, document.getElementById('nt1'));
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
-  setTimeout(()=>{ runLoginNotifications().catch(()=>{}); }, 1500);
 }
 
 // Supabaseが無料プランで自動バックアップが無いため、手動バックアップ（backupAllData）の実行間隔が
@@ -2555,30 +2541,6 @@ function checkBackupReminder() {
   const days = Math.floor((Date.now() - new Date(lastAt).getTime()) / 86400000);
   if (days >= BACKUP_REMINDER_DAYS) return `💾 最終バックアップから${days}日経過しています（セットアップタブから作成してください）`;
   return null;
-}
-
-// 未配車・未確認請求書・支払予定・書類期限・掲示板新着・バックアップ状況をまとめて1つの通知パネル（notOv）で表示する。
-// 以前はそれぞれ別々のタイミングでトーストが出ていたが、ログイン直後に4つ連続で流れて見落とされやすかったため統合した
-async function runLoginNotifications() {
-  const lines = [];
-  const unC = recs.filter(r=>!recDrv(r)).length, pend = recs.filter(r=>r.st===0).length;
-  if (unC) lines.push(`未配車の車番: ${unC}件`);
-  if (pend) lines.push(`未確認の請求明細書: ${pend}件`);
-  const schedMsg = checkSchedAlerts();
-  if (schedMsg) lines.push(schedMsg.trim());
-  const [docMsg, boardMsg] = await Promise.all([
-    checkDriverDocAlerts().catch(()=>null),
-    checkBoardAlerts().catch(()=>null),
-  ]);
-  if (docMsg) lines.push(docMsg);
-  if (boardMsg) lines.push(boardMsg);
-  const backupMsg = checkBackupReminder();
-  if (backupMsg) lines.push(backupMsg);
-  if (lines.length) {
-    document.getElementById('notTitle').textContent = '確認が必要な項目があります';
-    document.getElementById('notBody').textContent = lines.join('\n');
-    document.getElementById('notOv').classList.add('on');
-  }
 }
 
 async function tryAutoLogin() {
@@ -2615,7 +2577,6 @@ async function login(){
   }catch(e){document.getElementById('lerr').textContent='エラー: '+e.message;}
   showLoad(false);
 }
-function closeNot(){document.getElementById('notOv').classList.remove('on');}
 async function logout(exp=false){
   stopSess();
   if(me)await addLog('ログアウト',exp?'セッション期限切れ':`${me.name}がログアウト`);
@@ -4136,12 +4097,25 @@ function renderDash(){
   renderDashWarnings();
 }
 
-// ダッシュボードの警告パネル：未確認請求・書類期限・日報未提出・支払入金遅延をまとめて表示する（renderDashの末尾から呼ばれる非同期処理）
+// ダッシュボードの警告パネル：未確認請求・未配車・書類期限・日報未提出・支払入金遅延・掲示板新着・バックアップ状況をまとめて表示する
+// （renderDashの末尾から呼ばれる非同期処理。以前はログイン直後のポップアップ通知(runLoginNotifications)で別々に出していたが、
+//   このパネルと重複するため廃止しここに統合した）
 async function renderDashWarnings(){
   const items=[]; // {sev:'red'|'amber', icon, text, btn, go, nt}
 
   const pend=recs.filter(r=>r.st===0).length;
   if(pend)items.push({sev:'amber',icon:'🧾',text:`未確認の請求明細: ${pend}件`,btn:'請求明細一覧へ',go:0,nt:'nt0'});
+
+  const unC=recs.filter(r=>!recDrv(r)).length;
+  if(unC)items.push({sev:'amber',icon:'🚚',text:`未配車の車番: ${unC}件`,btn:'請求明細一覧へ',go:0,nt:'nt0'});
+
+  try{
+    const boardMsg=await checkBoardAlerts();
+    if(boardMsg)items.push({sev:'amber',icon:'📢',text:boardMsg.replace(/^📢\s*/,''),btn:'掲示板へ',go:14,nt:'nt14'});
+  }catch(e){console.warn('renderDashWarnings(掲示板):',e.message);}
+
+  const backupMsg=checkBackupReminder();
+  if(backupMsg)items.push({sev:'amber',icon:'💾',text:backupMsg.replace(/^💾\s*/,''),btn:'セットアップへ',go:17,nt:'nt17'});
 
   if(drvs.length){
     try{
@@ -11770,25 +11744,9 @@ async function checkDailyReportMissing() {
 
     const drDates = new Set((data||[]).map(r=>r.date));
 
-    // 稼働データはあるが日報がない日
+    // 稼働データはあるが日報がない日（ダッシュボードの警告パネル(renderDashWarnings)に表示するため、ここではナビの赤丸のみ）
     const missing = [...invDates].filter(d=>!drDates.has(d)).sort();
     setNavWarnDot('nt10', missing.length>0);
-    if (!missing.length) return;
-
-    // ダッシュボードに警告を表示
-    const da = document.getElementById('dashArea');
-    if (!da) return;
-    const existing = document.getElementById('drMissingAlert');
-    if (existing) existing.remove();
-
-    const alert = document.createElement('div');
-    alert.id = 'drMissingAlert';
-    alert.style.cssText = 'grid-column:1/-1;padding:8px 10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11px;color:var(--amber-text)';
-    alert.innerHTML = `<div style="font-weight:500;margin-bottom:3px">⚠ 日報未提出の稼働日があります（${missing.length}日）</div>
-      <div>${missing.slice(0,7).join('、')}${missing.length>7?` 他${missing.length-7}日`:''}</div>
-      <button class="btn sml" style="margin-top:5px" onclick="goPage(10,document.getElementById('nt10'))">日報ページへ</button>`;
-    da.insertAdjacentElement('afterbegin', alert);
-
   } catch(e) { console.warn('checkDailyReportMissing:', e.message); }
 }
 
