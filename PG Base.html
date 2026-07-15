@@ -197,6 +197,7 @@ let parsedPayCsv = [];
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a0708418cb7b96fc563eacae0fbf77674/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
 
 <style>
@@ -477,6 +478,28 @@ td.dim{color:var(--text2)}
         <div class="lerr" id="lerr"></div>
         <button type="submit" class="btn pri" style="width:100%;justify-content:center;margin-top:8px">ログイン</button>
       </form>
+    </div>
+  </div>
+</div>
+<!-- ドライバー自己登録（招待URL/QRコードで開いた場合のみ表示。ログイン不要） -->
+<div id="pgDriverInvite" class="hide">
+  <div class="loginwrap">
+    <div class="lcard" style="width:340px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:18px">
+        <div style="font-size:19px;font-weight:500;letter-spacing:0.2px">🚚 ドライバー登録</div>
+      </div>
+      <div id="driverInviteStatus" style="font-size:12px;color:var(--text2);text-align:center;padding:10px 0">確認中...</div>
+      <div id="driverInviteForm" style="display:none">
+        <div class="fld"><label>お名前 <span style="color:var(--red)">*</span></label><input type="text" id="diName" placeholder="山田太郎"></div>
+        <div class="fld"><label>電話番号（任意）</label><input type="text" id="diTel" placeholder="090-0000-0000"></div>
+        <div class="fld">
+          <label>担当車番（複数可・任意）</label>
+          <div id="cTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
+          <div style="display:flex;gap:5px"><input type="text" id="dCi" placeholder="例: 仙台480れ141" style="flex:1" onkeydown="if(event.key==='Enter'){addTag();event.preventDefault()}"><button class="btn" onclick="addTag()">＋ 追加</button></div>
+        </div>
+        <div class="lerr" id="diErr"></div>
+        <button class="btn pri" style="width:100%;justify-content:center;margin-top:8px" onclick="submitDriverSelfRegistration()">登録する</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1195,6 +1218,7 @@ td.dim{color:var(--text2)}
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         <button class="btn sml" onclick="openDocStatusM()">📄 書類状況一覧</button>
+        <button class="btn sml hide" id="bDrvInvite" onclick="createDriverInvite()">🔗 招待URL発行</button>
         <button class="btn pri hide" id="bAddD" onclick="openDrvM()">＋ ドライバー追加</button>
       </div>
     </div>
@@ -1995,6 +2019,20 @@ td.dim{color:var(--text2)}
   </div>
 </div>
 
+<!-- モーダル: ドライバー招待URL/QRコード発行 -->
+<div class="overlay" id="mDrvInvite">
+  <div class="modal" style="width:400px;text-align:center">
+    <div class="mh">🔗 ドライバー招待 <button class="ibtn" onclick="closeM('mDrvInvite')">✕</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px">このURL（またはQRコード）を登録してもらいたいドライバーに送ってください。1回限り・7日間有効です。ドライバーが名前・電話番号・車番を入力すると仮登録され、手数料率などは登録後に管理者が設定してください。</div>
+    <div id="drvInviteQr" style="display:flex;justify-content:center;margin-bottom:10px"></div>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <input type="text" id="drvInviteUrl" readonly style="flex:1;padding:6px 8px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text)">
+      <button class="btn sml" onclick="copyDriverInviteUrl()">📋 コピー</button>
+    </div>
+    <div id="drvInviteExpiry" style="font-size:10px;color:var(--text2)"></div>
+  </div>
+</div>
+
 <!-- モーダル: リース会社別集計 -->
 <div class="overlay" id="mLeaseAgg">
   <div class="modal" style="width:520px;max-width:95vw">
@@ -2584,7 +2622,7 @@ async function applyLogin(data) {
   document.getElementById('tbBdg').innerHTML = `<span class="bdg ${rc}">${rn}</span>`;
   if (me.role==='admin') { document.getElementById('nt4').classList.remove('hide'); document.getElementById('nt5').classList.remove('hide'); }
   const canEd = me.role !== 'viewer';
-  ['bAdd','bAddD','bAddC'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
+  ['bAdd','bAddD','bAddC','bDrvInvite'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
   startSess();
   await loadAll();
   // 初期パスワードのまま(must_change_password)の場合は、変更が完了するまでここで止める。
@@ -4697,6 +4735,88 @@ async function resetDriverPassword(drvId){
   showLoad(false);
 }
 
+const DRIVER_INVITE_EXPIRY_DAYS = 7;
+// ランダムな招待トークンを生成する（crypto.randomUUIDが使えない古いブラウザ向けにフォールバックあり）
+function genInviteToken(){
+  if (window.crypto?.randomUUID) return crypto.randomUUID().replace(/-/g,'');
+  return Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');
+}
+// 1回限りの招待URL/QRコードを発行する（ドライバー管理タブの🔗招待URL発行ボタンから）
+async function createDriverInvite(){
+  showLoad(true);
+  try{
+    const token = genInviteToken();
+    const expiresAt = new Date(Date.now() + DRIVER_INVITE_EXPIRY_DAYS*86400000);
+    const{error}=await sb.from('driver_invites').insert({token, created_by: me?.name||'', expires_at: expiresAt.toISOString()});
+    if(error)throw error;
+    const url = `${location.origin}${location.pathname}?invite=${token}`;
+    document.getElementById('drvInviteUrl').value = url;
+    document.getElementById('drvInviteExpiry').textContent = `有効期限: ${expiresAt.toLocaleString('ja-JP')}まで`;
+    const qrEl = document.getElementById('drvInviteQr');
+    qrEl.innerHTML = '';
+    if (window.QRCode) {
+      new QRCode(qrEl, {text: url, width: 200, height: 200});
+    } else {
+      qrEl.textContent = '（QRコードライブラリの読み込みに失敗しました。URLを直接お使いください）';
+    }
+    addLog('ドライバー招待発行', `トークン発行（${DRIVER_INVITE_EXPIRY_DAYS}日間有効）`);
+    document.getElementById('mDrvInvite').classList.add('on');
+  }catch(e){showT('招待URL発行エラー: '+e.message,'ter');}
+  showLoad(false);
+}
+function copyDriverInviteUrl(){
+  const el = document.getElementById('drvInviteUrl');
+  el.select();
+  navigator.clipboard?.writeText(el.value).then(()=>showT('URLをコピーしました')).catch(()=>showT('コピーに失敗しました。手動で選択してコピーしてください','ter'));
+}
+
+// ===== ドライバー自己登録（招待URL/QRコードで開いた場合。ログイン不要のためsb.rpc経由でトークンを検証する） =====
+let currentInviteToken = null;
+const INVITE_REASON_MSG = { invalid:'このリンクは無効です。招待URLを再度ご確認ください。', used:'このリンクはすでに使用済みです。管理者に新しいリンクを発行してもらってください。', expired:'このリンクの有効期限が切れています。管理者に新しいリンクを発行してもらってください。' };
+async function checkDriverInviteToken(token){
+  currentInviteToken = token;
+  const statusEl = document.getElementById('driverInviteStatus');
+  try{
+    const { data, error } = await sb.rpc('check_driver_invite', { p_token: token });
+    if (error) throw error;
+    const row = data?.[0];
+    if (!row?.valid) {
+      statusEl.textContent = INVITE_REASON_MSG[row?.reason] || 'このリンクは使用できません。';
+      return;
+    }
+    statusEl.style.display = 'none';
+    pendTags = [];
+    document.getElementById('diName').value = '';
+    document.getElementById('diTel').value = '';
+    document.getElementById('dCi').value = '';
+    renderTags();
+    document.getElementById('driverInviteForm').style.display = 'block';
+  }catch(e){
+    statusEl.textContent = '確認中にエラーが発生しました: ' + e.message;
+  }
+}
+async function submitDriverSelfRegistration(){
+  const name = document.getElementById('diName').value.trim();
+  const tel = document.getElementById('diTel').value.trim();
+  const errEl = document.getElementById('diErr');
+  errEl.textContent = '';
+  if (!name) { errEl.textContent = 'お名前を入力してください'; return; }
+  showLoad(true);
+  try{
+    const { error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel||null, p_cars: pendTags });
+    if (error) throw error;
+    document.getElementById('driverInviteForm').style.display = 'none';
+    const statusEl = document.getElementById('driverInviteStatus');
+    statusEl.style.display = 'block';
+    statusEl.style.color = 'var(--green-text)';
+    statusEl.textContent = '登録が完了しました。管理者が内容を確認後、ご連絡します。このページは閉じて構いません。';
+  }catch(e){
+    const reasonMsg = { invalid_token: INVITE_REASON_MSG.invalid, token_already_used: INVITE_REASON_MSG.used, token_expired: INVITE_REASON_MSG.expired, name_required: 'お名前を入力してください' };
+    errEl.textContent = reasonMsg[e.message] || ('登録エラー: ' + e.message);
+  }
+  showLoad(false);
+}
+
 /* ===== CSV EXPORT ===== */
 const CSV_COLS_BILLING = ['日付','車番','ドライバー','取引先','種別','運賃','高速代','立替代','追加料金(他)','税率','税抜合計','消費税','税込合計','ステータス','備考'];
 // 集計（取引先別）タブでチェックした取引先分だけをCSV出力する（Excel/PDFの「選択分」と同じ絞り込みに揃える。
@@ -5078,6 +5198,15 @@ function showLoad(v){const el=document.getElementById('loadOv');if(el)el.classLi
 /* ===== 初期化 ===== */
 (async()=>{
   const ok=initSupabase();
+  const inviteToken = new URLSearchParams(location.search).get('invite');
+  if (inviteToken) {
+    // 招待URL経由で開いた場合はログイン画面を出さず、ドライバー自己登録フォームのみ表示する
+    document.getElementById('pgLogin').classList.add('hide');
+    document.getElementById('pgDriverInvite').classList.remove('hide');
+    if (ok) await checkDriverInviteToken(inviteToken);
+    else document.getElementById('driverInviteStatus').textContent = '接続に失敗しました。時間をおいて再度お試しください。';
+    return;
+  }
   if(ok){ await testConn(); await tryAutoLogin(); }
 })();
 </script>
@@ -12445,6 +12574,17 @@ CREATE TABLE IF NOT EXISTS drivers (
   is_company boolean NOT NULL DEFAULT false
 );
 
+-- ドライバー招待（QR/URL経由の自己登録用）
+CREATE TABLE IF NOT EXISTS driver_invites (
+  id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  token text NOT NULL UNIQUE,
+  created_by text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  driver_id integer REFERENCES drivers(id)
+);
+
 -- ユーザー（認証はSupabase Auth。pwは廃止済み・互換用にnullable列のみ残置）
 CREATE TABLE IF NOT EXISTS users (
   id text PRIMARY KEY, name text NOT NULL, pw text,
@@ -12643,6 +12783,60 @@ CREATE OR REPLACE FUNCTION public.list_client_names()
 RETURNS TABLE(id bigint, name text) LANGUAGE sql SECURITY DEFINER SET search_path TO 'public' AS $function$
   SELECT id, name FROM clients ORDER BY name;
 $function$;
+
+-- 招待トークンの有効性を確認する（匿名で呼べるが、渡したトークン1件の結果のみ返し、一覧は返さない）
+CREATE OR REPLACE FUNCTION public.check_driver_invite(p_token text)
+RETURNS TABLE(valid boolean, reason text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE
+  v_row public.driver_invites%rowtype;
+BEGIN
+  SELECT * INTO v_row FROM public.driver_invites WHERE token = p_token;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT false, 'invalid';
+  ELSIF v_row.used_at IS NOT NULL THEN
+    RETURN QUERY SELECT false, 'used';
+  ELSIF v_row.expires_at < now() THEN
+    RETURN QUERY SELECT false, 'expired';
+  ELSE
+    RETURN QUERY SELECT true, 'ok';
+  END IF;
+END;
+$function$;
+
+-- 招待トークンを使ってドライバーを自己登録する（匿名で呼べるが、有効なトークンの場合のみ処理を実行する）
+CREATE OR REPLACE FUNCTION public.submit_driver_registration(p_token text, p_name text, p_tel text, p_cars text[])
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE
+  v_row public.driver_invites%rowtype;
+  v_driver_id integer;
+BEGIN
+  SELECT * INTO v_row FROM public.driver_invites WHERE token = p_token FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'invalid_token';
+  ELSIF v_row.used_at IS NOT NULL THEN
+    RAISE EXCEPTION 'token_already_used';
+  ELSIF v_row.expires_at < now() THEN
+    RAISE EXCEPTION 'token_expired';
+  END IF;
+
+  IF p_name IS NULL OR length(trim(p_name)) = 0 THEN
+    RAISE EXCEPTION 'name_required';
+  END IF;
+
+  INSERT INTO public.drivers (name, tel, cars)
+  VALUES (trim(p_name), nullif(trim(coalesce(p_tel,'')),''), coalesce(p_cars, '{}'))
+  RETURNING id INTO v_driver_id;
+
+  UPDATE public.driver_invites SET used_at = now(), driver_id = v_driver_id WHERE id = v_row.id;
+
+  RETURN v_driver_id;
+END;
+$function$;
+
+GRANT EXECUTE ON FUNCTION public.check_driver_invite(text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_driver_registration(text, text, text, text[]) TO anon, authenticated;
 
 -- ============================================================
 -- 3. RLS有効化＋ポリシー（allow_allではなく役割ベースの安全な制御）
@@ -12846,6 +13040,15 @@ DROP POLICY IF EXISTS "driver_messages_insert" ON driver_messages;
 CREATE POLICY "driver_messages_insert" ON driver_messages FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 DROP POLICY IF EXISTS "driver_messages_update" ON driver_messages;
 CREATE POLICY "driver_messages_update" ON driver_messages FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+
+-- ドライバー招待: 社内のみテーブルを直接操作できる（匿名ユーザーはcheck_driver_invite/submit_driver_registrationのRPC経由でのみ利用）
+ALTER TABLE driver_invites ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "driver_invites_select" ON driver_invites;
+CREATE POLICY "driver_invites_select" ON driver_invites FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "driver_invites_insert" ON driver_invites;
+CREATE POLICY "driver_invites_insert" ON driver_invites FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "driver_invites_update" ON driver_invites;
+CREATE POLICY "driver_invites_update" ON driver_invites FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 
 -- ドライバー向け支払明細書配信: 社内は全件、ドライバーは自分宛のみ
 ALTER TABLE driver_statements ENABLE ROW LEVEL SECURITY;
