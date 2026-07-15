@@ -2073,6 +2073,10 @@ td.dim{color:var(--text2)}
       <div id="boardAttachName" style="font-size:11px;color:var(--text2);margin-top:3px"></div>
     </div>
     <div class="fld">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="boardScheduleOn" style="width:auto" onchange="document.getElementById('boardScheduleAt').style.display=this.checked?'':'none'">投稿を予約する（指定日時に自動公開）</label>
+      <input type="datetime-local" id="boardScheduleAt" style="display:none;margin-top:6px;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+    </div>
+    <div class="fld">
       <label>表示するドライバーを絞り込む（任意。何も選ばなければ全員に表示）</label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
         <select id="boardTargetClientSel" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"><option value="">取引先を選択</option></select>
@@ -8677,13 +8681,16 @@ function markBoardSeen() {
   if (!me || !boardPosts.length) return;
   localStorage.setItem(boardSeenKey(), boardPosts[0].created_at || new Date().toISOString());
 }
-// ログイン時に新着の掲示板投稿があればトーストで知らせる
+// 予約投稿(publish_at)がまだ先の場合はtrue（＝まだ公開されていない）
+function isBoardPostPending(p) { return !!p.publish_at && new Date(p.publish_at) > new Date(); }
+
+// ログイン時に新着の掲示板投稿があればトーストで知らせる（まだ公開時刻が来ていない予約投稿は対象外）
 async function checkBoardAlerts() {
   if (!sb || !me) return null;
   await loadBoard();
   if (!boardPosts.length) return null;
   const lastSeen = localStorage.getItem(boardSeenKey()) || '';
-  const unseen = boardPosts.filter(p => (p.created_at||'') > lastSeen);
+  const unseen = boardPosts.filter(p => !isBoardPostPending(p) && (p.created_at||'') > lastSeen);
   if (!unseen.length) return null;
   return `📢 新着の掲示板投稿が${unseen.length}件あります: ${unseen[0].title}`;
 }
@@ -8691,22 +8698,26 @@ async function checkBoardAlerts() {
 function renderBoardTo(elId) {
   const el = document.getElementById(elId);
   if (!el) return;
-  // ドライバー側は「全員」または自分（drv_id）が対象に含まれる投稿のみ表示する。管理側は絞り込みの確認のため全件表示する
-  const list = elId === 'drvBoardList'
-    ? boardPosts.filter(p => !(p.target_driver_ids||[]).length || (p.target_driver_ids||[]).includes(me?.driver_id))
+  const isDrvView = elId === 'drvBoardList';
+  // ドライバー側は「全員」または自分（drv_id）が対象に含まれる投稿のみ、かつ予約投稿は公開時刻が来たものだけを表示する。
+  // 管理側は絞り込み・予約状況の確認のため、未公開の予約投稿も含め全件表示する
+  const list = isDrvView
+    ? boardPosts.filter(p => !isBoardPostPending(p) && (!(p.target_driver_ids||[]).length || (p.target_driver_ids||[]).includes(me?.driver_id)))
     : boardPosts;
   if (!list.length) { el.innerHTML='<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">投稿がありません</div>'; return; }
   const canDel = me && (me.role==='admin'||me.role==='editor');
   el.innerHTML = list.map(p => {
+    const pending = isBoardPostPending(p);
     const priColor = p.priority==='urgent'?'var(--red)':p.priority==='important'?'var(--amber-text)':'var(--blue)';
     const priLabel = {urgent:'緊急',important:'重要',normal:'通常'}[p.priority||'normal'];
     const dt = p.created_at ? new Date(p.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
     const targetCnt = (p.target_driver_ids||[]).length;
     const targetNames = targetCnt ? drvs.filter(d=>p.target_driver_ids.includes(d.id)).map(d=>d.name).join('、') : '';
-    return `<div style="border:0.5px solid ${p.priority==='urgent'?'var(--red)':p.priority==='important'?'var(--amber-border)':'var(--border)'};border-radius:var(--radius-lg);padding:10px 12px;margin-bottom:8px;background:var(--bg)${p.priority==='urgent'?';background:var(--red-bg)':''}">
+    return `<div style="border:0.5px solid ${p.priority==='urgent'?'var(--red)':p.priority==='important'?'var(--amber-border)':'var(--border)'};border-radius:var(--radius-lg);padding:10px 12px;margin-bottom:8px;background:var(--bg)${p.priority==='urgent'?';background:var(--red-bg)':''}${pending?';opacity:0.65':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
           <span style="font-size:10px;padding:1px 6px;border-radius:99px;border:0.5px solid ${priColor};color:${priColor}">${priLabel}</span>
+          ${pending?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--amber-bg);color:var(--amber-text)" title="この投稿はドライバーにはまだ表示されません">⏰ 予約中: ${new Date(p.publish_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>`:''}
           ${targetCnt?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="${escHtml(targetNames)}">🎯 ${targetCnt}名限定</span>`:''}
           <span style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title)}</span>
         </div>
@@ -8760,6 +8771,10 @@ function openBoardPost() {
   if (fileEl) fileEl.value = '';
   const nameEl = document.getElementById('boardAttachName');
   if (nameEl) nameEl.textContent = '';
+  const schedChk = document.getElementById('boardScheduleOn');
+  if (schedChk) schedChk.checked = false;
+  const schedAt = document.getElementById('boardScheduleAt');
+  if (schedAt) { schedAt.value = ''; schedAt.style.display = 'none'; }
   const cliSel = document.getElementById('boardTargetClientSel');
   if (cliSel) cliSel.innerHTML = '<option value="">取引先を選択</option>' + [...clients].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja')).map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
   pendBoardTargetIds = new Set();
@@ -8774,6 +8789,15 @@ async function submitBoardPost() {
   const targetIds = pendBoardTargetIds.size ? [...pendBoardTargetIds] : null;
   const file = document.getElementById('boardAttachFile')?.files?.[0] || null;
   if (!title||!body) { alert('タイトルと本文は必須です'); return; }
+  const scheduleOn = document.getElementById('boardScheduleOn')?.checked;
+  let publish_at = null;
+  if (scheduleOn) {
+    const v = document.getElementById('boardScheduleAt')?.value;
+    if (!v) { alert('予約する日時を選択してください'); return; }
+    const d = new Date(v);
+    if (d <= new Date()) { alert('予約日時は未来の日時を指定してください'); return; }
+    publish_at = d.toISOString();
+  }
   showLoad(true);
   try {
     let attachment_path = null, attachment_name = null;
@@ -8783,13 +8807,13 @@ async function submitBoardPost() {
       if (upErr) throw new Error('添付ファイルのアップロードに失敗しました: ' + upErr.message);
       attachment_path = path; attachment_name = file.name;
     }
-    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_driver_ids:targetIds,attachment_path,attachment_name}).select().single();
+    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_driver_ids:targetIds,attachment_path,attachment_name,publish_at}).select().single();
     if (error) throw error;
     boardPosts.unshift(data);
     closeM('mBoard');
     renderBoardTo('boardList');
-    addLog('掲示板投稿', title);
-    showT('投稿しました');
+    addLog('掲示板投稿', title + (publish_at?`（予約: ${new Date(publish_at).toLocaleString('ja-JP')}）`:''));
+    showT(publish_at ? `予約投稿しました（${new Date(publish_at).toLocaleString('ja-JP')}に公開）` : '投稿しました');
   } catch(e) { showT('エラー: '+e.message,'ter'); }
   showLoad(false);
 }
@@ -8847,7 +8871,8 @@ CREATE TABLE IF NOT EXISTS board_posts (
   created_at timestamptz DEFAULT now(),
   target_driver_ids integer[],
   attachment_path text,
-  attachment_name text
+  attachment_name text,
+  publish_at timestamptz
 );
 ALTER TABLE board_posts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING (true);
@@ -12143,7 +12168,19 @@ CREATE TABLE IF NOT EXISTS board_posts (
   id bigserial PRIMARY KEY, title text NOT NULL, body text,
   priority text DEFAULT 'normal', author text,
   created_at timestamptz DEFAULT now(),
-  target_driver_ids integer[], attachment_path text, attachment_name text
+  target_driver_ids integer[], attachment_path text, attachment_name text,
+  publish_at timestamptz
+);
+
+-- ドライバーとのチャット（管理者/editor ⇔ 本人）
+CREATE TABLE IF NOT EXISTS driver_messages (
+  id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  drv_id integer NOT NULL REFERENCES drivers(id),
+  sender_role text NOT NULL CHECK (sender_role IN ('admin','driver')),
+  sender_name text,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  read_at timestamptz
 );
 
 -- 手入力テンプレート
@@ -12429,6 +12466,15 @@ DROP POLICY IF EXISTS "driver_documents_update" ON driver_documents;
 CREATE POLICY "driver_documents_update" ON driver_documents FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 DROP POLICY IF EXISTS "driver_documents_delete" ON driver_documents;
 CREATE POLICY "driver_documents_delete" ON driver_documents FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ドライバーとのチャット: 社内は全件、ドライバーは自分のスレッドのみ
+ALTER TABLE driver_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "driver_messages_select" ON driver_messages;
+CREATE POLICY "driver_messages_select" ON driver_messages FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "driver_messages_insert" ON driver_messages;
+CREATE POLICY "driver_messages_insert" ON driver_messages FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
+DROP POLICY IF EXISTS "driver_messages_update" ON driver_messages;
+CREATE POLICY "driver_messages_update" ON driver_messages FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 
 -- ドライバー向け支払明細書配信: 社内は全件、ドライバーは自分宛のみ
 ALTER TABLE driver_statements ENABLE ROW LEVEL SECURITY;
