@@ -2090,8 +2090,30 @@ td.dim{color:var(--text2)}
       <div id="boardAttachName" style="font-size:11px;color:var(--text2);margin-top:3px"></div>
     </div>
     <div class="fld">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="boardScheduleOn" style="width:auto" onchange="document.getElementById('boardScheduleAt').style.display=this.checked?'':'none'">投稿を予約する（指定日時に自動公開）</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="boardScheduleOn" style="width:auto" onchange="onBoardScheduleToggle()">投稿を予約する（指定日時に自動公開）</label>
       <input type="datetime-local" id="boardScheduleAt" style="display:none;margin-top:6px;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+    </div>
+    <div class="fld">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="boardRecurOn" style="width:auto" onchange="onBoardRecurToggle()">🔁 繰り返し投稿にする（同じ内容を自動で複数回投稿）</label>
+      <div id="boardRecurFld" style="display:none;margin-top:6px;display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap">
+          <span style="color:var(--text2)">開始日時</span>
+          <input type="datetime-local" id="boardRecurStart" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <span style="color:var(--text2)">間隔</span>
+          <input type="number" id="boardRecurInterval" value="1" min="1" style="width:56px;padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <select id="boardRecurUnit" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+            <option value="day">日</option>
+            <option value="week" selected>週</option>
+            <option value="month">月</option>
+          </select>
+          <span style="color:var(--text2)">ごと</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;font-size:12px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="boardRecurEndType" value="date" checked style="width:auto">終了日<input type="date" id="boardRecurEndDate" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="boardRecurEndType" value="count" style="width:auto">回数<input type="number" id="boardRecurEndCount" min="1" value="4" style="width:50px;padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">回</label>
+        </div>
+        <div style="font-size:10px;color:var(--text2)">最大24件までまとめて予約投稿します</div>
+      </div>
     </div>
     <div class="fld">
       <label>表示するドライバーを絞り込む（任意。何も選ばなければ全員に表示）</label>
@@ -8983,6 +9005,7 @@ function renderBoardTo(elId) {
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
           <span style="font-size:10px;padding:1px 6px;border-radius:99px;border:0.5px solid ${priColor};color:${priColor}">${priLabel}</span>
           ${pending?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--amber-bg);color:var(--amber-text)" title="この投稿はドライバーにはまだ表示されません">⏰ 予約中: ${new Date(p.publish_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>`:''}
+          ${p.recurrence_id?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="繰り返し投稿の一部です">🔁 繰り返し</span>`:''}
           ${targetCnt?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="${escHtml(targetNames)}">🎯 ${targetCnt}名限定</span>`:''}
           <span style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title)}</span>
         </div>
@@ -9040,11 +9063,52 @@ function openBoardPost() {
   if (schedChk) schedChk.checked = false;
   const schedAt = document.getElementById('boardScheduleAt');
   if (schedAt) { schedAt.value = ''; schedAt.style.display = 'none'; }
+  const recurChk = document.getElementById('boardRecurOn');
+  if (recurChk) recurChk.checked = false;
+  const recurFld = document.getElementById('boardRecurFld');
+  if (recurFld) recurFld.style.display = 'none';
+  ['boardRecurStart','boardRecurEndDate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('boardRecurInterval').value = '1';
+  document.getElementById('boardRecurUnit').value = 'week';
+  document.getElementById('boardRecurEndCount').value = '4';
   const cliSel = document.getElementById('boardTargetClientSel');
   if (cliSel) cliSel.innerHTML = '<option value="">取引先を選択</option>' + [...clients].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja')).map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
   pendBoardTargetIds = new Set();
   renderBoardTargetDrvList();
   document.getElementById('mBoard').classList.add('on');
+}
+
+// 予約投稿と繰り返し投稿は同時に使う意味がないため、片方をONにしたらもう片方は自動でOFFにする
+function onBoardScheduleToggle() {
+  const on = document.getElementById('boardScheduleOn').checked;
+  document.getElementById('boardScheduleAt').style.display = on ? '' : 'none';
+  if (on) {
+    document.getElementById('boardRecurOn').checked = false;
+    document.getElementById('boardRecurFld').style.display = 'none';
+  }
+}
+function onBoardRecurToggle() {
+  const on = document.getElementById('boardRecurOn').checked;
+  document.getElementById('boardRecurFld').style.display = on ? 'flex' : 'none';
+  if (on) {
+    document.getElementById('boardScheduleOn').checked = false;
+    document.getElementById('boardScheduleAt').style.display = 'none';
+  }
+}
+// 開始日時から間隔ごとに繰り返す投稿日時の一覧を計算する（無限ループ防止のため最大24件でも打ち切る）
+const BOARD_RECUR_MAX = 24;
+function computeBoardRecurDates(startVal, interval, unit, endType, endDate, endCount) {
+  const dates = [];
+  let cur = new Date(startVal);
+  while (dates.length < BOARD_RECUR_MAX) {
+    if (endType === 'date' && endDate && fmtLocalDate(cur) > endDate) break;
+    dates.push(new Date(cur));
+    if (endType === 'count' && dates.length >= endCount) break;
+    if (unit === 'day') cur.setDate(cur.getDate() + interval);
+    else if (unit === 'week') cur.setDate(cur.getDate() + interval*7);
+    else cur.setMonth(cur.getMonth() + interval);
+  }
+  return dates;
 }
 
 async function submitBoardPost() {
@@ -9054,6 +9118,7 @@ async function submitBoardPost() {
   const targetIds = pendBoardTargetIds.size ? [...pendBoardTargetIds] : null;
   const file = document.getElementById('boardAttachFile')?.files?.[0] || null;
   if (!title||!body) { alert('タイトルと本文は必須です'); return; }
+
   const scheduleOn = document.getElementById('boardScheduleOn')?.checked;
   let publish_at = null;
   if (scheduleOn) {
@@ -9063,6 +9128,22 @@ async function submitBoardPost() {
     if (d <= new Date()) { alert('予約日時は未来の日時を指定してください'); return; }
     publish_at = d.toISOString();
   }
+
+  const recurOn = document.getElementById('boardRecurOn')?.checked;
+  let recurDates = null;
+  if (recurOn) {
+    const startVal = document.getElementById('boardRecurStart').value;
+    if (!startVal) { alert('繰り返し投稿の開始日時を入力してください'); return; }
+    const interval = +document.getElementById('boardRecurInterval').value || 1;
+    const unit = document.getElementById('boardRecurUnit').value;
+    const endType = document.querySelector('input[name="boardRecurEndType"]:checked').value;
+    const endDate = document.getElementById('boardRecurEndDate').value;
+    const endCount = +document.getElementById('boardRecurEndCount').value || 1;
+    if (endType === 'date' && !endDate) { alert('繰り返しの終了日を入力してください'); return; }
+    recurDates = computeBoardRecurDates(startVal, interval, unit, endType, endDate, endCount);
+    if (!recurDates.length) { alert('繰り返し条件を確認してください（終了日が開始日時より前になっていないか等）'); return; }
+  }
+
   showLoad(true);
   try {
     let attachment_path = null, attachment_name = null;
@@ -9072,13 +9153,25 @@ async function submitBoardPost() {
       if (upErr) throw new Error('添付ファイルのアップロードに失敗しました: ' + upErr.message);
       attachment_path = path; attachment_name = file.name;
     }
-    const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_driver_ids:targetIds,attachment_path,attachment_name,publish_at}).select().single();
-    if (error) throw error;
-    boardPosts.unshift(data);
-    closeM('mBoard');
-    renderBoardTo('boardList');
-    addLog('掲示板投稿', title + (publish_at?`（予約: ${new Date(publish_at).toLocaleString('ja-JP')}）`:''));
-    showT(publish_at ? `予約投稿しました（${new Date(publish_at).toLocaleString('ja-JP')}に公開）` : '投稿しました');
+    if (recurOn) {
+      const recurrence_id = `rec_${Date.now()}`;
+      const rows = recurDates.map(d => ({title,body,priority,author:me?.name||'',target_driver_ids:targetIds,attachment_path,attachment_name,publish_at:d.toISOString(),recurrence_id}));
+      const {data, error} = await sb.from('board_posts').insert(rows).select();
+      if (error) throw error;
+      boardPosts = [...data, ...boardPosts].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+      closeM('mBoard');
+      renderBoardTo('boardList');
+      addLog('掲示板投稿（繰り返し）', `${title}（${recurDates.length}件）`);
+      showT(`繰り返し投稿を${recurDates.length}件登録しました`);
+    } else {
+      const {data, error} = await sb.from('board_posts').insert({title,body,priority,author:me?.name||'',target_driver_ids:targetIds,attachment_path,attachment_name,publish_at}).select().single();
+      if (error) throw error;
+      boardPosts.unshift(data);
+      closeM('mBoard');
+      renderBoardTo('boardList');
+      addLog('掲示板投稿', title + (publish_at?`（予約: ${new Date(publish_at).toLocaleString('ja-JP')}）`:''));
+      showT(publish_at ? `予約投稿しました（${new Date(publish_at).toLocaleString('ja-JP')}に公開）` : '投稿しました');
+    }
   } catch(e) { showT('エラー: '+e.message,'ter'); }
   showLoad(false);
 }
@@ -9092,17 +9185,27 @@ async function openBoardAttachment(path) {
 }
 
 async function deleteBoardPost(id) {
-  if (!confirm('この投稿を削除しますか？')) return;
+  const post = boardPosts.find(p=>p.id===id);
+  if (!post) return;
+  // 繰り返し投稿の一つなら、この1件だけ消すか、シリーズ全体を消すか選べるようにする
+  let deleteWholeSeries = false;
+  if (post.recurrence_id) {
+    const seriesCount = boardPosts.filter(p=>p.recurrence_id===post.recurrence_id).length;
+    deleteWholeSeries = confirm(`この投稿は繰り返し投稿の一部です（全${seriesCount}件）。\n\nOK: 未公開分も含めシリーズ全体を削除\nキャンセル: この投稿だけ削除するか選び直す`);
+    if (!deleteWholeSeries && !confirm('この投稿だけ削除しますか？')) return;
+  } else if (!confirm('この投稿を削除しますか？')) return;
   try {
-    const post = boardPosts.find(p=>p.id===id);
-    const {error} = await sb.from('board_posts').delete().eq('id',id);
+    const targets = deleteWholeSeries ? boardPosts.filter(p=>p.recurrence_id===post.recurrence_id) : [post];
+    const ids = targets.map(p=>p.id);
+    const {error} = await sb.from('board_posts').delete().in('id', ids);
     if (error) throw error;
-    if (post?.attachment_path) await sb.storage.from('board-attachments').remove([post.attachment_path]);
-    boardPosts = boardPosts.filter(p=>p.id!==id);
+    const attachPaths = [...new Set(targets.map(p=>p.attachment_path).filter(Boolean))];
+    if (attachPaths.length) await sb.storage.from('board-attachments').remove(attachPaths);
+    boardPosts = boardPosts.filter(p=>!ids.includes(p.id));
     renderBoardTo('boardList');
     renderBoardTo('drvBoardList');
-    addLog('掲示板削除', 'id:'+id);
-    showT('削除しました');
+    addLog('掲示板削除', deleteWholeSeries ? `シリーズ全体 ${ids.length}件` : 'id:'+id);
+    showT(deleteWholeSeries ? `シリーズ全体（${ids.length}件）を削除しました` : '削除しました');
   } catch(e) { showT('エラー: '+e.message,'ter'); }
 }
 
@@ -9137,7 +9240,8 @@ CREATE TABLE IF NOT EXISTS board_posts (
   target_driver_ids integer[],
   attachment_path text,
   attachment_name text,
-  publish_at timestamptz
+  publish_at timestamptz,
+  recurrence_id text
 );
 ALTER TABLE board_posts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING (true);
@@ -12434,7 +12538,7 @@ CREATE TABLE IF NOT EXISTS board_posts (
   priority text DEFAULT 'normal', author text,
   created_at timestamptz DEFAULT now(),
   target_driver_ids integer[], attachment_path text, attachment_name text,
-  publish_at timestamptz
+  publish_at timestamptz, recurrence_id text
 );
 
 -- ドライバーとのチャット（管理者/editor ⇔ 本人）
