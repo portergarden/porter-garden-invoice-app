@@ -4240,7 +4240,7 @@ async function renderDashWarnings(){
       const invDates=new Set(recs.filter(r=>r.date?.startsWith(thisM)).map(r=>r.date));
       if(invDates.size){
         const[y,m]=thisM.split('-');
-        const{data,error}=await sb.from('daily_reports').select('date').gte('date',`${y}-${m}-01`).lte('date',`${y}-${m}-31`);
+        const{data,error}=await sb.from('daily_reports').select('date').gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0)));
         if(!error){
           const drDates=new Set((data||[]).map(r=>r.date));
           const missing=[...invDates].filter(d=>!drDates.has(d));
@@ -8133,10 +8133,11 @@ async function checkSlipVsDailyReport() {
   try {
     const minM = months.sort()[0];
     const maxM = months.sort().pop();
+    const [maxY, maxMo] = maxM.split('-');
     const {data, error} = await sb.from('daily_reports')
       .select('date,car,distance_km,qty_takkyubin,qty_nekopos,status')
       .gte('date', `${minM}-01`)
-      .lte('date', `${maxM}-31`);
+      .lte('date', fmtLocalDate(new Date(+maxY,+maxMo,0)));
     if (!error) drReports = data||[];
   } catch(e) { return; }
 
@@ -8825,7 +8826,7 @@ async function loadDriverDailyList() {
   const month = document.getElementById('drvDailyMonth')?.value || '';
   let q = sb.from('daily_reports').select('*').order('date', {ascending:false});
   if (dCars.length) q = q.in('car', dCars);
-  if (month) { const [y,m]=month.split('-'); q=q.gte('date',`${y}-${m}-01`).lte('date',`${y}-${m}-31`); }
+  if (month) { const [y,m]=month.split('-'); q=q.gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))); }
   try {
     const {data, error} = await q.limit(60);
     if (error) throw error;
@@ -8869,7 +8870,7 @@ async function renderDriverMonthly() {
   try {
     const [y,m] = month.split('-');
     const {data, error} = await sb.from('daily_reports').select('*')
-      .in('car', drvData.cars||[]).gte('date',`${y}-${m}-01`).lte('date',`${y}-${m}-31`).order('date');
+      .in('car', drvData.cars||[]).gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))).order('date');
     if (error) throw error;
     const reps = data||[];
     // 月報CSV出力（exportDriverMonthlyCsv）が「今表示中の月」を正しく参照できるよう、共有配列にも反映しておく
@@ -12071,7 +12072,7 @@ async function checkDailyReportMissing() {
     const {data, error} = await sb.from('daily_reports')
       .select('date,car,driver_name,status')
       .gte('date', `${y}-${m}-01`)
-      .lte('date', `${y}-${m}-31`);
+      .lte('date', fmtLocalDate(new Date(+y,+m,0)));
     if (error) return;
 
     const drDates = new Set((data||[]).map(r=>r.date));
