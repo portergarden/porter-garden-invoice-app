@@ -9563,7 +9563,10 @@ function buildYearReportHtml(year, statusHtml) {
     ${Array.from({length:12},(_,i)=>{
       const pct = Math.round(monthlyAmt[i]/maxMonthAmt*100);
       const prevAmt = prevStats.monthlyAmt[i];
-      return `<div class="brow"><div class="blbl">${i+1}月</div><div class="btrack"><div class="bfill" style="width:${pct}%;background:var(--blue)"></div></div><div class="bval">${yen(monthlyAmt[i])} <span style="color:var(--text2)">${monthlyCnt[i]}件${prevAmt?` ／前年${yen(prevAmt)}`:''}</span></div></div>`;
+      const diff = monthlyAmt[i] - prevAmt;
+      const diffPct = prevAmt>0 ? Math.round(diff/prevAmt*100) : null;
+      const diffBadge = hasPrevData ? periodDiffBadge(diff, diffPct, 'yen', '前年同月と同額') : '';
+      return `<div class="brow"><div class="blbl">${i+1}月</div><div class="btrack"><div class="bfill" style="width:${pct}%;background:var(--blue)"></div></div><div class="bval">${yen(monthlyAmt[i])} <span style="color:var(--text2)">${monthlyCnt[i]}件</span>${diffBadge?` ${diffBadge}`:''}</div></div>`;
     }).join('')}
   </div>`;
 
