@@ -803,7 +803,6 @@ td.dim{color:var(--text2)}
       <input type="date" id="aggInvTo" class="fin" style="padding:4px" onchange="runAggInv()">
       <button class="btn sml" onclick="aggInvMonthShift(-1)" title="前月">◀</button>
       <button class="btn sml" onclick="aggInvMonthShift(1)" title="翌月">▶</button>
-      <input type="text" id="aggInvCliSearch" placeholder="🔍 取引先名で検索…" oninput="runAggInv()" style="width:150px;padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
       <input type="text" id="aggInvDrvSearch" placeholder="🔍 ドライバー名で検索…" oninput="runAggInv()" style="width:150px;padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
       <span style="font-size:11px;color:var(--text2);margin-left:10px">取引先:</span>
       <div class="msel-wrap" style="position:relative">
@@ -1290,7 +1289,6 @@ td.dim{color:var(--text2)}
       <input type="date" id="aggPayTo" class="fin" style="padding:4px" onchange="runAggPay()">
       <button class="btn sml" onclick="aggPayMonthShift(-1)" title="前月">◀</button>
       <button class="btn sml" onclick="aggPayMonthShift(1)" title="翌月">▶</button>
-      <input type="text" id="aggPayCliSearch" placeholder="🔍 取引先名で検索…" oninput="runAggPay()" style="width:150px;padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
       <input type="text" id="aggPayDrvSearch" placeholder="🔍 ドライバー名・協力会社で検索…" oninput="runAggPay()" style="width:180px;padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
       <span style="font-size:11px;color:var(--text2);margin-left:10px">取引先:</span>
       <div class="msel-wrap" style="position:relative">
@@ -5285,7 +5283,6 @@ function runAggPay() {
   if (!tbody) return;
   const from = document.getElementById('aggPayFrom')?.value || '';
   const to = document.getElementById('aggPayTo')?.value || '';
-  const cliSearch = nm(document.getElementById('aggPayCliSearch')?.value||'');
   const drvSearch = nm(document.getElementById('aggPayDrvSearch')?.value||'');
   const cliFilterArr = getMSelValues('aggPayCli');
 
@@ -5293,7 +5290,6 @@ function runAggPay() {
   const groups = {};
   recs.filter(r => r.date && (!from || r.date >= from) && (!to || r.date <= to))
     .filter(r => matchesTypeFilter(r, aggPayTypeFilter))
-    .filter(r => !cliSearch || nm(lkC(r.cli)?.name||'').includes(cliSearch))
     .filter(r => !cliFilterArr.length || cliFilterArr.includes(r.cli))
     .forEach(r => {
     const d = recDrv(r);
@@ -10938,7 +10934,6 @@ function runAggInv() {
   const from = document.getElementById('aggInvFrom').value;
   const to = document.getElementById('aggInvTo').value;
   const cliFilterArr = getMSelValues('aggInvCli');
-  const cliSearch = nm(document.getElementById('aggInvCliSearch')?.value||'');
   const drvSearch = nm(document.getElementById('aggInvDrvSearch')?.value||'');
   const tbody = document.getElementById('aggInvTbody');
   const tfoot = document.getElementById('aggInvTfoot');
@@ -10946,7 +10941,6 @@ function runAggInv() {
 
   let list = recs.filter(r => (!from || r.date >= from) && (!to || r.date <= to));
   if (cliFilterArr.length) list = list.filter(r => cliFilterArr.includes(r.cli));
-  if (cliSearch) list = list.filter(r => nm(lkC(r.cli)?.name||'').includes(cliSearch));
   if (drvSearch) list = list.filter(r => nm(recDrv(r)?.name||'').includes(drvSearch));
   list = list.filter(r => matchesTypeFilter(r, aggInvTypeFilter));
 
