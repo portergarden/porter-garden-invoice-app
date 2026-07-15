@@ -4195,15 +4195,16 @@ function renderCliAnalysis(){
   const anaRecs=anaYear?recs.filter(r=>r.date&&r.date.startsWith(anaYear)):recs;
   const byCli={};anaRecs.forEach(r=>{const c=lkC(r.cli);const k=c?c.name:'未設定';if(!byCli[k])byCli[k]={s:0,cnt:0,ch:0,re:0,fare:0,hw:0,oth:0,tax:0};byCli[k].s+=totR(r,taxMode);byCli[k].cnt++;byCli[k].fare+=r.fare||0;byCli[k].hw+=r.hw||0;byCli[k].oth+=r.oth||0;byCli[k].tax+=rtax(r);if(r.type==='charter')byCli[k].ch++;else if(r.type==='regular')byCli[k].re++;});
   const cliEnt=Object.entries(byCli).sort((a,b)=>b[1].s-a[1].s);const maxC=cliEnt[0]?cliEnt[0][1].s:1;
+  // 対象年を選んでも集計表は隠さず常に表示し、年別の月次実績マトリクスはその下に追加で表示する
   aa.innerHTML=`
-    ${!anaYear?`<div class="cwrap" style="grid-column:1/-1">
+    <div class="cwrap" style="grid-column:1/-1">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
         <div class="ctitle" style="margin-bottom:0">🏢 取引先別 集計</div>
         <div class="txtog"><button class="${taxMode==='inc'?'on':''}" onclick="setTaxAnaCli('inc')">税込</button><button class="${taxMode==='exc'?'on':''}" onclick="setTaxAnaCli('exc')">税別</button></div>
       </div>
       <div style="overflow-x:auto"><table class="sumtbl"><thead><tr><th>取引先</th><th class="r">件数</th><th class="r">チャーター</th><th class="r">集配</th><th class="r">運賃計</th><th class="r">高速計</th><th class="r">立替計</th><th class="r">税額</th><th class="r">合計</th><th style="width:90px">割合</th><th style="width:22px"></th></tr></thead>
       <tbody>${cliEnt.map(([name,d])=>{const p=Math.round(d.s/maxC*100);const isE=expanded.has('c_'+name);return`<tr style="cursor:pointer" onclick="toggleExp('c_${name}')"><td style="font-weight:500">${name}</td><td class="r">${d.cnt}件</td><td class="r">${d.ch?d.ch+'件':'—'}</td><td class="r">${d.re?d.re+'件':'—'}</td><td class="r">${yen(d.fare)}</td><td class="r">${d.hw?yen(d.hw):'—'}</td><td class="r">${d.oth?yen(d.oth):'—'}</td><td class="r">${yen(d.tax)}</td><td class="r" style="font-weight:600">${yen(d.s)}</td><td><div style="display:flex;align-items:center;gap:4px"><div style="width:70px;background:var(--bg);border:0.5px solid var(--border);border-radius:2px;height:7px;overflow:hidden"><div style="width:${p}%;height:100%;background:var(--blue);border-radius:2px"></div></div><span style="font-size:10px;color:var(--text2)">${p}%</span></div></td><td style="color:var(--text2);font-size:12px">${isE?'▲':'▼'}</td></tr>${isE?anaRecs.filter(r=>{const c=lkC(r.cli);return(c?c.name:'未設定')===name;}).map(r=>`<tr class="det"><td style="padding-left:14px">${r.date}</td><td>${r.car}</td><td></td><td><span class="bdg ${typeBadge(r.type)}">${typeShort(r.type)}</span></td><td class="r">${yen(r.fare||0)}</td><td class="r">${r.hw?yen(r.hw):'—'}</td><td class="r">${r.oth?yen(r.oth):'—'}</td><td class="r">${yen(rtax(r))}</td><td class="r">${yen(totR(r,taxMode))}</td><td class="dim" colspan="2">${r.note||''}</td></tr>`).join(''):''}`;}).join('')}</tbody></table></div>
-    </div>`:''}`;
+    </div>`;
   if(anaYear)aa.insertAdjacentHTML('beforeend', buildCliYearAnalysisHtml(anaYear));
 }
 
@@ -4215,14 +4216,15 @@ function renderDrvAnalysis(){
   const anaRecs=anaYear?recs.filter(r=>r.date&&r.date.startsWith(anaYear)):recs;
   const byDrv={};anaRecs.forEach(r=>{const d=recDrv(r);const k=d?d.name:'未配車';if(!byDrv[k])byDrv[k]={s:0,cnt:0,un:!d};byDrv[k].s+=totR(r,taxMode);byDrv[k].cnt++;});
   const drvEnt=Object.entries(byDrv).sort((a,b)=>b[1].s-a[1].s);const maxD=drvEnt[0]?drvEnt[0][1].s:1;
+  // 対象年を選んでも売上一覧は隠さず常に表示し、年別の月次実績マトリクスはその下に追加で表示する
   aa.innerHTML=`
-    ${!anaYear?`<div class="cwrap" style="grid-column:1/-1">
+    <div class="cwrap" style="grid-column:1/-1">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
         <div class="ctitle" style="margin-bottom:0">👥 ドライバー別 売上</div>
         <div class="txtog"><button class="${taxMode==='inc'?'on':''}" onclick="setTaxAnaDrv('inc')">税込</button><button class="${taxMode==='exc'?'on':''}" onclick="setTaxAnaDrv('exc')">税別</button></div>
       </div>
       ${drvEnt.map(([name,d])=>{const p=Math.round(d.s/maxD*100);return`<div class="brow"><div class="blbl" title="${name}">${name}</div><div class="btrack"><div class="bfill" style="width:${p}%;background:${d.un?'#F09595':'#1D9E75'}"></div></div><div class="bval">${yen(d.s)} <span style="color:var(--text2)">${d.cnt}件</span></div></div>`;}).join('')}
-    </div>`:''}`;
+    </div>`;
   const csvBtn=document.getElementById('anaDrvYearCsvBtn');
   if(csvBtn)csvBtn.style.display=anaYear?'':'none';
   if(anaYear)aa.insertAdjacentHTML('beforeend', buildDrvYearAnalysisHtml(anaYear));
