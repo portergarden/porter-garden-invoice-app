@@ -560,9 +560,7 @@ td.dim{color:var(--text2)}
       <div class="ti"><div class="tl">未確認</div><div class="tv" style="color:#854F0B" id="tPend">—件</div></div>
       <div class="vd"></div>
       <div class="txtog"><button id="bInc" class="on" onclick="setTax('inc')">税込</button><button id="bExc" onclick="setTax('exc')">税別</button></div>
-    </div>
-    <!-- 受注入力は別タブへのジャンプ。集計自体の切替ボタンは集計期間ツールバーの「📊 集計」と機能が重複するため廃止 -->
-    <div style="display:flex;justify-content:flex-end;align-items:center;padding:4px 8px;border-bottom:0.5px solid var(--border);background:var(--bg2);flex-wrap:wrap;gap:6px">
+      <div style="flex:1"></div>
       <button class="btn sml" onclick="jumpToEntryTab()">📝 受注入力 ↗</button>
     </div>
     <!-- 一覧エリア -->
@@ -1272,13 +1270,9 @@ td.dim{color:var(--text2)}
       <div class="ti"><div class="tl">未確認</div><div class="tv" style="color:#854F0B" id="tPendP">—件</div></div>
       <div class="vd"></div>
       <div class="txtog"><button id="bIncP" class="on" onclick="setTax('inc')">税込</button><button id="bExcP" onclick="setTax('exc')">税別</button></div>
+      <div style="flex:1"></div>
+      <button class="btn sml" onclick="jumpToEntryTab()">📝 受注入力 ↗</button>
     </div>
-
-  <!-- pg6 サブタブ（集計＝左寄せ、受注入力は別タブへのジャンプ＝右寄せ）: pg0と同じデザインに統一 -->
-  <!-- 集計自体の切替ボタンは集計期間ツールバーの「📊 集計」と機能が重複するため廃止（pg0と同じ整理） -->
-  <div style="display:flex;justify-content:flex-end;align-items:center;padding:4px 8px;border-bottom:0.5px solid var(--border);background:var(--bg2);flex-wrap:wrap;gap:6px">
-    <button class="btn sml" onclick="jumpToEntryTab()">📝 受注入力 ↗</button>
-  </div>
   <!-- 集計エリア（ドライバー別バッチ作成）: 支払明細書作成タブはこの集計のみに専念 -->
   <div id="p6area1" style="overflow-y:auto;max-height:calc(100vh - 160px);padding:10px 14px">
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius)">
