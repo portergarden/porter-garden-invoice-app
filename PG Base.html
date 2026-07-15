@@ -2591,6 +2591,7 @@ function proceedAfterLogin() {
     return;
   }
   goPage(1, document.getElementById('nt1'));
+  restoreStmtIssueDate();
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
 }
@@ -3003,13 +3004,21 @@ function getStatementIssueDate() {
   return (window.statementIssueDateOverride ? new Date(window.statementIssueDateOverride+'T00:00:00') : new Date())
     .toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric'});
 }
-// 請求・支払どちらのツールバーで発行日を変更しても、もう片方の入力欄にも反映する
+// 請求・支払どちらのツールバーで発行日を変更しても、もう片方の入力欄にも反映する。
+// 次回ログイン時にも同じ発行日を初期表示できるよう、入力された値をlocalStorageに記憶しておく
 function updateStmtIssueDate(val) {
   window.statementIssueDateOverride = val || '';
+  if (val) localStorage.setItem('pgbase_last_issue_date', val);
   ['stmtIssueDateInput0','stmtIssueDateInput1'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = val || '';
   });
+}
+// 前回入力した発行日をlocalStorageから復元する（保存値が無ければ何もせず、従来どおり空欄＝当日扱いになる）
+function restoreStmtIssueDate() {
+  if (window.statementIssueDateOverride) return; // 今回のセッションで既に入力済みなら上書きしない
+  const saved = localStorage.getItem('pgbase_last_issue_date');
+  if (saved) updateStmtIssueDate(saved);
 }
 // 自社情報の郵便番号・住所を表示用に行分割する：①郵便番号は住所とは別の行にする、
 // ②住所は番地までを1行に収め、それより後ろ（建物名など。半角/全角スペース区切りを想定）は改行する
