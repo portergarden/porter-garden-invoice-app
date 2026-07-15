@@ -561,9 +561,8 @@ td.dim{color:var(--text2)}
       <div class="vd"></div>
       <div class="txtog"><button id="bInc" class="on" onclick="setTax('inc')">税込</button><button id="bExc" onclick="setTax('exc')">税別</button></div>
     </div>
-    <!-- pg0 サブタブ（集計＝左寄せ、受注入力は別タブへのジャンプ＝右寄せ） -->
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:0.5px solid var(--border);background:var(--bg2);flex-wrap:wrap;gap:6px">
-      <button class="btn sml on" id="p0t1" onclick="switchP0Tab(1)">📊 集計（取引先別）</button>
+    <!-- 受注入力は別タブへのジャンプ。集計自体の切替ボタンは集計期間ツールバーの「📊 集計」と機能が重複するため廃止 -->
+    <div style="display:flex;justify-content:flex-end;align-items:center;padding:4px 8px;border-bottom:0.5px solid var(--border);background:var(--bg2);flex-wrap:wrap;gap:6px">
       <button class="btn sml" onclick="jumpToEntryTab()">📝 受注入力 ↗</button>
     </div>
     <!-- 一覧エリア -->
@@ -1276,8 +1275,8 @@ td.dim{color:var(--text2)}
     </div>
 
   <!-- pg6 サブタブ（集計＝左寄せ、受注入力は別タブへのジャンプ＝右寄せ）: pg0と同じデザインに統一 -->
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:0.5px solid var(--border);background:var(--bg2);flex-wrap:wrap;gap:6px">
-    <button class="btn sml on" id="p6t1">📊 集計（ドライバー別）</button>
+  <!-- 集計自体の切替ボタンは集計期間ツールバーの「📊 集計」と機能が重複するため廃止（pg0と同じ整理） -->
+  <div style="display:flex;justify-content:flex-end;align-items:center;padding:4px 8px;border-bottom:0.5px solid var(--border);background:var(--bg2);flex-wrap:wrap;gap:6px">
     <button class="btn sml" onclick="jumpToEntryTab()">📝 受注入力 ↗</button>
   </div>
   <!-- 集計エリア（ドライバー別バッチ作成）: 支払明細書作成タブはこの集計のみに専念 -->
@@ -3966,10 +3965,11 @@ function renderMonthlyBreakdownTable(containerId) {
     </tbody>
   </table>`;
 }
+let _aggInvInitialized = false; // 集計期間の初回リセット制御（以前は削除済みのサブタブボタンのonクラスで判定していた）
 function renderInv(){
-  // pg0サブタブ初期化（受注入力はpg18に移動済みのため集計のみ）
-  const activeTab = document.querySelector('#p0t1.on');
-  if (!activeTab && typeof switchP0Tab === 'function') {
+  // pg0集計エリア初期化（受注入力はpg18に移動済みのため集計のみ）
+  if (!_aggInvInitialized && typeof switchP0Tab === 'function') {
+    _aggInvInitialized = true;
     switchP0Tab(1); // 初回のみ：集計期間を前月にリセットして集計
   } else if (typeof runAggInv === 'function') {
     runAggInv(); // 2回目以降：期間は維持したまま最新のrecsで再集計（他タブでの編集直後の反映漏れを防止）
@@ -10326,7 +10326,6 @@ function jumpToEntryTab() {
 function switchP0Tab(n) {
   const p0area2 = document.getElementById('p0area2');
   if (p0area2) p0area2.style.display = 'block';
-  document.getElementById('p0t1')?.classList.add('on');
   initAggInv();
 }
 
