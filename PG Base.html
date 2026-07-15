@@ -428,6 +428,14 @@ td.dim{color:var(--text2)}
 .close-section{padding:12px 14px;border-bottom:0.5px solid var(--border)}
 .close-section h3{font-size:12px;font-weight:500;margin-bottom:8px;color:var(--text)}
 @media print{.topbar,.nav,.sbar,button,.ibtn,.tbar,.btn,.ntab{display:none!important}.pnl-body{display:block!important}body{font-size:11pt}}
+/* モーダルの中身だけを印刷したい場合（例: 個別比較レポート）。openEntityCompareM等がbodyにこのクラスを付ける */
+@media print{
+  body.print-modal-only>*:not(.overlay){display:none!important}
+  body.print-modal-only .overlay:not(.on){display:none!important}
+  body.print-modal-only .overlay.on{position:static!important;background:none!important;padding:0!important;display:block!important}
+  body.print-modal-only .overlay.on .modal{box-shadow:none!important;border:none!important;width:auto!important;max-width:none!important;margin:0!important}
+}
+@media print{#entityCompareControls,#entityComparePrintBar{display:none!important}}
 .s3{background:#DBEAFE;color:#1D4ED8}
 .s4{background:#D1FAE5;color:#065F46;font-weight:600}
 /* ===== 日報CSS ===== */
@@ -1186,6 +1194,7 @@ td.dim{color:var(--text2)}
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:10px;color:var(--text2)">対象年:</span>
         <select id="anaCliYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderCliAnalysis()"></select>
+        <button class="btn sml" onclick="openEntityCompareM('client')">📊 個別比較レポート</button>
       </div>
     </div>
     <div id="anaCliArea" class="dashgrid"></div>
@@ -1197,6 +1206,7 @@ td.dim{color:var(--text2)}
         <span style="font-size:10px;color:var(--text2)">対象年:</span>
         <select id="anaDrvYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDrvAnalysis()"></select>
         <button class="btn sml" id="anaDrvYearCsvBtn" onclick="exportYearCsv()" title="選択中の年のドライバー別月次実績をCSV出力します" style="display:none">⬇ 年報CSV</button>
+        <button class="btn sml" onclick="openEntityCompareM('driver')">📊 個別比較レポート</button>
       </div>
     </div>
     <div id="anaDrvArea" class="dashgrid"></div>
@@ -2030,6 +2040,45 @@ td.dim{color:var(--text2)}
       <button class="btn sml" onclick="copyDriverInviteUrl()">📋 コピー</button>
     </div>
     <div id="drvInviteExpiry" style="font-size:10px;color:var(--text2)"></div>
+  </div>
+</div>
+
+<!-- モーダル: 取引先/ドライバー個別比較レポート -->
+<div class="overlay" id="mEntityCompare">
+  <div class="modal" style="width:640px;max-width:95vw">
+    <div class="mh" id="entityCompareH">📊 個別比較レポート <button class="ibtn" onclick="closeM('mEntityCompare')">✕</button></div>
+    <div id="entityCompareControls">
+      <div class="fld">
+        <label id="entityCompareListLabel">対象を選択（複数可）</label>
+        <div id="entityCompareList" style="max-height:140px;overflow-y:auto;border:0.5px solid var(--border2);border-radius:var(--radius);padding:6px;display:flex;flex-direction:column;gap:2px"></div>
+      </div>
+      <div class="fld">
+        <label style="display:flex;gap:14px">
+          <span style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="entityCompareMode" value="year" checked style="width:auto" onchange="onEntityCompareModeChange()">年で比較</span>
+          <span style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="entityCompareMode" value="range" style="width:auto" onchange="onEntityCompareModeChange()">期間で比較（任意の日付範囲）</span>
+        </label>
+      </div>
+      <div class="fld" id="entityCompareYearFld">
+        <label>対象年</label>
+        <select id="entityCompareYear" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></select>
+      </div>
+      <div class="fld" id="entityCompareRangeFld" style="display:none">
+        <label>対象期間（前の同じ日数分と自動比較します）</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="date" id="entityCompareFrom" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <span style="color:var(--text2)">〜</span>
+          <input type="date" id="entityCompareTo" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        </div>
+      </div>
+      <div class="mfoot" style="justify-content:flex-end">
+        <button class="btn pri sml" onclick="renderEntityCompareReport()">レポート作成</button>
+      </div>
+    </div>
+    <div id="entityCompareReport" style="margin-top:10px"></div>
+    <div class="mfoot" id="entityComparePrintBar" style="display:none">
+      <button class="btn" onclick="closeM('mEntityCompare')">閉じる</button>
+      <button class="btn pri" onclick="window.print()">🖨 印刷</button>
+    </div>
   </div>
 </div>
 
@@ -9520,6 +9569,139 @@ function buildFiveYearTableHtml(year) {
     </table></div>` : `<div style="color:var(--text2);font-size:11px;padding:6px 0">表示期間内の実績データがありません</div>`}
   </div>`;
 }
+
+/* ===== 取引先・ドライバー個別比較レポート（1社/1名を選んで過去の売上と比較する。会議用に印刷対応） ===== */
+let entityCompareType = 'client'; // 'client' または 'driver'
+
+function entityMatches(r, entityType, entityId) {
+  return entityType==='client' ? r.cli===entityId : recDrv(r)?.id===entityId;
+}
+// 指定エンティティ(取引先 or ドライバー)1件分の年間集計（buildYearStatsのエンティティ絞り込み版）
+function buildEntityYearStats(entityType, entityId, year) {
+  const monthlyAmt = new Array(12).fill(0), monthlyCnt = new Array(12).fill(0);
+  recs.forEach(r => {
+    if (!r.date?.startsWith(year)) return;
+    if (!entityMatches(r, entityType, entityId)) return;
+    const mi = +r.date.slice(5,7) - 1;
+    if (mi < 0 || mi > 11) return;
+    monthlyAmt[mi] += totR(r,'inc'); monthlyCnt[mi]++;
+  });
+  return { monthlyAmt, monthlyCnt };
+}
+// buildFiveYearTableHtmlのエンティティ絞り込み版（表題・対象のみ差し替え、レイアウトは統一）
+function buildEntityFiveYearTableHtml(entityType, entityId, entityName, year, span) {
+  const y = +year;
+  const years = Array.from({length:span}, (_,i) => y-span+1+i);
+  const cell = 'padding:5px 4px;text-align:right;border-bottom:0.5px solid var(--border)';
+  const rows = years.map(yr => {
+    const { monthlyAmt } = buildEntityYearStats(entityType, entityId, String(yr));
+    return { yr, monthlyAmt, total: monthlyAmt.reduce((a,v)=>a+v,0) };
+  });
+  const colTotals = new Array(12).fill(0);
+  rows.forEach(r=>r.monthlyAmt.forEach((v,i)=>colTotals[i]+=v));
+  const hasAny = rows.some(r=>r.total>0);
+  const baseTotal = rows.find(r=>r.yr===y)?.total ?? 0;
+  return `<div class="cwrap" style="margin-bottom:10px">
+    <div class="ctitle">${entityType==='client'?'🏢':'🚚'} ${escHtml(entityName)}（${years[0]}〜${years[years.length-1]}年・税込）</div>
+    ${hasAny ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap">
+      <thead><tr style="background:var(--bg2)">
+        <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">年</th>
+        ${Array.from({length:12},(_,i)=>`<th style="${cell}">${i+1}月</th>`).join('')}
+        <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">年間合計</th>
+        <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">${y}年比</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>{
+        const diff = r.total-baseTotal;
+        const pct = baseTotal>0 ? Math.round(diff/baseTotal*100) : null;
+        return `<tr${r.yr===y?' style="background:var(--blue-bg)"':''}>
+          <td style="padding:5px 8px;border-bottom:0.5px solid var(--border);font-weight:500">${r.yr}年</td>
+          ${r.monthlyAmt.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
+          <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${yen(r.total)}</td>
+          <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-size:10px">${periodDiffBadge(diff,pct,'yen',`${y}年と同額`)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr style="font-weight:600;background:var(--bg2)">
+        <td style="padding:5px 8px">合計</td>
+        ${colTotals.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
+        <td style="padding:5px 8px;text-align:right">${yen(colTotals.reduce((a,v)=>a+v,0))}</td>
+        <td></td>
+      </tr></tfoot>
+    </table></div>` : `<div style="color:var(--text2);font-size:11px;padding:6px 0">表示期間内の実績データがありません</div>`}
+  </div>`;
+}
+// 任意の日付範囲での比較（直前の同じ日数分の期間と自動比較する）
+function computeEntityRangeComparison(entityType, entityId, from, to) {
+  const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+  const prevTo = fmtLocalDate(new Date(new Date(from).getTime() - 86400000));
+  const prevFrom = fmtLocalDate(new Date(new Date(from).getTime() - days*86400000));
+  const curRecs = recs.filter(r => r.date>=from && r.date<=to && entityMatches(r, entityType, entityId));
+  const prevRecs = recs.filter(r => r.date>=prevFrom && r.date<=prevTo && entityMatches(r, entityType, entityId));
+  const curTotal = curRecs.reduce((a,r)=>a+totR(r,'inc'),0);
+  const prevTotal = prevRecs.reduce((a,r)=>a+totR(r,'inc'),0);
+  return { curTotal, curCnt: curRecs.length, prevTotal, prevCnt: prevRecs.length, prevFrom, prevTo };
+}
+function openEntityCompareM(entityType) {
+  entityCompareType = entityType;
+  document.getElementById('entityCompareH').innerHTML = `📊 ${entityType==='client'?'取引先':'ドライバー'}個別比較レポート <button class="ibtn" onclick="closeM('mEntityCompare')">✕</button>`;
+  document.getElementById('entityCompareListLabel').textContent = `対象の${entityType==='client'?'取引先':'ドライバー'}を選択（複数可）`;
+  const list = document.getElementById('entityCompareList');
+  const entities = entityType==='client'
+    ? [...clients].sort((a,b)=>(parseInt(a.client_no,10)||999999)-(parseInt(b.client_no,10)||999999)).map(c=>({id:c.id,name:c.name}))
+    : [...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999)).map(d=>({id:d.id,name:d.name}));
+  list.innerHTML = entities.map(e=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" class="entityCompareChk" value="${e.id}" style="width:auto">${escHtml(e.name)}</label>`).join('') || '<div style="font-size:11px;color:var(--text2)">登録がありません</div>';
+  populateYearSelect('entityCompareYear', false);
+  document.getElementById('entityCompareRangeFld').style.display = 'none';
+  document.getElementById('entityCompareYearFld').style.display = '';
+  document.querySelector('input[name="entityCompareMode"][value="year"]').checked = true;
+  document.getElementById('entityCompareReport').innerHTML = '';
+  document.getElementById('entityComparePrintBar').style.display = 'none';
+  document.getElementById('mEntityCompare').classList.add('on');
+}
+function onEntityCompareModeChange() {
+  const mode = document.querySelector('input[name="entityCompareMode"]:checked').value;
+  document.getElementById('entityCompareYearFld').style.display = mode==='year' ? '' : 'none';
+  document.getElementById('entityCompareRangeFld').style.display = mode==='range' ? '' : 'none';
+}
+function renderEntityCompareReport() {
+  const ids = [...document.querySelectorAll('.entityCompareChk:checked')].map(el=>+el.value);
+  const reportEl = document.getElementById('entityCompareReport');
+  if (!ids.length) { reportEl.innerHTML = '<div style="font-size:11px;color:var(--text2);padding:8px 0">対象を1件以上選択してください</div>'; document.getElementById('entityComparePrintBar').style.display = 'none'; return; }
+  const entities = entityCompareType==='client' ? clients : drvs;
+  const mode = document.querySelector('input[name="entityCompareMode"]:checked').value;
+  let html = '';
+  if (mode === 'year') {
+    const year = document.getElementById('entityCompareYear').value;
+    html = ids.map(id => {
+      const name = entities.find(e=>e.id===id)?.name || '（不明）';
+      return buildEntityFiveYearTableHtml(entityCompareType, id, name, year, 5);
+    }).join('');
+  } else {
+    const from = document.getElementById('entityCompareFrom').value;
+    const to = document.getElementById('entityCompareTo').value;
+    if (!from || !to || from > to) { reportEl.innerHTML = '<div style="font-size:11px;color:var(--red);padding:8px 0">期間を正しく指定してください</div>'; document.getElementById('entityComparePrintBar').style.display = 'none'; return; }
+    html = ids.map(id => {
+      const name = entities.find(e=>e.id===id)?.name || '（不明）';
+      const c = computeEntityRangeComparison(entityCompareType, id, from, to);
+      const diff = c.curTotal - c.prevTotal;
+      const pct = c.prevTotal>0 ? Math.round(diff/c.prevTotal*100) : null;
+      return `<div class="cwrap" style="margin-bottom:10px">
+        <div class="ctitle">${entityCompareType==='client'?'🏢':'🚚'} ${escHtml(name)}（${from}〜${to}）</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+          <div class="kpi-card"><div class="kpi-label">対象期間（${from}〜${to}）</div><div class="kpi-val">${yen(c.curTotal)}</div><div class="kpi-diff">${c.curCnt}件</div></div>
+          <div class="kpi-card"><div class="kpi-label">直前の同期間（${c.prevFrom}〜${c.prevTo}）</div><div class="kpi-val">${yen(c.prevTotal)}</div><div class="kpi-diff">${c.prevCnt}件</div></div>
+        </div>
+        <div style="margin-top:6px">${periodDiffBadge(diff,pct,'yen','直前の同期間と同額')}</div>
+      </div>`;
+    }).join('');
+  }
+  reportEl.innerHTML = html;
+  document.getElementById('entityComparePrintBar').style.display = 'flex';
+}
+// 個別比較レポートのモーダルを開いた状態で印刷したときは、レポート内容だけを印刷する（他のページ内容は隠す）
+window.addEventListener('beforeprint', () => {
+  if (document.getElementById('mEntityCompare')?.classList.contains('on')) document.body.classList.add('print-modal-only');
+});
+window.addEventListener('afterprint', () => document.body.classList.remove('print-modal-only'));
 
 // ダッシュボードの年間サマリー（年間KPI＋月次推移＋5年比較表）。renderDashから年選択時のみ呼ばれる。
 // 取引先別の内訳は「取引先分析」タブ（buildCliYearAnalysisHtml）、ドライバー別の内訳は「ドライバー分析」タブ（buildDrvYearAnalysisHtml）の担当。
