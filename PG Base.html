@@ -7183,6 +7183,11 @@ async function submitDailyReport() {
   if (cliInput && !cliMatch) {
     if (!confirm(`⚠ 取引先「${cliInput}」が登録済みの取引先名と一致しませんでした。取引先を未設定のまま提出しますか？`)) return;
   }
+  // 車番も同様にチェックする。ドライバー本人は自分の登録車両としか比較できない（RLSで他ドライバーの車両は見えないため）
+  const knownCars = (me?.role === 'driver') ? (me.driver_data?.cars || []) : drvs.flatMap(d => d.cars || []);
+  if (car && !knownCars.some(c => nm(c) === nm(car))) {
+    if (!confirm(`⚠ 車番「${car}」は登録車両と一致しませんでした（代車など）。このまま提出しますか？`)) return;
+  }
 
   // drv_id: RLSで「自分の日報だけ見える」を成立させるための紐付け。
   // 車番から解決できればそれを優先（管理者が代理入力した場合も正しいドライバーに紐づく）、
