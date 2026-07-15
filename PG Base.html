@@ -2220,6 +2220,13 @@ td.dim{color:var(--text2)}
       </div>
       <div class="fld"><label>電話番号（任意）</label><input type="text" id="dTel" placeholder="090-0000-0000"></div>
       <div class="fld"><label>振込先口座（任意・支払明細書に表示）</label><input type="text" id="dBank" placeholder="〇〇銀行 〇〇支店 普通 1234567"></div>
+      <div class="fld" id="dLoginFld" style="border-top:0.5px solid var(--border2);padding-top:10px;margin-top:4px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dCreateLogin" style="width:auto" onchange="document.getElementById('dLoginIdWrap').style.display=this.checked?'block':'none'">ログインアカウントも作成する（ドライバーポータル用）</label>
+        <div id="dLoginIdWrap" style="display:none;margin-top:6px">
+          <input type="text" id="dLoginId" placeholder="ログインID（半角英数、例: driver001）">
+          <div style="font-size:10px;color:var(--text2);margin-top:3px">初期パスワードは 1234 です。本人が初回ログイン時に変更を求められます</div>
+        </div>
+      </div>
     </div>
     <div class="mtab-panel" data-tab="pay">
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">支払明細書の控除設定（このドライバー固有）</div>
@@ -2266,7 +2273,6 @@ td.dim{color:var(--text2)}
     <div class="mtab-panel" data-tab="note">
       <div class="fld"><label>備考（任意・支払明細書の備考欄に表示）</label><textarea id="dNote" placeholder="このドライバーの支払明細書に共通で記載したい内容があれば入力" rows="4" style="width:100%;resize:vertical"></textarea></div>
     </div>
-    <!-- ドライバーログイン（Googleログイン方式へ移行予定のため、現時点ではUI項目を保留） -->
     <div class="mfoot"><button class="btn" onclick="closeM('mDrv')">キャンセル</button><button class="btn pri" onclick="saveDrv()">登録</button></div>
   </div>
 </div>
@@ -2388,7 +2394,9 @@ td.dim{color:var(--text2)}
       <div class="fld"><label>表示名</label><input type="text" id="uNm"></div>
     </div>
     <div class="g2">
-      <div class="fld"><label>パスワード</label><input type="password" id="uPw" placeholder="新規は必須 / 編集時は空欄で変更なし"></div>
+      <div class="fld"><label>パスワード</label><input type="password" id="uPw" placeholder="新規は必須 / 編集時は空欄で変更なし">
+        <div id="uPwHint" style="display:none;font-size:10px;color:var(--text2);margin-top:3px">初期パスワードです。本人が初回ログイン時に変更を求められます</div>
+      </div>
       <div class="fld"><label>権限</label><select id="uRo" onchange="onUsrRoleChange()"><option value="admin">管理者</option><option value="editor">編集者</option><option value="viewer">閲覧者</option><option value="driver">ドライバー</option></select></div>
     </div>
     <div class="fld" id="uDrvFld" style="display:none"><label>紐づけるドライバー <span style="color:var(--red)">*</span></label>
@@ -2396,6 +2404,18 @@ td.dim{color:var(--text2)}
       <div style="font-size:10px;color:var(--text2);margin-top:3px">このアカウントでログインすると、選択したドライバーのポータル（日報・月報・支払明細書・書類提出）が表示されます</div>
     </div>
     <div class="mfoot"><button class="btn" onclick="closeM('mUsr')">キャンセル</button><button class="btn pri" onclick="saveUsr()">保存</button></div>
+  </div>
+</div>
+
+<!-- モーダル: パスワード変更必須（初期パスワードのままログインした場合。✕や外側クリックでは閉じない） -->
+<div class="overlay" id="mForcePw">
+  <div class="modal" style="width:360px">
+    <div class="mh">🔒 パスワードの変更が必要です</div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">初期パスワードのままです。セキュリティのため、新しいパスワードに変更してください。</div>
+    <div class="fld"><label>新しいパスワード（4文字以上）</label><input type="password" id="fpwNew" autocomplete="new-password"></div>
+    <div class="fld"><label>新しいパスワード（確認）</label><input type="password" id="fpwConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitForcePwChange()"></div>
+    <div id="fpwErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
+    <div class="mfoot"><button class="btn" onclick="logout()">ログアウト</button><button class="btn pri" onclick="submitForcePwChange()">変更する</button></div>
   </div>
 </div>
 
@@ -2549,6 +2569,16 @@ async function applyLogin(data) {
   ['bAdd','bAddD','bAddC'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
   startSess();
   await loadAll();
+  // 初期パスワードのまま(must_change_password)の場合は、変更が完了するまでここで止める。
+  // 変更完了後はsubmitForcePwChange()からproceedAfterLogin()を呼んで続きを行う
+  if (me.must_change_password) {
+    document.getElementById('mForcePw').classList.add('on');
+    return;
+  }
+  proceedAfterLogin();
+}
+
+function proceedAfterLogin() {
   // ドライバーロールの場合はポータル画面に切替。ここで例外が起きると画面が真っ白のまま
   // 何も表示されなくなってしまうため（pgLoginは既に非表示済み）、必ずcatchして
   // 目に見える形でエラーを出す。表示自体はここで失敗しても最低限成立させる
@@ -2568,6 +2598,30 @@ async function applyLogin(data) {
   goPage(1, document.getElementById('nt1'));
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
+}
+
+// 初期パスワードのまま初回ログインした場合の強制変更モーダル。自分自身のパスワード変更なのでSupabase Authのupdateuserをそのまま使える（管理者権限は不要）
+async function submitForcePwChange() {
+  const pw1 = document.getElementById('fpwNew').value;
+  const pw2 = document.getElementById('fpwConfirm').value;
+  const errEl = document.getElementById('fpwErr');
+  errEl.textContent = '';
+  if (pw1.length < 4) { errEl.textContent = '4文字以上で入力してください'; return; }
+  if (pw1 !== pw2) { errEl.textContent = 'パスワードが一致しません'; return; }
+  showLoad(true);
+  try {
+    const { error } = await sb.auth.updateUser({ password: pw1 });
+    if (error) throw error;
+    const { error: uErr } = await sb.from('users').update({ must_change_password: false }).eq('id', me.id);
+    if (uErr) throw uErr;
+    me.must_change_password = false;
+    document.getElementById('mForcePw').classList.remove('on');
+    document.getElementById('fpwNew').value = '';
+    document.getElementById('fpwConfirm').value = '';
+    showT('パスワードを変更しました');
+    proceedAfterLogin();
+  } catch(e) { errEl.textContent = '変更エラー: ' + e.message; }
+  showLoad(false);
 }
 
 // Supabaseが無料プランで自動バックアップが無いため、手動バックアップ（backupAllData）の実行間隔が
@@ -4297,7 +4351,7 @@ function onLeaseCompanySelChange(){
   sel.insertBefore(opt, sel.lastElementChild);
   sel.value = name;
 }
-function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 function addTag(){const v=document.getElementById('dCi').value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);document.getElementById('dCi').value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
 function renderTags(){document.getElementById('cTags').innerHTML=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');}
@@ -4321,7 +4375,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -4342,8 +4396,14 @@ async function saveDrv(){
   const name=document.getElementById('dN').value.trim();if(!name){alert('名前は必須です');return;}
   const supId=document.getElementById('dSup').value.trim();
   if(supId){const dup=drvs.find(d=>d.supplier_id===supId&&d.id!==eDrvId);if(dup){alert(`ドライバーID「${supId}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
-  // 注: email/driver_login_id/driver_pwはdriversテーブルに未実装の列のため送信しない
-  // （ドライバーログインはGoogleログイン方式で対応予定のため、この項目は保留）
+  // 新規登録時のみ「ログインアカウントも作成する」を選べる（編集時は対象外）
+  const createLogin = eDrvId===null && document.getElementById('dCreateLogin')?.checked;
+  let loginId = '';
+  if(createLogin){
+    loginId = document.getElementById('dLoginId').value.trim();
+    if(!loginId){alert('ログインIDを入力してください');return;}
+    if(users.find(u=>u.id===loginId)){alert(`ログインID「${loginId}」は既に使用されています`);return;}
+  }
   const obj={
     name,
     company:document.getElementById('dCompany').value.trim()||null,
@@ -4365,8 +4425,21 @@ async function saveDrv(){
   showLoad(true);
   try{
     if(eDrvId!==null){const{data,error}=await sb.from('drivers').update(obj).eq('id',eDrvId).select().single();if(error)throw error;const idx=drvs.findIndex(x=>x.id===eDrvId);if(idx>=0)drvs[idx]=data;addLog('ドライバー編集',name);}
-    else{const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);addLog('ドライバー追加',name);}
-    closeM('mDrv');renderDrv();renderInv();showT('ドライバーを登録しました');
+    else{
+      const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);addLog('ドライバー追加',name);
+      if(createLogin){
+        try{
+          // ログイン用のSupabase AuthアカウントをEdge Function（管理者権限）経由で作成。初期パスワードは1234固定で、初回ログイン時に本人へ変更を求める
+          const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'create',login_id:loginId,password:'1234'}});
+          if(fnErr||fnData?.error)throw new Error(fnData?.error||fnErr.message);
+          const{data:uData,error:uErr}=await sb.from('users').insert({id:loginId,name,role:'driver',auth_uid:fnData.auth_uid,driver_id:data.id,must_change_password:true}).select().single();
+          if(uErr)throw uErr;
+          users.push(uData);
+          addLog('ユーザー追加',`${name}（ドライバー登録から自動作成）`);
+        }catch(e2){showT(`ドライバーは登録しましたが、ログイン作成に失敗しました: ${e2.message}（ユーザー管理から追加してください）`,'ter');}
+      }
+    }
+    closeM('mDrv');renderDrv();renderInv();showT(createLogin?'ドライバーとログインを登録しました（初期パスワード: 1234）':'ドライバーを登録しました');
   }catch(e){showT(e.code==='23505'?`ドライバーID「${supId}」は既に使用されています`:'保存エラー: '+e.message,'ter');}
   showLoad(false);
 }
@@ -4508,6 +4581,11 @@ function onUsrRoleChange(){
   const isDrv=document.getElementById('uRo').value==='driver';
   document.getElementById('uDrvFld').style.display=isDrv?'block':'none';
   if(isDrv)populateUsrDrvSel();
+  // 新規ドライバーアカウントは初期パスワードを1234にし、初回ログイン時の変更を促す
+  const pwEl=document.getElementById('uPw');
+  const isNew=eUsrId===null;
+  if(isDrv&&isNew&&!pwEl.value)pwEl.value='1234';
+  document.getElementById('uPwHint').style.display=(isDrv&&isNew)?'block':'none';
 }
 function populateUsrDrvSel(cur){
   const sel=document.getElementById('uDrvSel');
@@ -4549,7 +4627,8 @@ async function saveUsr(){
         const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'set_password',auth_uid:cur.auth_uid,password:pw}});
         if(fnErr||fnData?.error)throw new Error(fnData?.error||fnErr.message);
       }
-      const upd = {id,name:n,role,driver_id:driverId};
+      // パスワードを新しく設定した場合は、本人がまだ知らない/管理者が決めた値なので次回ログイン時に変更を求める
+      const upd = {id,name:n,role,driver_id:driverId,...(pw?{must_change_password:true}:{})};
       const{data,error}=await sb.from('users').update(upd).eq('id',eUsrId).select().single();
       if(error)throw error;
       const idx=users.findIndex(x=>x.id===eUsrId);if(idx>=0)users[idx]=data;
@@ -4559,7 +4638,8 @@ async function saveUsr(){
       // ログイン用のSupabase AuthアカウントをEdge Function（管理者権限）経由で作成
       const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'create',login_id:id,password:pw}});
       if(fnErr||fnData?.error){showT('ログインアカウント作成エラー: '+(fnData?.error||fnErr.message),'ter');showLoad(false);return;}
-      const{data,error}=await sb.from('users').insert({id,name:n,role,auth_uid:fnData.auth_uid,driver_id:driverId}).select().single();
+      // 新規アカウントは管理者が決めたパスワードなので、初回ログイン時に本人へ変更を求める
+      const{data,error}=await sb.from('users').insert({id,name:n,role,auth_uid:fnData.auth_uid,driver_id:driverId,must_change_password:true}).select().single();
       if(error)throw error;users.push(data);addLog('ユーザー追加',n);
     }
     closeM('mUsr');renderUsr();showT('ユーザーを保存しました');
@@ -12235,7 +12315,8 @@ CREATE TABLE IF NOT EXISTS users (
   id text PRIMARY KEY, name text NOT NULL, pw text,
   role text NOT NULL DEFAULT 'viewer',
   auth_uid uuid UNIQUE REFERENCES auth.users(id),
-  driver_id int REFERENCES drivers(id)
+  driver_id int REFERENCES drivers(id),
+  must_change_password boolean NOT NULL DEFAULT false
 );
 
 -- 請求書・受注データ
