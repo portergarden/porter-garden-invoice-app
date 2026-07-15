@@ -4197,6 +4197,8 @@ async function renderDashWarnings(){
     if(recvOverdue)items.push({sev:'red',icon:'💰',text:`入金予定の期限超過: ${recvOverdue}件`,btn:'入金スケジュールへ',go:22,nt:'nt22'});
   }catch(e){console.warn('renderDashWarnings(スケジュール):',e.message);}
 
+  setNavWarnDot('nt1', items.length>0);
+
   // renderDashが非同期処理の完了前に別の年へ切り替わっている場合、古い結果で上書きしないようにする
   const box=document.getElementById('dashWarnings');
   if(!box)return;
@@ -9055,7 +9057,8 @@ function populateYearSelect(selId, includeAll) {
     years.map(y=>`<option value="${y}">${y}年</option>`)
   );
   sel.innerHTML = opts.join('');
-  sel.value = cur || (includeAll ? '' : String(now));
+  // 「全期間」は選択肢としては残すが、初期表示は現在の年を既定にする（年間サマリー等をすぐ見られるように）
+  sel.value = cur || String(now);
 }
 
 /* ===== 年報（ダッシュボードに統合済み。年を選択したときだけ年間サマリー＋月次実績を表示する） ===== */
