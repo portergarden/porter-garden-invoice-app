@@ -2232,6 +2232,7 @@ td.dim{color:var(--text2)}
       <div class="fld"><label>車両リース代（円）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1"></div>
       <div class="fld"><label>リース会社（任意・車両代の支払先を集計する際に使用）</label><select id="dLeaseCompany" onchange="onLeaseCompanySelChange()"><option value="">（未設定）</option></select></div>
       <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dHideStatement" style="width:auto"> 支払明細書をドライバーポータルに表示しない（協力会社経由で支払う場合など）</label></div>
+      <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dIsCompany" style="width:auto"> この登録は個人ではなく会社（法人）を支払先とする<br><span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:22px">支払明細書の宛名が「様」ではなく「御中」になります</span></label></div>
       <div class="fld">
         <label>その他の控除項目（保険料・家賃など、複数追加可）</label>
         <div id="dOtherDeductions" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px"></div>
@@ -3111,7 +3112,7 @@ function buildStatementSheetData(side, rows) {
     groupId = d?.id;
     headLabel = '支払明細書';
     docPrefix = 'PS';
-    recipientLines = [`${d?d.name:'（未設定）'}　様`, d?.company?`協力会社: ${d.company}`:'', d?.tel?`(TEL ${d.tel})`:'', d?.invoice_no?`登録番号: ${d.invoice_no}`:'', d?.bank?`振込先: ${d.bank}`:''];
+    recipientLines = [`${d?d.name:'（未設定）'}${d?.is_company?'　御中':'　様'}`, d?.company?`協力会社: ${d.company}`:'', d?.tel?`(TEL ${d.tel})`:'', d?.invoice_no?`登録番号: ${d.invoice_no}`:'', d?.bank?`振込先: ${d.bank}`:''];
     dateLabel = '支払実行日';
     // ドライバー（協力会社優先）の支払日設定を反映した支払実行日
     dateValue = computePayExecDateLabel(d, sortedRows[sortedRows.length-1]?.date);
@@ -3201,7 +3202,7 @@ function buildStatementSheetData(side, rows) {
   const issueDate = getStatementIssueDate();
   const periodLabel = `集計期間: ${sortedRows[0].date} ～ ${sortedRows[sortedRows.length-1].date}`;
 
-  return { headLabel, docNo, issueDate, recipientLines, companyLines, periodLabel, dateLabel, dateValue, summary, items, notes, breakdownRows, groupLabel: side==='billing' ? recipientLines[0].replace('　御中','') : recipientLines[0].replace('　様','') };
+  return { headLabel, docNo, issueDate, recipientLines, companyLines, periodLabel, dateLabel, dateValue, summary, items, notes, breakdownRows, isCompanyPayee: side==='billing' || !!recDrv(sortedRows[0])?.is_company, groupLabel: recipientLines[0].replace('　御中','').replace('　様','') };
 }
 
 // 1件分の明細書ブロックをwsの指定行から書き込み、書き込み終えた次の行番号を返す
@@ -4356,7 +4357,7 @@ function onLeaseCompanySelChange(){
   sel.insertBefore(opt, sel.lastElementChild);
   sel.value = name;
 }
-function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 function addTag(){const v=document.getElementById('dCi').value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);document.getElementById('dCi').value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
 function renderTags(){document.getElementById('cTags').innerHTML=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');}
@@ -4380,7 +4381,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerList();populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dCompany').value=d.company||'';document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -4422,6 +4423,7 @@ async function saveDrv(){
     vehicle_rental:+document.getElementById('dVehRental').value||0,
     lease_company:document.getElementById('dLeaseCompany').value.trim()||null,
     hide_statement:document.getElementById('dHideStatement').checked,
+    is_company:document.getElementById('dIsCompany').checked,
     pay_month_offset:+document.getElementById('dPayMonthOffset').value||0,
     pay_day:document.getElementById('dPayDay').value||'end',
     invoice_no:document.getElementById('dInvoiceNo').value.trim()||null,
@@ -9608,10 +9610,10 @@ function writeStatementWindow(win, htmlBuilderFn) {
 }
 
 // PDFのタイトル（＝印刷/保存ダイアログが提案するファイル名の元）を組み立てる。
-// 宛先が取引先（請求）なら「御中」、ドライバー個人（支払）なら「様」を付け、対象月も添えて
-// 「支払明細書_佐々木誠弥様_2026-06」のように、保存時にそのまま使える名前にする
+// 宛先が取引先（請求）または会社登録のドライバー（is_company）なら「御中」、個人ドライバー（支払）なら「様」を付け、
+// 対象月も添えて「支払明細書_佐々木誠弥様_2026-06」のように、保存時にそのまま使える名前にする
 function statementFileTitle(side, d) {
-  const honorific = side === 'billing' ? '御中' : '様';
+  const honorific = d.isCompanyPayee ? '御中' : '様';
   const ym = d.docNo.match(/-(\d{4})(\d{2})-/);
   const monthPart = ym ? `_${ym[1]}-${ym[2]}` : '';
   return `${d.headLabel}_${d.groupLabel}${honorific}${monthPart}`;
@@ -12333,7 +12335,8 @@ CREATE TABLE IF NOT EXISTS drivers (
   pay_month_offset int DEFAULT 2, pay_day text DEFAULT 'end',
   invoice_no text, other_deductions jsonb NOT NULL DEFAULT '[]',
   bank text, company text, note text, lease_company text,
-  hide_statement boolean NOT NULL DEFAULT false
+  hide_statement boolean NOT NULL DEFAULT false,
+  is_company boolean NOT NULL DEFAULT false
 );
 
 -- ユーザー（認証はSupabase Auth。pwは廃止済み・互換用にnullable列のみ残置）
