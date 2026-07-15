@@ -1921,7 +1921,9 @@ td.dim{color:var(--text2)}
       </div>
       <div id="drvDailyListArea">
         <div style="padding:6px 14px;border-bottom:0.5px solid var(--border);display:flex;gap:8px;align-items:center">
+          <button class="btn sml" onclick="singleMonthShift('drvDailyMonth',-1,loadDriverDailyList)" title="前月">◀</button>
           <input type="month" id="drvDailyMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="loadDriverDailyList()">
+          <button class="btn sml" onclick="singleMonthShift('drvDailyMonth',1,loadDriverDailyList)" title="翌月">▶</button>
           <button class="btn sml pri" onclick="printDriverDailyReports()" title="表示中の月の日報を日付順で印刷用書式にまとめます">🖨 印刷</button>
         </div>
         <div id="drvDailyList" style="padding:8px 14px"></div>
@@ -1931,7 +1933,9 @@ td.dim{color:var(--text2)}
     <!-- D1: 月報（自分のみ） -->
     <div id="dpg1" style="display:none">
       <div style="padding:6px 14px;border-bottom:0.5px solid var(--border);display:flex;gap:8px;align-items:center">
+        <button class="btn sml" onclick="singleMonthShift('drvMrMonth',-1,renderDriverMonthly)" title="前月">◀</button>
         <input type="month" id="drvMrMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDriverMonthly()">
+        <button class="btn sml" onclick="singleMonthShift('drvMrMonth',1,renderDriverMonthly)" title="翌月">▶</button>
         <button class="btn sml" onclick="exportDriverMonthlyCsv()">⬇ CSV</button>
       </div>
       <div id="drvMonthlyBody" style="padding:8px 14px"></div>
