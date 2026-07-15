@@ -4156,19 +4156,23 @@ async function renderDashWarnings(){
   if(backupMsg)items.push({sev:'amber',icon:'💾',text:backupMsg.replace(/^💾\s*/,''),btn:'セットアップへ',go:17,nt:'nt17'});
 
   if(drvs.length){
+    let nt2Warn=false;
     try{
       await loadDriverDocs();
       const issues=summarizeDocAlerts();
       const expired=issues.filter(i=>i.st.cls==='expired').length;
       const soon=issues.filter(i=>i.st.cls==='soon').length;
-      if(expired)items.push({sev:'red',icon:'📄',text:`ドライバー書類の期限切れ: ${expired}件`,btn:'ドライバー管理へ',go:2,nt:'nt2'});
-      if(soon)items.push({sev:'amber',icon:'📄',text:`ドライバー書類の期限間近: ${soon}件`,btn:'ドライバー管理へ',go:2,nt:'nt2'});
+      if(expired){items.push({sev:'red',icon:'📄',text:`ドライバー書類の期限切れ: ${expired}件`,btn:'ドライバー管理へ',go:2,nt:'nt2'});nt2Warn=true;}
+      if(soon){items.push({sev:'amber',icon:'📄',text:`ドライバー書類の期限間近: ${soon}件`,btn:'ドライバー管理へ',go:2,nt:'nt2'});nt2Warn=true;}
     }catch(e){console.warn('renderDashWarnings(書類):',e.message);}
 
     try{
       await loadDriverChatUnread();
-      if(driverChatUnreadIds.size)items.push({sev:'amber',icon:'💬',text:`未読のドライバーチャット: ${driverChatUnreadIds.size}名`,btn:'ドライバー管理へ',go:2,nt:'nt2'});
+      if(driverChatUnreadIds.size){items.push({sev:'amber',icon:'💬',text:`未読のドライバーチャット: ${driverChatUnreadIds.size}名`,btn:'ドライバー管理へ',go:2,nt:'nt2'});nt2Warn=true;}
     }catch(e){console.warn('renderDashWarnings(チャット):',e.message);}
+
+    // ドライバー管理タブ(nt2)は書類期限・未読チャットのどちらかがあれば赤丸を出す（以前はログイン時の別処理が担っていたが、通知パネル統合時に呼び出しごと削除されていたため復旧）
+    setNavWarnDot('nt2', nt2Warn);
   }
 
   try{
@@ -8467,18 +8471,6 @@ function summarizeDocAlerts() {
     });
   });
   return issues;
-}
-// ログイン後に書類期限をチェックする（詳細はドライバー管理タブのバナー＋一覧。通知パネルでまとめて表示するため文字列を返すだけにする）
-async function checkDriverDocAlerts() {
-  if (!sb || !drvs.length) return null;
-  await loadDriverDocs();
-  const issues = summarizeDocAlerts();
-  setNavWarnDot('nt2', issues.length>0);
-  if (document.getElementById('pg2')?.style.display !== 'none') renderDrv();
-  if (!issues.length) return null;
-  const expired = issues.filter(i => i.st.cls === 'expired').length;
-  const soon = issues.filter(i => i.st.cls === 'soon').length;
-  return `📄 書類期限: ${expired ? `期限切れ${expired}件` : ''}${expired && soon ? ' / ' : ''}${soon ? `期限間近${soon}件` : ''}（ドライバー管理で確認）`;
 }
 // ドライバー本人へ、自分の提出書類の期限切れ・期限間近をログイン時に知らせる（管理側とは別に本人にも直接注意喚起する）
 async function checkDriverOwnDocAlerts() {
