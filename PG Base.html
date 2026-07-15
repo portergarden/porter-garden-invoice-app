@@ -4647,6 +4647,26 @@ async function saveUsr(){
   showLoad(false);
 }
 
+// ドライバー管理から、そのドライバーのログインパスワードを1234にワンクリックでリセットする
+// （パスワードを忘れた等の際に、ユーザー管理タブまで行かなくても対応できるようにするショートカット）
+async function resetDriverPassword(drvId){
+  const d=drvs.find(x=>x.id===drvId);if(!d)return;
+  const u=users.find(x=>x.driver_id===drvId&&x.role==='driver');
+  if(!u){alert(`「${d.name}」にはログインアカウントがありません（ユーザー管理から作成してください）`);return;}
+  if(!confirm(`「${d.name}」のパスワードを初期値(1234)にリセットしますか？\n次回ログイン時に本人へ変更を求めます。`))return;
+  showLoad(true);
+  try{
+    const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'set_password',auth_uid:u.auth_uid,password:'1234'}});
+    if(fnErr||fnData?.error)throw new Error(fnData?.error||fnErr.message);
+    const{data,error}=await sb.from('users').update({must_change_password:true}).eq('id',u.id).select().single();
+    if(error)throw error;
+    const idx=users.findIndex(x=>x.id===u.id);if(idx>=0)users[idx]=data;
+    addLog('パスワードリセット',`${d.name}（ドライバー管理から）`);
+    showT(`「${d.name}」のパスワードを1234にリセットしました`);
+  }catch(e){showT('リセットエラー: '+e.message,'ter');}
+  showLoad(false);
+}
+
 /* ===== CSV EXPORT ===== */
 const CSV_COLS_BILLING = ['日付','車番','ドライバー','取引先','種別','運賃','高速代','立替代','追加料金(他)','税率','税抜合計','消費税','税込合計','ステータス','備考'];
 // 集計（取引先別）タブでチェックした取引先分だけをCSV出力する（Excel/PDFの「選択分」と同じ絞り込みに揃える。
@@ -5100,7 +5120,7 @@ function renderDrv() {
       return `<div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
           <div class="av drv">${ini}</div>
-          <div style="display:flex;gap:1px"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
+          <div style="display:flex;gap:1px"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
         </div>
         <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${d.name}${d.company?` <span style="font-size:10.5px;font-weight:500;color:var(--text2);padding:1px 5px;background:var(--bg2);border-radius:99px">${d.company}</span>`:''}</div>
         ${d.supplier_id ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">仕入先ID: ${d.supplier_id}</div>` : ''}
@@ -5135,7 +5155,7 @@ function renderDrv() {
           </div>
           <div style="width:70px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
         </div>
-        <div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
+        <div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
       </div>`;
     }).join('');
   }
