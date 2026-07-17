@@ -4937,13 +4937,17 @@ async function submitDriverSelfRegistration(){
   if (!name) { errEl.textContent = 'お名前を入力してください'; return; }
   showLoad(true);
   try{
-    const { error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel||null, p_cars: pendTags });
+    const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel||null, p_cars: pendTags });
     if (error) throw error;
+    // 電話番号または氏名が既存ドライバーと一致した場合、新規登録せず車番だけ既存レコードに追記している（二重登録防止）
+    const merged = Array.isArray(data) ? data[0]?.merged : data?.merged;
     document.getElementById('driverInviteForm').style.display = 'none';
     const statusEl = document.getElementById('driverInviteStatus');
     statusEl.style.display = 'block';
     statusEl.style.color = 'var(--green-text)';
-    statusEl.textContent = '登録が完了しました。管理者が内容を確認後、ご連絡します。このページは閉じて構いません。';
+    statusEl.textContent = merged
+      ? 'すでに登録があるお名前・電話番号でしたので、車両情報を既存の登録に追加しました。このページは閉じて構いません。'
+      : '登録が完了しました。管理者が内容を確認後、ご連絡します。このページは閉じて構いません。';
   }catch(e){
     const reasonMsg = { invalid_token: INVITE_REASON_MSG.invalid, token_already_used: INVITE_REASON_MSG.used, token_expired: INVITE_REASON_MSG.expired, name_required: 'お名前を入力してください' };
     errEl.textContent = reasonMsg[e.message] || ('登録エラー: ' + e.message);
@@ -13275,12 +13279,19 @@ END;
 $function$;
 
 -- 招待トークンを使ってドライバーを自己登録する（匿名で呼べるが、有効なトークンの場合のみ処理を実行する）
-CREATE OR REPLACE FUNCTION public.submit_driver_registration(p_token text, p_name text, p_tel text, p_cars text[])
-RETURNS integer
+-- 電話番号または氏名（空白除去して比較）が既存ドライバーと一致する場合は新規作成せず、
+-- 既存レコードに車番だけ追記する（招待リンクの誤使用・再送による二重登録を防止）
+DROP FUNCTION IF EXISTS public.submit_driver_registration(text, text, text, text[]);
+CREATE FUNCTION public.submit_driver_registration(p_token text, p_name text, p_tel text, p_cars text[])
+RETURNS TABLE(driver_id integer, merged boolean)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
 DECLARE
   v_row public.driver_invites%rowtype;
-  v_driver_id integer;
+  v_existing public.drivers%rowtype;
+  v_new_driver_id integer;
+  v_merged_cars text[];
+  v_car text;
+  v_tel text;
 BEGIN
   SELECT * INTO v_row FROM public.driver_invites WHERE token = p_token FOR UPDATE;
   IF NOT FOUND THEN
@@ -13295,13 +13306,42 @@ BEGIN
     RAISE EXCEPTION 'name_required';
   END IF;
 
-  INSERT INTO public.drivers (name, tel, cars)
-  VALUES (trim(p_name), nullif(trim(coalesce(p_tel,'')),''), coalesce(p_cars, '{}'))
-  RETURNING id INTO v_driver_id;
+  v_tel := nullif(trim(coalesce(p_tel,'')),'');
 
-  UPDATE public.driver_invites SET used_at = now(), driver_id = v_driver_id WHERE id = v_row.id;
+  IF v_tel IS NOT NULL THEN
+    SELECT * INTO v_existing FROM public.drivers WHERE tel = v_tel LIMIT 1;
+  END IF;
+  IF v_existing.id IS NULL THEN
+    SELECT * INTO v_existing FROM public.drivers
+      WHERE regexp_replace(name, '\s', '', 'g') = regexp_replace(trim(p_name), '\s', '', 'g')
+      LIMIT 1;
+  END IF;
 
-  RETURN v_driver_id;
+  IF v_existing.id IS NOT NULL THEN
+    v_merged_cars := coalesce(v_existing.cars, '{}');
+    IF p_cars IS NOT NULL THEN
+      FOR v_car IN SELECT unnest(p_cars) LOOP
+        IF v_car IS NOT NULL AND length(trim(v_car)) > 0
+           AND NOT (regexp_replace(trim(v_car), '\s', '', 'g') = ANY(
+             SELECT regexp_replace(x, '\s', '', 'g') FROM unnest(v_merged_cars) x
+           )) THEN
+          v_merged_cars := array_append(v_merged_cars, trim(v_car));
+        END IF;
+      END LOOP;
+    END IF;
+    UPDATE public.drivers
+      SET cars = v_merged_cars,
+          tel = coalesce(nullif(trim(coalesce(v_existing.tel,'')),''), v_tel)
+      WHERE id = v_existing.id;
+    UPDATE public.driver_invites SET used_at = now(), driver_id = v_existing.id WHERE id = v_row.id;
+    RETURN QUERY SELECT v_existing.id, true;
+  ELSE
+    INSERT INTO public.drivers (name, tel, cars)
+    VALUES (trim(p_name), v_tel, coalesce(p_cars, '{}'))
+    RETURNING id INTO v_new_driver_id;
+    UPDATE public.driver_invites SET used_at = now(), driver_id = v_new_driver_id WHERE id = v_row.id;
+    RETURN QUERY SELECT v_new_driver_id, false;
+  END IF;
 END;
 $function$;
 
