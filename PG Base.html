@@ -2779,14 +2779,20 @@ async function applyLogin(data) {
   me = data;
   // セッション永続化はSupabase Authクライアントが自動的に行う
   document.getElementById('pgLogin').classList.add('hide');
-  const mp = document.getElementById('pgMain'); mp.classList.remove('hide'); mp.style.display = 'flex';
-  document.getElementById('tbName').textContent = me.name;
-  const rn = me.role==='admin'?'管理者':me.role==='editor'?'編集者':'閲覧者';
-  const rc = me.role==='admin'?'ad':me.role==='editor'?'ed':'vi';
-  document.getElementById('tbBdg').innerHTML = `<span class="bdg ${rc}">${rn}</span>`;
-  if (me.role==='admin') { document.getElementById('nt4').classList.remove('hide'); document.getElementById('nt5').classList.remove('hide'); }
-  const canEd = me.role !== 'viewer';
-  ['bAdd','bAddD','bAddC','bDrvInvite','bBulkChat'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
+  // 管理画面(pgMain)はdriver以外のロールと確定した場合にのみ表示する。
+  // ここで先に表示してしまうと、ドライバーポータル側の表示処理が何らかの理由で失敗した際に
+  // 管理画面がそのまま見えてしまう（他ドライバー・他取引先のデータが見える致命的な事故につながる）ため、
+  // ロール確定前は絶対に表示しない
+  if (me.role !== 'driver') {
+    const mp = document.getElementById('pgMain'); mp.classList.remove('hide'); mp.style.display = 'flex';
+    document.getElementById('tbName').textContent = me.name;
+    const rn = me.role==='admin'?'管理者':me.role==='editor'?'編集者':'閲覧者';
+    const rc = me.role==='admin'?'ad':me.role==='editor'?'ed':'vi';
+    document.getElementById('tbBdg').innerHTML = `<span class="bdg ${rc}">${rn}</span>`;
+    if (me.role==='admin') { document.getElementById('nt4').classList.remove('hide'); document.getElementById('nt5').classList.remove('hide'); }
+    const canEd = me.role !== 'viewer';
+    ['bAdd','bAddD','bAddC','bDrvInvite','bBulkChat'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
+  }
   startSess();
   await loadAll();
   // 初期パスワードのまま(must_change_password)の場合は、変更が完了するまでここで止める。
@@ -2799,9 +2805,10 @@ async function applyLogin(data) {
 }
 
 function proceedAfterLogin() {
-  // ドライバーロールの場合はポータル画面に切替。ここで例外が起きると画面が真っ白のまま
-  // 何も表示されなくなってしまうため（pgLoginは既に非表示済み）、必ずcatchして
-  // 目に見える形でエラーを出す。表示自体はここで失敗しても最低限成立させる
+  // ドライバーロールの場合はポータル画面に切替。ここで例外が起きた場合、
+  // 以前は「フォールバックとして管理画面(pgMain)を表示する」実装になっていたが、
+  // これだとドライバーに他ドライバー・他取引先のデータが見える管理画面がそのまま表示されてしまう
+  // 致命的な事故になるため、絶対に管理画面は表示しない。失敗時は安全側に倒してログアウトする
   if (me.role === 'driver') {
     try {
       // usersテーブルのdriver_idからドライバー情報を解決（ポータルの日報・明細表示に使用）
@@ -2809,8 +2816,8 @@ function proceedAfterLogin() {
       applyDriverPortal();
     } catch(e) {
       console.error('applyDriverPortal failed:', e);
-      const main = document.getElementById('pgMain'); if (main) { main.classList.remove('hide'); main.style.display = 'flex'; }
-      showT('ドライバーポータルの表示に失敗しました: ' + e.message, 'ter');
+      showT('画面の表示に失敗しました。お手数ですがもう一度ログインしてください: ' + e.message, 'ter');
+      logout();
     }
     // 未配車・未確認請求書の通知は管理者向けのため、ドライバーには出さない
     // LINE連携案内バナー（友だち追加URLはcompany_settingsから取得するため、読み込み後に描画）
@@ -2897,13 +2904,15 @@ async function logout(exp=false){
   stopSess();
   if(me)await addLog('ログアウト',exp?'セッション期限切れ':`${me.name}がログアウト`);
   me=null;selIds=new Set();recs=[];clients=[];drvs=[];users=[];
-  // ドライバーポータルを非表示に
+  // ドライバーポータル・管理画面のどちらも必ず非表示のままにする。
+  // 以前はここで管理画面(pgMain)を一度表示してからsignOut後に隠す実装になっており、
+  // signOut()中（ネットワーク遅延やエラー時）に管理画面が見えてしまう致命的な不具合があったため、
+  // 管理画面は一切表示せずに非表示のまま維持する
   const portal=document.getElementById('pgDriver');
   if(portal){portal.classList.add('hide');portal.style.display='none';}
   const mainPg=document.getElementById('pgMain');
-  if(mainPg){mainPg.classList.remove('hide');mainPg.style.display='';}
-  await sb.auth.signOut();
-  const mp=document.getElementById('pgMain');mp.classList.add('hide');mp.style.display='none';
+  if(mainPg){mainPg.classList.add('hide');mainPg.style.display='none';}
+  try { await sb.auth.signOut(); } catch(e) { console.warn('signOut error:', e.message); }
   document.getElementById('pgLogin').classList.remove('hide');
   document.getElementById('lpw').value='';
   document.getElementById('nt4').classList.add('hide');document.getElementById('nt5').classList.add('hide');
@@ -13502,8 +13511,10 @@ CREATE POLICY "invoices_delete" ON invoices FOR DELETE TO authenticated USING ("
 
 -- 監査ログ: 社内のみ閲覧・追記可（更新・削除は不可＝改ざん防止）
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+-- 閲覧はadmin/editor/viewerのみ（ドライバーを含む全員が閲覧可能だった重大な設定ミスを修正）
 DROP POLICY IF EXISTS "audit_logs_select" ON audit_logs;
-CREATE POLICY "audit_logs_select" ON audit_logs FOR SELECT TO authenticated USING (true);
+CREATE POLICY "audit_logs_select" ON audit_logs FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+-- 書き込みはドライバー自身の操作ログ記録(日報提出・チャット送信等)に必要なため全員可のまま
 DROP POLICY IF EXISTS "audit_logs_insert" ON audit_logs;
 CREATE POLICY "audit_logs_insert" ON audit_logs FOR INSERT TO authenticated WITH CHECK (true);
 
