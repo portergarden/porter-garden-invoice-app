@@ -1869,6 +1869,11 @@ td.dim{color:var(--text2)}
           </div>
         </div>
       </div>
+      <div class="fld">
+        <label>LINE公式アカウント 友だち追加URL（任意・ドライバーへのLINE通知に使用）</label>
+        <input type="text" id="companyLineAddUrl" placeholder="https://lin.ee/xxxxxxx" style="width:100%;padding:6px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        <div style="font-size:10px;color:var(--text2);margin-top:3px">設定するとドライバーポータルに「LINE通知を受け取る」案内（友だち追加＋連携コード）が表示されます。通知の送信にはSupabase側でLINE_CHANNEL_ACCESS_TOKEN等のシークレット設定も必要です。</div>
+      </div>
       <button class="btn pri sml" onclick="saveCompanySettings()">💾 会社情報を保存</button>
       <div id="companySettingMsg" style="font-size:11px;color:var(--green);margin-top:6px;min-height:16px"></div>
     </div>
@@ -1976,6 +1981,7 @@ td.dim{color:var(--text2)}
 
     <!-- D3: 掲示板（閲覧のみ） -->
     <div id="dpg3" style="display:none">
+      <div id="drvLineBanner" style="padding:8px 14px 0"></div>
       <div id="drvBoardList" style="padding:8px 14px"></div>
     </div>
 
@@ -2323,6 +2329,7 @@ td.dim{color:var(--text2)}
         <div style="display:flex;gap:5px"><input type="text" id="dCi" placeholder="例: 仙台480れ141" style="flex:1" onkeydown="if(event.key==='Enter'){addTag();event.preventDefault()}"><button class="btn" onclick="addTag()">＋ 追加</button></div>
       </div>
       <div class="fld"><label>電話番号（任意）</label><input type="text" id="dTel" placeholder="090-0000-0000"></div>
+      <div class="fld"><label>メールアドレス（任意・LINE未連携時の通知先）</label><input type="email" id="dEmail" placeholder="driver@example.com"></div>
       <div class="fld"><label>振込先口座（任意・支払明細書に表示）</label><input type="text" id="dBank" placeholder="〇〇銀行 〇〇支店 普通 1234567"></div>
       <div class="fld" id="dLoginFld" style="border-top:0.5px solid var(--border2);padding-top:10px;margin-top:4px">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dCreateLogin" style="width:auto" onchange="document.getElementById('dLoginIdWrap').style.display=this.checked?'block':'none'">ログインアカウントも作成する（ドライバーポータル用）</label>
@@ -2698,12 +2705,15 @@ function proceedAfterLogin() {
       showT('ドライバーポータルの表示に失敗しました: ' + e.message, 'ter');
     }
     // 未配車・未確認請求書の通知は管理者向けのため、ドライバーには出さない
+    // LINE連携案内バナー（友だち追加URLはcompany_settingsから取得するため、読み込み後に描画）
+    loadCompanySettings().then(()=>renderDrvLineBanner()).catch(()=>{});
     return;
   }
   goPage(1, document.getElementById('nt1'));
   restoreStmtIssueDate();
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
+  setTimeout(()=>ensureLineLinkCodes().catch(()=>{}), 3000); // 既存ドライバーのLINE連携コードを不足分だけ発行
 }
 
 // 初期パスワードのまま初回ログインした場合の強制変更モーダル。自分自身のパスワード変更なのでSupabase Authのupdateuserをそのまま使える（管理者権限は不要）
@@ -4334,6 +4344,12 @@ async function renderDashWarnings(){
       const soon=issues.filter(i=>i.st.cls==='soon').length;
       if(expired){items.push({sev:'red',icon:'📄',text:`ドライバー書類の期限切れ: ${expired}件`,btn:'ドライバー管理へ',go:2,nt:'nt2'});nt2Warn=true;}
       if(soon){items.push({sev:'amber',icon:'📄',text:`ドライバー書類の期限間近: ${soon}件`,btn:'ドライバー管理へ',go:2,nt:'nt2'});nt2Warn=true;}
+      // 本人にもLINE/メールで通知（同じ書類・同じ期限日については一度だけ。期限日が更新されたら再通知される）
+      issues.forEach(i=>{
+        const expiry = findDriverDoc(i.drv.id, i.t.key)?.expiry_date || '';
+        const label = i.st.cls==='expired' ? '期限切れ' : '期限間近';
+        notifyDrivers([i.drv.id], 'doc_expiry', `doc-${i.t.key}-${expiry}`, `書類の${label}: ${i.t.label}`, `${i.t.label}が${label}です（期限: ${expiry||'未登録'}）。ポータルの書類タブから更新してください。`, true);
+      });
     }catch(e){console.warn('renderDashWarnings(書類):',e.message);}
 
     try{
@@ -4526,6 +4542,7 @@ async function saveDrv(){
     company:document.getElementById('dCompany').value.trim()||null,
     cars:pendTags,
     tel:document.getElementById('dTel').value.trim(),
+    email:document.getElementById('dEmail')?.value.trim()||null,
     bank:document.getElementById('dBank').value.trim()||null,
     note:document.getElementById('dNote').value.trim()||null,
     supplier_id:supId||null,
@@ -4544,6 +4561,7 @@ async function saveDrv(){
   try{
     if(eDrvId!==null){const{data,error}=await sb.from('drivers').update(obj).eq('id',eDrvId).select().single();if(error)throw error;const idx=drvs.findIndex(x=>x.id===eDrvId);if(idx>=0)drvs[idx]=data;addLog('ドライバー編集',name);}
     else{
+      obj.line_link_code=genDriverLinkCode(); // LINE通知の連携コードは新規登録時に発行
       const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);addLog('ドライバー追加',name);
       if(createLogin){
         try{
@@ -8692,6 +8710,52 @@ function renderDrvDocsMBody(drvId) {
   el.innerHTML = DRIVER_DOC_TYPES.map(t => docRowHtml(drvId, t, canDel)).join('');
 }
 
+/* ===== ドライバーへのLINE/メール通知 ===== */
+// ベストエフォート送信: Edge Function側でLINE連携済みならLINE、未連携ならメール、どちらも無ければスキップ。
+// APIキー未設定でもアプリ動作には影響させない（エラーはconsoleのみ）
+async function notifyDrivers(drvIds, kind, ref, title, body, dedupe=false){
+  if (!sb || !drvIds?.length) return;
+  try {
+    const { data, error } = await sb.functions.invoke('send-driver-notify', { body: { drv_ids: drvIds, kind, ref, title, body, dedupe } });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+  } catch(e) { console.warn('notifyDrivers:', e.message); }
+}
+// LINE連携コード生成（ドライバーがLINE公式アカウントにこのコードを送ると紐付く）
+function genDriverLinkCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 紛らわしい文字(I/O/0/1)を除外
+  let s = '';
+  const rnd = new Uint8Array(6); crypto.getRandomValues(rnd);
+  rnd.forEach(v => s += chars[v % chars.length]);
+  return 'PG-' + s;
+}
+// 既存ドライバーへの連携コード一括発行（管理者ログイン時に不足分だけ埋める）
+async function ensureLineLinkCodes(){
+  if (!sb) return;
+  const missing = drvs.filter(d => !d.line_link_code);
+  for (const d of missing) {
+    try {
+      const code = genDriverLinkCode();
+      const { error } = await sb.from('drivers').update({ line_link_code: code }).eq('id', d.id);
+      if (!error) d.line_link_code = code;
+    } catch(e) { console.warn('ensureLineLinkCodes:', e.message); break; }
+  }
+}
+// ドライバーポータルの掲示板タブ上部に、LINE通知の連携案内（未連携時）または連携済み表示を出す
+function renderDrvLineBanner(){
+  const el = document.getElementById('drvLineBanner');
+  if (!el || !me?.driver_data) return;
+  const d = me.driver_data;
+  const addUrl = companySettings?.line_add_url || '';
+  if (d.line_user_id) { el.innerHTML = ''; return; } // 連携済みなら何も出さない
+  if (!addUrl || !d.line_link_code) { el.innerHTML = ''; return; } // 会社側が未設定なら案内しない
+  el.innerHTML = `<div style="padding:10px 12px;background:var(--green-bg,#e8f5e9);border:0.5px solid var(--green,#43a047);border-radius:var(--radius);font-size:12px;line-height:1.7">
+    <b>🔔 お知らせをLINEで受け取れます</b><br>
+    ① <a href="${escHtml(addUrl)}" target="_blank" rel="noopener" style="color:var(--blue)">会社のLINE公式アカウントを友だち追加</a><br>
+    ② 追加したLINEにあなたの連携コード <b style="font-size:14px;letter-spacing:1px">${escHtml(d.line_link_code)}</b> をそのまま送信
+  </div>`;
+}
+
 /* ===== ドライバーとのチャット（管理側） ===== */
 let eChatDrvId = null; // 現在チャットモーダルで開いているドライバーID
 let drvChatMessages = []; // 開いているスレッドのメッセージキャッシュ
@@ -8757,6 +8821,9 @@ async function sendDrvChatMessage() {
     drvChatMessages.push(data);
     renderDrvChatMessages();
     input.value = '';
+    // LINE/メール通知（1時間に1回まで: refに時間バケットを含めdedupeさせ、連投で通知が溢れないようにする）
+    const hourBucket = new Date().toISOString().slice(0,13);
+    notifyDrivers([eChatDrvId], 'chat', `chat-${eChatDrvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
 }
 
@@ -8927,6 +8994,8 @@ async function publishPayStatements() {
       });
       if (error) throw error;
       ok++;
+      // LINE/メール通知（同じ月の再配信では通知を重複させない）
+      notifyDrivers([g.drv.id], 'statement', `stmt-${g.drv.id}-${month}`, '支払明細書が届きました', `${month}分の支払明細書をポータルに配信しました。ログインしてご確認ください。`, true);
     } catch(e) { fails.push(`${g.drv.name}: ${e.message}`); }
   }
   showLoad(false);
@@ -9351,6 +9420,11 @@ async function submitBoardPost() {
       renderBoardTo('boardList');
       addLog('掲示板投稿', title + (publish_at?`（予約: ${new Date(publish_at).toLocaleString('ja-JP')}）`:''));
       showT(publish_at ? `予約投稿しました（${new Date(publish_at).toLocaleString('ja-JP')}に公開）` : '投稿しました');
+      // 即時公開の投稿はLINE/メール通知も送る（予約・繰り返し投稿は公開タイミングが未来のため対象外）
+      if (!publish_at) {
+        const notifyIds = targetIds || drvs.map(d=>d.id);
+        notifyDrivers(notifyIds, 'board', `post-${data.id}`, `掲示板: ${title}`, body.length>200?body.slice(0,200)+'…':body);
+      }
     }
   } catch(e) { showT('エラー: '+e.message,'ter'); }
   showLoad(false);
@@ -12757,8 +12831,24 @@ CREATE TABLE IF NOT EXISTS drivers (
   invoice_no text, other_deductions jsonb NOT NULL DEFAULT '[]',
   bank text, company text, note text, lease_company text,
   hide_statement boolean NOT NULL DEFAULT false,
-  is_company boolean NOT NULL DEFAULT false
+  is_company boolean NOT NULL DEFAULT false,
+  email text,           -- LINE未連携時の通知先メールアドレス
+  line_user_id text,    -- LINE通知の宛先（webhook経由で連携コード照合時に自動設定）
+  line_link_code text   -- ドライバーがLINE公式アカウントに送信する連携コード
 );
+
+-- 通知送信履歴（LINE/メール通知の重複送信防止と送達確認用。書き込みはEdge Function(service role)のみ）
+CREATE TABLE IF NOT EXISTS notify_log (
+  id bigserial PRIMARY KEY,
+  drv_id integer REFERENCES drivers(id) ON DELETE CASCADE,
+  kind text NOT NULL,            -- 'board' | 'chat' | 'doc_expiry' | 'statement'
+  ref text NOT NULL DEFAULT '',  -- 対象の識別子（投稿ID・書類種別+期限日など）
+  channel text NOT NULL,         -- 'line' | 'email'
+  status text NOT NULL DEFAULT 'sent',  -- 'sent' | 'error' | 'skipped'
+  error text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notify_log_dedupe_idx ON notify_log (drv_id, kind, ref);
 
 -- ドライバー招待（QR/URL経由の自己登録用）
 CREATE TABLE IF NOT EXISTS driver_invites (
@@ -12931,7 +13021,8 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE TABLE IF NOT EXISTS company_settings (
   id int PRIMARY KEY DEFAULT 1, reg_no text, name text,
   zip text, address text, tel text, bank text,
-  updated_at timestamptz DEFAULT now(), stamp_image text
+  updated_at timestamptz DEFAULT now(), stamp_image text,
+  line_add_url text  -- LINE公式アカウントの友だち追加URL（ドライバーポータルの連携案内に表示）
 );
 
 -- ドライバー提出書類（免許証・車検証等）
@@ -13227,6 +13318,11 @@ CREATE POLICY "driver_messages_insert" ON driver_messages FOR INSERT TO authenti
 DROP POLICY IF EXISTS "driver_messages_update" ON driver_messages;
 CREATE POLICY "driver_messages_update" ON driver_messages FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 
+-- 通知送信履歴: 閲覧は社内のみ。書き込みはEdge Function（service role）のみのためINSERT/UPDATE/DELETEポリシーは作らない
+ALTER TABLE notify_log ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "notify_log_select" ON notify_log;
+CREATE POLICY "notify_log_select" ON notify_log FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
 -- ドライバー招待: 社内のみテーブルを直接操作できる（匿名ユーザーはcheck_driver_invite/submit_driver_registrationのRPC経由でのみ利用）
 ALTER TABLE driver_invites ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "driver_invites_select" ON driver_invites;
@@ -13332,6 +13428,8 @@ async function loadCompanySettings() {
         const el = document.getElementById('company'+k.charAt(0).toUpperCase()+k.slice(1).replace('_',''));
         if (el) el.value = data[k]||'';
       });
+      const lineEl = document.getElementById('companyLineAddUrl');
+      if (lineEl) lineEl.value = data.line_add_url||'';
       pendingStampDataUrl = undefined;
       renderCompanyStampPreview(data.stamp_image||'');
       applyBrandName(data.name);
@@ -13390,6 +13488,7 @@ async function saveCompanySettings() {
     address: document.getElementById('companyAddr')?.value.trim()||'',
     tel: document.getElementById('companyTel')?.value.trim()||'',
     bank: document.getElementById('companyBank')?.value.trim()||'',
+    line_add_url: document.getElementById('companyLineAddUrl')?.value.trim()||'',
     stamp_image: pendingStampDataUrl===undefined ? (companySettings.stamp_image||'') : (pendingStampDataUrl||''),
     updated_at: new Date().toISOString(),
   };
