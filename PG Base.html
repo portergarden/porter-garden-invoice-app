@@ -176,13 +176,13 @@
 
   -- 初期取引先データ
   INSERT INTO clients (name, short, person, tel, note) VALUES
-    ('仙台航空', '航空', '山田 部長', '022-111-2222', '内貨'),
+    ('〇〇運輸', '運輸', '担当者名', '000-000-0000', 'メモ'),
     ('ポーターガーデン', 'PG', '', '', '自社');
 
   -- 初期ドライバーデータ
   INSERT INTO drivers (name, cars, tel) VALUES
-    ('田中 一郎', ARRAY['仙台480れ141'], '090-1111-2222'),
-    ('鈴木 花子', ARRAY['宮城1754','宮城7574'], '090-3333-4444');
+    ('サンプル 太郎', ARRAY['品川300あ1234'], '090-0000-0000'),
+    ('サンプル 花子', ARRAY['品川400い5678','品川400い5679'], '090-0000-0001');
 
   ============================================================
 -->
@@ -503,7 +503,7 @@ td.dim{color:var(--text2)}
         <div class="fld">
           <label>担当車番（複数可・任意）</label>
           <div id="diTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
-          <div style="display:flex;gap:5px"><input type="text" id="diCi" placeholder="例: 仙台480れ141" style="flex:1" onkeydown="if(event.key==='Enter'){addTag('di');event.preventDefault()}"><button class="btn" onclick="addTag('di')">＋ 追加</button></div>
+          <div style="display:flex;gap:5px"><input type="text" id="diCi" placeholder="例: 品川300あ1234" style="flex:1" onkeydown="if(event.key==='Enter'){addTag('di');event.preventDefault()}"><button class="btn" onclick="addTag('di')">＋ 追加</button></div>
         </div>
         <div class="lerr" id="diErr"></div>
         <button class="btn pri" style="width:100%;justify-content:center;margin-top:8px" onclick="submitDriverSelfRegistration()">登録する</button>
@@ -2344,7 +2344,7 @@ td.dim{color:var(--text2)}
       <div class="fld"><label>種別</label><select id="fTy"><option value="regular">定期集配</option><option value="charter">チャーター</option><option value="other">その他</option></select></div>
     </div>
     <div class="g2">
-      <div class="fld"><label>車番</label><input type="text" id="fCa" placeholder="例: 仙台480れ141" oninput="prvDrv()"></div>
+      <div class="fld"><label>車番</label><input type="text" id="fCa" placeholder="例: 品川300あ1234" oninput="prvDrv()"></div>
       <div class="fld"><label>ドライバー（同一車両を複数人で稼働する場合は手動選択）</label><select id="fDrvSel" onchange="prvDrv()"><option value="">自動（車番から判定）</option></select></div>
     </div>
     <div class="fld" style="margin-top:-8px;margin-bottom:10px"><span id="fDpv" style="font-size:11px;color:var(--text2)">—</span></div>
@@ -2389,7 +2389,7 @@ td.dim{color:var(--text2)}
       <div class="fld">
         <label>担当車番（複数可）</label>
         <div id="cTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
-        <div style="display:flex;gap:5px"><input type="text" id="dCi" placeholder="例: 仙台480れ141" style="flex:1" onkeydown="if(event.key==='Enter'){addTag();event.preventDefault()}"><button class="btn" onclick="addTag()">＋ 追加</button></div>
+        <div style="display:flex;gap:5px"><input type="text" id="dCi" placeholder="例: 品川300あ1234" style="flex:1" onkeydown="if(event.key==='Enter'){addTag();event.preventDefault()}"><button class="btn" onclick="addTag()">＋ 追加</button></div>
       </div>
       <div class="fld"><label>電話番号（任意）</label><input type="text" id="dTel" placeholder="090-0000-0000"></div>
       <div class="fld"><label>メールアドレス（任意・LINE未連携時の通知先）</label><input type="email" id="dEmail" placeholder="driver@example.com"></div>
@@ -2465,8 +2465,8 @@ td.dim{color:var(--text2)}
     <div class="mtab-panel on" data-tab="basic">
       <div class="fld"><label>取引先ID</label><input type="text" id="cCode" placeholder="自動採番"></div>
       <div class="g2">
-        <div class="fld"><label>取引先名</label><input type="text" id="cName" placeholder="例: 仙台航空"></div>
-        <div class="fld"><label>略称（任意）</label><input type="text" id="cShort" placeholder="例: 航空"></div>
+        <div class="fld"><label>取引先名</label><input type="text" id="cName" placeholder="例: 〇〇運輸"></div>
+        <div class="fld"><label>略称（任意）</label><input type="text" id="cShort" placeholder="例: 運輸"></div>
       </div>
       <div class="g2">
         <div class="fld"><label>担当者名（任意）</label><input type="text" id="cPerson"></div>
@@ -6858,8 +6858,8 @@ function doDownloadPayCsv(idxs) {
     <div class="mhd">請求明細書を保存 <button class="ibtn" onclick="closeM('mInvSlipSave')">✕</button></div>
     <div style="padding:14px">
       <div class="fld" style="margin-bottom:12px">
-        <label>保存名（例: 仙台航空 2026年7月分）</label>
-        <input type="text" id="invSlipSaveLabel" placeholder="例: 仙台航空 2026年7月分" style="width:100%">
+        <label>保存名（例: 〇〇運輸 2026年7月分）</label>
+        <input type="text" id="invSlipSaveLabel" placeholder="例: 〇〇運輸 2026年7月分" style="width:100%">
       </div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:12px" id="invSlipSaveCount"></div>
       <button class="btn grn" style="width:100%" onclick="doSaveInvoiceSlip()">💾 保存する</button>
@@ -7207,7 +7207,7 @@ function initMob() {
   renderDailySummary();
 }
 
-// 車両番号がフル表記（例: 仙台480れ8113）かどうかを判定する。数字のみの4桁略式登録は対象外
+// 車両番号がフル表記（例: 品川300あ1234）かどうかを判定する。数字のみの4桁略式登録は対象外
 function isFullPlateNumber(car) {
   return !!car && !/^\d+$/.test(car);
 }
