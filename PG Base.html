@@ -1772,6 +1772,7 @@ td.dim{color:var(--text2)}
       <input type="date" id="piTo" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderPaymentIn()">
       <button class="btn sml" onclick="monthRangeShift('piFrom','piTo',-1,renderPaymentIn)" title="前月">◀</button>
       <button class="btn sml" onclick="monthRangeShift('piFrom','piTo',1,renderPaymentIn)" title="翌月">▶</button>
+      <button class="btn sml" onclick="openBankCsvM()" title="銀行の入出金明細CSVを取り込み、入金予定と自動で突き合わせて消し込みます">🏦 銀行CSV取込</button>
       <button class="btn pri sml" onclick="openPaymentInM()">＋ 入金登録</button>
     </div>
   </div>
@@ -2003,6 +2004,33 @@ td.dim{color:var(--text2)}
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- モーダル: 銀行明細CSV取込（入金管理） -->
+<div class="overlay" id="mBankCsv">
+  <div class="modal" style="width:820px;max-width:95vw">
+    <div class="mh">🏦 銀行明細CSV取込・自動消込 <button class="ibtn" onclick="closeM('mBankCsv')">✕</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px;line-height:1.6">
+      銀行からダウンロードした入出金明細CSVを選ぶと、入金行だけを抽出して「入金予定（未消込）」と自動で突き合わせます。<br>
+      振込人名と取引先の対応は一度選ぶと記憶され、次回から自動でマッチングされます。
+    </div>
+    <input type="file" id="bankCsvFile" accept=".csv,.txt" onchange="handleBankCsvFile(this.files[0])" style="font-size:12px;margin-bottom:8px">
+    <div id="bankCsvColPick" style="display:none;margin-bottom:8px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);font-size:11px">
+      <div style="margin-bottom:6px;color:var(--text2)">列を自動判別できませんでした。該当する列を選んでください:</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <label>日付列 <select id="bankColDate" style="padding:3px 6px;font-size:11px"></select></label>
+        <label>入金額列 <select id="bankColAmt" style="padding:3px 6px;font-size:11px"></select></label>
+        <label>振込人/摘要列 <select id="bankColPayer" style="padding:3px 6px;font-size:11px"></select></label>
+        <button class="btn sml" onclick="rebuildBankCsvPreview()">再解析</button>
+      </div>
+    </div>
+    <div id="bankCsvPreview" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="mfoot" id="bankCsvFoot" style="display:none">
+      <span id="bankCsvSummary" style="font-size:11px;color:var(--text2);margin-right:auto"></span>
+      <button class="btn" onclick="closeM('mBankCsv')">キャンセル</button>
+      <button class="btn pri" onclick="importBankCsvRows()">選択した入金を取込・消込</button>
+    </div>
   </div>
 </div>
 
@@ -13010,6 +13038,14 @@ CREATE TABLE IF NOT EXISTS payment_in (
   created_at timestamptz DEFAULT now()
 );
 
+-- 銀行明細CSVの振込人名と取引先の対応表（取込時に選ぶと学習し、次回から自動マッチング）
+CREATE TABLE IF NOT EXISTS bank_payer_aliases (
+  id bigserial PRIMARY KEY,
+  payer_name text NOT NULL UNIQUE,
+  cli_id bigint NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- 経費管理
 CREATE TABLE IF NOT EXISTS expenses (
   id bigserial PRIMARY KEY, date date NOT NULL, amt int NOT NULL,
@@ -13266,6 +13302,16 @@ DROP POLICY IF EXISTS "price_master_update" ON price_master;
 CREATE POLICY "price_master_update" ON price_master FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "price_master_delete" ON price_master;
 CREATE POLICY "price_master_delete" ON price_master FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+ALTER TABLE bank_payer_aliases ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "bank_payer_aliases_select" ON bank_payer_aliases;
+CREATE POLICY "bank_payer_aliases_select" ON bank_payer_aliases FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "bank_payer_aliases_insert" ON bank_payer_aliases;
+CREATE POLICY "bank_payer_aliases_insert" ON bank_payer_aliases FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "bank_payer_aliases_update" ON bank_payer_aliases;
+CREATE POLICY "bank_payer_aliases_update" ON bank_payer_aliases FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "bank_payer_aliases_delete" ON bank_payer_aliases;
+CREATE POLICY "bank_payer_aliases_delete" ON bank_payer_aliases FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
 ALTER TABLE payment_in ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "payment_in_select" ON payment_in;
@@ -13681,6 +13727,178 @@ async function deletePaymentIn(id) {
     renderPaymentIn();
     showT('削除しました');
   } catch(e) { showT('エラー: '+e.message,'ter'); }
+}
+
+/* ===== 銀行明細CSV取込・自動消込 ===== */
+let bankCsvRows = [];      // 解析したCSV全行
+let bankCsvDeposits = [];  // 抽出した入金行 [{date, amt, payer, cliId, sched, dup}]
+let bankPayerAliases = []; // 振込人名→取引先の学習済み対応 [{payer_name, cli_id}]
+let bankCsvCols = null;    // 使用する列番号 {date, amt, payer}
+
+async function openBankCsvM(){
+  document.getElementById('bankCsvFile').value = '';
+  document.getElementById('bankCsvPreview').innerHTML = '';
+  document.getElementById('bankCsvColPick').style.display = 'none';
+  document.getElementById('bankCsvFoot').style.display = 'none';
+  bankCsvRows = []; bankCsvDeposits = []; bankCsvCols = null;
+  try {
+    const {data} = await sb.from('bank_payer_aliases').select('*');
+    bankPayerAliases = data||[];
+  } catch(e) { bankPayerAliases = []; }
+  // マッチング先の入金予定と重複チェック用の入金実績を最新化
+  try { await loadReceiptSched(); } catch(e) {}
+  document.getElementById('mBankCsv').classList.add('on');
+}
+
+// 金額文字列の数値化（"1,234"・"￥1,234"・全角数字に対応）
+function bankParseAmt(s){
+  if (s==null) return 0;
+  const t = String(s).replace(/[０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[^\d.-]/g,'');
+  return Math.round(+t)||0;
+}
+// 日付文字列の正規化 → 'YYYY-MM-DD'（判別不能なら''）
+function bankParseDate(s){
+  if (!s) return '';
+  const t = String(s).trim().replace(/[年月]/g,'/').replace(/日/g,'');
+  let m = t.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (m) return `${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
+  m = t.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return '';
+}
+
+async function handleBankCsvFile(file){
+  if (!file) return;
+  try {
+    const text = await decodeCsvFile(file);
+    bankCsvRows = text.split('\n').map(parseCsvLine).filter(r=>r.length>1 && r.some(c=>c&&c.trim()));
+    if (!bankCsvRows.length) { showT('CSVを読み取れませんでした','ter'); return; }
+    // ヘッダー行の項目名から列を自動判別（銀行によって名称が異なるため代表的なキーワードで探す）
+    const header = bankCsvRows[0].map(h=>String(h||''));
+    const findCol = keys => header.findIndex(h=>keys.some(k=>h.includes(k)));
+    const dateCol = findCol(['日付','取引日','年月日','操作日','勘定日']);
+    const amtCol = findCol(['入金','預り','預入','貸方']);
+    const payerCol = findCol(['摘要','内容','振込','依頼人','備考','明細']);
+    if (dateCol>=0 && amtCol>=0) {
+      bankCsvCols = {date:dateCol, amt:amtCol, payer:payerCol};
+      buildBankCsvDeposits();
+    } else {
+      const opts = header.map((h,i)=>`<option value="${i}">${i+1}列目: ${escHtml((h||'(空)').slice(0,20))}</option>`).join('');
+      ['bankColDate','bankColAmt','bankColPayer'].forEach(id=>{ document.getElementById(id).innerHTML = opts; });
+      document.getElementById('bankCsvColPick').style.display = 'block';
+      document.getElementById('bankCsvPreview').innerHTML = '';
+      document.getElementById('bankCsvFoot').style.display = 'none';
+    }
+  } catch(e) { showT('CSV解析エラー: '+e.message,'ter'); }
+}
+
+function rebuildBankCsvPreview(){
+  bankCsvCols = {
+    date: +document.getElementById('bankColDate').value,
+    amt: +document.getElementById('bankColAmt').value,
+    payer: +document.getElementById('bankColPayer').value,
+  };
+  buildBankCsvDeposits();
+}
+
+// 入金行の抽出と自動マッチング。
+// マッチング順: ①学習済みの振込人名→取引先 ②未消込の入金予定と金額一致（取引先一致・日付近接を優先）
+function buildBankCsvDeposits(){
+  bankCsvDeposits = [];
+  for (let i=1; i<bankCsvRows.length; i++) {
+    const r = bankCsvRows[i];
+    const amt = bankParseAmt(r[bankCsvCols.amt]);
+    if (amt <= 0) continue; // 出金行・金額なし行は対象外
+    const date = bankParseDate(r[bankCsvCols.date]);
+    if (!date) continue;
+    const payer = bankCsvCols.payer>=0 ? String(r[bankCsvCols.payer]||'').trim() : '';
+    const alias = bankPayerAliases.find(a=>payer && payer.includes(a.payer_name));
+    const aliasCli = alias ? alias.cli_id : null;
+    // 金額が一致する未消込の入金予定から、取引先一致→日付が近い順で選ぶ
+    const cands = (receiptSchedData||[]).filter(s=>!s.done && (s.amt||0)===amt && !bankCsvDeposits.some(d=>d.sched?.id===s.id));
+    let sched = null;
+    if (cands.length) {
+      const scored = cands.map(s=>({s, score:(aliasCli && s.cli_id===aliasCli ? 0 : 100000) + Math.abs((new Date(s.date)-new Date(date))/86400000||9999)}));
+      scored.sort((a,b)=>a.score-b.score);
+      sched = scored[0].s;
+    }
+    // 取込済みらしき行（同日・同額の実績が既にある）は既定でチェックを外す
+    const dup = paymentIns.some(p=>p.date===date && (p.amt||0)===amt);
+    bankCsvDeposits.push({date, amt, payer, cliId: aliasCli || sched?.cli_id || '', sched, dup});
+  }
+  renderBankCsvPreview();
+}
+
+function renderBankCsvPreview(){
+  const el = document.getElementById('bankCsvPreview');
+  const foot = document.getElementById('bankCsvFoot');
+  if (!bankCsvDeposits.length) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:12px">入金行が見つかりませんでした（列の判別が正しいかご確認ください）</div>';
+    foot.style.display = 'none';
+    return;
+  }
+  const cliOpts = cid => '<option value="">未設定</option>'+clients.map(c=>`<option value="${c.id}" ${c.id===+cid?'selected':''}>${escHtml(c.name)}</option>`).join('');
+  const cs = 'padding:5px 6px;border-bottom:0.5px solid var(--border);font-size:11px';
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;white-space:nowrap">
+    <thead><tr style="background:var(--bg2);font-size:10px">
+      <th style="${cs}"><input type="checkbox" checked onchange="document.querySelectorAll('.bankRowChk').forEach(c=>c.checked=this.checked);updateBankCsvSummary()"></th>
+      <th style="${cs}">入金日</th><th style="${cs}">振込人/摘要</th><th style="${cs};text-align:right">金額</th>
+      <th style="${cs}">取引先</th><th style="${cs}">マッチした入金予定</th>
+    </tr></thead>
+    <tbody>${bankCsvDeposits.map((d,i)=>`<tr${d.dup?' style="opacity:.55"':''}>
+      <td style="${cs}"><input type="checkbox" class="bankRowChk" data-i="${i}" ${d.dup?'':'checked'} onchange="updateBankCsvSummary()"></td>
+      <td style="${cs}">${d.date}</td>
+      <td style="${cs};max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${escHtml(d.payer)}">${escHtml(d.payer||'—')}</td>
+      <td style="${cs};text-align:right;font-weight:600">${yen(d.amt)}</td>
+      <td style="${cs}"><select onchange="bankCsvDeposits[${i}].cliId=this.value" style="padding:3px 5px;font-size:11px;max-width:150px">${cliOpts(d.cliId)}</select></td>
+      <td style="${cs}">${d.sched?`✔ ${escHtml(d.sched.cli_name||'')} ${d.sched.date}（消込されます）`:(d.dup?'⚠ 同日同額の実績あり':'—')}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+  foot.style.display = 'flex';
+  updateBankCsvSummary();
+}
+
+function updateBankCsvSummary(){
+  const checked = [...document.querySelectorAll('.bankRowChk:checked')].map(c=>bankCsvDeposits[+c.dataset.i]);
+  const total = checked.reduce((a,d)=>a+d.amt,0);
+  const matched = checked.filter(d=>d.sched).length;
+  document.getElementById('bankCsvSummary').textContent = `${checked.length}件選択（${yen(total)}）／うち入金予定と自動消込: ${matched}件`;
+}
+
+async function importBankCsvRows(){
+  const targets = [...document.querySelectorAll('.bankRowChk:checked')].map(c=>bankCsvDeposits[+c.dataset.i]);
+  if (!targets.length) { alert('取り込む行を選択してください'); return; }
+  showLoad(true);
+  let ok = 0, matched = 0, errs = [];
+  for (const d of targets) {
+    try {
+      const {data, error} = await sb.from('payment_in').insert({
+        date: d.date, amt: d.amt, cli_id: +d.cliId||null,
+        target_month: d.sched?.month || d.date.slice(0,7),
+        type: 'transfer', note: `銀行CSV取込${d.payer?': '+d.payer:''}`,
+      }).select().single();
+      if (error) throw error;
+      paymentIns.unshift(data);
+      ok++;
+      if (d.sched) {
+        await scheduleSetDone('receipt_schedules', d.sched.id, true);
+        const item = receiptSchedData.find(s=>s.id===d.sched.id);
+        if (item) item.done = true;
+        matched++;
+      }
+      // 振込人名→取引先の対応を学習（次回から自動マッチング）
+      if (d.payer && +d.cliId) {
+        try { await sb.from('bank_payer_aliases').upsert({payer_name:d.payer, cli_id:+d.cliId},{onConflict:'payer_name'}); } catch(e2) {}
+      }
+    } catch(e) { errs.push(`${d.date} ${yen(d.amt)}: ${e.message}`); }
+  }
+  showLoad(false);
+  closeM('mBankCsv');
+  renderPaymentIn();
+  if (typeof renderReceiptSched==='function' && document.getElementById('receiptSchedList')) renderReceiptSched();
+  addLog('銀行CSV取込', `${ok}件（自動消込${matched}件）`);
+  if (errs.length) showT(`${ok}件取込・${errs.length}件失敗: ${errs[0]}`,'twa');
+  else showT(`${ok}件を取り込みました（入金予定の自動消込: ${matched}件）`);
 }
 
 /* ===== 経費管理 ===== */
