@@ -4077,11 +4077,29 @@ function goPage(n,el){
   }
 }
 window.addEventListener('popstate', (ev) => {
-  const n = ev.state && ev.state.ppage;
-  if (n === undefined || n === null) return;
   if (document.getElementById('pgLogin') && !document.getElementById('pgLogin').classList.contains('hide')) return;
+  // モーダルが開いている場合は、画面遷移よりも先に「戻る」でそのモーダルを閉じるだけにする
+  // （スマホ利用者が閉じるボタンを毎回タップしなくても、戻る操作で閉じられるようにするため）
+  const openModal = document.querySelector('.overlay.on');
+  if (openModal) { openModal.classList.remove('on'); return; }
+  const state = ev.state || {};
   _skipHistoryPush = true;
-  try { goPage(n); } finally { _skipHistoryPush = false; }
+  try {
+    if (state.dpage !== undefined && state.dpage !== null) goDrvPage(state.dpage);
+    else if (state.ppage !== undefined && state.ppage !== null) goPage(state.ppage);
+  } finally { _skipHistoryPush = false; }
+});
+// モーダルが開かれた瞬間（.overlayにonクラスが付いた瞬間）に履歴を1件積んでおく。
+// 個々のモーダルを開く関数（openXxxM等）を1つずつ書き換えずに済むよう、DOM監視で共通対応する
+document.querySelectorAll('.overlay').forEach(overlay => {
+  new MutationObserver(muts => {
+    for (const m of muts) {
+      if (m.attributeName === 'class' && overlay.classList.contains('on') && !_skipHistoryPush) {
+        try { history.pushState({modalOpen:true}, '', location.href); } catch(e) {}
+        break;
+      }
+    }
+  }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
 });
 
 // ⚠️ ここにあった余分な if(n===6) や閉じ括弧 } はきれいに削除しました
@@ -8618,6 +8636,10 @@ function goDrvPage(n, el) {
   if (n===3) { loadBoard(true); renderBoardTo('drvBoardList'); }
   if (n===4) renderDriverPortalDocs();
   if (n===5) loadDrvPortalChat();
+  // スマホの「戻る」でドライバーポータルの前のタブに戻れるよう、タブ切替のたびに履歴を積む（popstateからの復元時は積み直さない）
+  if (!_skipHistoryPush) {
+    try { history.pushState({dpage:n}, '', location.href); } catch(e) {}
+  }
 }
 
 /* ===== ドライバー提出書類（免許証・車検証・自賠責・任意保険） ===== */
