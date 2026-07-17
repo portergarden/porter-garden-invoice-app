@@ -442,6 +442,19 @@ td.dim{color:var(--text2)}
 .mob-form .fld{margin-bottom:10px}
 .mob-form .fld label{display:block;font-size:11px;color:var(--text2);margin-bottom:3px;font-weight:500}
 .mob-form input,.mob-form select{width:100%;padding:8px 10px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)}
+/* 日報フォーム(#dailyFormArea)のスマホ最適化。
+   - 2〜4列の横並びグリッドは、狭い画面では入力欄が潰れて押しにくいので1列に積む
+   - フォントは16px未満だとiOS Safariがフォーカス時に自動ズームしてしまうため16px以上に統一
+   - チェックボックス・追加ボタンをタップしやすい大きさに拡大 */
+@media (max-width:600px){
+  #dailyFormArea{max-height:calc(100vh - 120px)}
+  .mob-form{padding:10px 12px;max-width:100%}
+  .mob-form input,.mob-form select,.mob-form textarea{font-size:16px!important;padding:10px!important}
+  #dailyFormArea [style*="grid-template-columns"]{grid-template-columns:1fr!important;gap:10px!important}
+  #dailyFormArea input[type="checkbox"]{width:18px;height:18px;flex-shrink:0}
+  #dailyFormArea label[style*="padding:4px 6px"]{padding:8px 10px!important}
+  #dailyFormArea button.btn.sml{padding:8px 12px!important;font-size:13px!important;width:100%;justify-content:center}
+}
 .big-btn{width:100%;padding:12px;font-size:15px;border-radius:var(--radius);border:none;background:var(--blue);color:#fff;cursor:pointer;font-weight:500;margin-top:6px}
 .big-btn:active{background:var(--blue2)}
 .close-section{padding:12px 14px;border-bottom:0.5px solid var(--border)}
