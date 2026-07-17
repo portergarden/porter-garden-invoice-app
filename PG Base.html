@@ -2130,7 +2130,7 @@ try {
 <!-- モーダル: ドライバーとのチャット（管理側） -->
 <div class="overlay" id="mDrvChat">
   <div class="modal" style="width:520px;max-width:95vw;display:flex;flex-direction:column;max-height:80vh">
-    <div class="mh" id="mDrvChatH">💬 チャット <button class="ibtn" onclick="closeM('mDrvChat')">✕</button></div>
+    <div class="mh" id="mDrvChatH">💬 チャット <button class="ibtn" onclick="closeDrvChatM()">✕</button></div>
     <div id="drvChatList" style="flex:1;overflow-y:auto;padding:8px 2px;display:flex;flex-direction:column;gap:8px;min-height:220px;max-height:50vh"></div>
     <div style="display:flex;gap:6px;margin-top:8px">
       <input type="text" id="drvChatInput" placeholder="メッセージを入力…" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')sendDrvChatMessage()">
@@ -2915,6 +2915,7 @@ async function login(){
 }
 async function logout(exp=false){
   stopSess();
+  unsubscribeDrvChatRealtime();
   if(me)await addLog('ログアウト',exp?'セッション期限切れ':`${me.name}がログアウト`);
   me=null;selIds=new Set();recs=[];clients=[];drvs=[];users=[];
   // ドライバーポータル・管理画面のどちらも必ず非表示のままにする。
@@ -8953,6 +8954,23 @@ function renderDrvLineBanner(){
   </div>`;
 }
 
+/* ===== チャットのリアルタイム反映（LINEのように、更新せず双方に即時反映） =====
+   Supabase Realtime（driver_messagesテーブルの変更をpostgres_changesで購読）を使う。
+   1スレッド分だけ購読するシンプルな作りなので、管理側は開いているモーダルのドライバーが
+   切り替わるたびに、ドライバー側はポータルにログインしている間ずっと購読し続ける */
+let drvChatRealtimeChannel = null;
+function subscribeDrvChatRealtime(drvId, onInsert) {
+  unsubscribeDrvChatRealtime();
+  if (!sb?.channel) return;
+  drvChatRealtimeChannel = sb.channel(`driver_messages_${drvId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'driver_messages', filter: `drv_id=eq.${drvId}` },
+      (payload) => onInsert(payload.new))
+    .subscribe();
+}
+function unsubscribeDrvChatRealtime() {
+  if (drvChatRealtimeChannel) { sb?.removeChannel(drvChatRealtimeChannel); drvChatRealtimeChannel = null; }
+}
+
 /* ===== ドライバーとのチャット（管理側） ===== */
 let eChatDrvId = null; // 現在チャットモーダルで開いているドライバーID
 let drvChatMessages = []; // 開いているスレッドのメッセージキャッシュ
@@ -8972,13 +8990,28 @@ async function openDrvChatM(drvId) {
   const d = drvs.find(x => x.id === drvId);
   if (!d) return;
   eChatDrvId = drvId;
-  document.getElementById('mDrvChatH').innerHTML = `💬 ${escHtml(d.name)} とのチャット <button class="ibtn" onclick="closeM('mDrvChat')">✕</button>`;
+  document.getElementById('mDrvChatH').innerHTML = `💬 ${escHtml(d.name)} とのチャット <button class="ibtn" onclick="closeDrvChatM()">✕</button>`;
   document.getElementById('drvChatList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
   document.getElementById('mDrvChat').classList.add('on');
   await loadDrvChatMessages(drvId);
   await markDrvChatRead(drvId, 'driver');
   driverChatUnreadIds.delete(drvId);
   renderDrv();
+  // ドライバーからの返信をLINEのように即時反映する（開いている間だけ購読）
+  subscribeDrvChatRealtime(drvId, async (msg) => {
+    if (drvChatMessages.some(m => m.id === msg.id)) return; // 自分の送信分は既にローカルに反映済み
+    drvChatMessages.push(msg);
+    renderDrvChatMessages();
+    if (msg.sender_role === 'driver') {
+      await markDrvChatRead(drvId, 'driver');
+      driverChatUnreadIds.delete(drvId);
+      renderDrv();
+    }
+  });
+}
+function closeDrvChatM() {
+  unsubscribeDrvChatRealtime();
+  closeM('mDrvChat');
 }
 
 async function loadDrvChatMessages(drvId) {
@@ -9113,6 +9146,13 @@ async function loadDrvPortalChat() {
     await markDrvChatRead(me.driver_id, 'admin');
     setNavWarnDot('dnt3', false); // 連絡タブ（お知らせ＋チャット統合）の赤丸を消す
     setNavWarnDot('drvSubChat3', false);
+    // 管理者からの返信をLINEのように即時反映する（ポータルに滞在している間だけ購読）
+    subscribeDrvChatRealtime(me.driver_id, async (msg) => {
+      if (drvChatMessages.some(m => m.id === msg.id)) return; // 自分の送信分は既にローカルに反映済み
+      drvChatMessages.push(msg);
+      renderDrvPortalChatMessages();
+      if (msg.sender_role === 'admin') await markDrvChatRead(me.driver_id, 'admin');
+    });
   } catch(e) {
     if (el) el.innerHTML = `<div style="color:var(--red);font-size:11px;padding:12px">${e.message}</div>`;
   }
@@ -13298,6 +13338,8 @@ CREATE TABLE IF NOT EXISTS driver_messages (
   created_at timestamptz NOT NULL DEFAULT now(),
   read_at timestamptz
 );
+-- チャットを更新せず双方向にリアルタイム反映させるため、Realtimeのpublicationに追加する
+ALTER PUBLICATION supabase_realtime ADD TABLE driver_messages;
 
 -- 手入力テンプレート
 CREATE TABLE IF NOT EXISTS input_templates (
