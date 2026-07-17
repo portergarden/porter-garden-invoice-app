@@ -10310,6 +10310,19 @@ function getDocCss() {
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
   @page{size:A4 portrait;margin:10mm}
   @media print{body{background:#fff;padding:0}.doc{border:none;padding:12mm;max-width:none}@page{size:A4 portrait;margin:10mm}}
+  /* スマホ画面での表示時のみ：A4印刷を前提にした密な表（9列）はそのまま幅を縮めると文字が潰れて読めなくなるため、
+     文字サイズ・列幅は印刷時のまま維持し、横スクロールで全体を確認できるようにする（印刷結果には影響しない） */
+  @media screen and (max-width:600px){
+    body{padding:10px 6px}
+    .doc{padding:14px 12px;max-width:100%}
+    /* No.表示が中央のタイトルと重なってしまうため、絶対配置をやめてタイトルの上に右寄せの1行として表示する */
+    .doc-no{position:static;text-align:right;margin-bottom:6px}
+    .doc-parties{flex-direction:column;gap:12px}
+    .party-from{justify-content:flex-start;text-align:left}
+    .doc-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:8px;border-bottom:1px solid var(--border2)}
+    .doc-table-scroll table{min-width:640px;margin-bottom:0}
+    .doc-table-scroll::after{content:'→ 横にスクロールできます';display:block;font-size:9px;color:var(--text3);padding:2px 0;text-align:right}
+  }
   `;
 }
 
@@ -10371,6 +10384,7 @@ function buildStatementDocInner(side, rows) {
         <td class="hl">${yen(d.summary.grand)}</td>
       </tr>
     </table>
+    <div class="doc-table-scroll">
     <table class="items">
       <thead><tr>
         <th style="width:5%">No</th><th style="width:8%">日付</th><th style="width:13%">車番・名前</th>
@@ -10379,6 +10393,7 @@ function buildStatementDocInner(side, rows) {
       </tr></thead>
       <tbody>${itemRows || '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">対象データがありません</td></tr>'}</tbody>
     </table>
+    </div>
     <table class="bottom-table"><tbody>
       ${d.breakdownRows.length ? d.breakdownRows.map(([label,val], i) => `<tr>
         ${i===0 ? `<td class="notes-cell" rowspan="${d.breakdownRows.length}"><div class="lbl">（備考）</div>${notesHtml}</td>` : ''}
