@@ -2711,6 +2711,9 @@ let me=null,taxMode='inc',sortMode='asc',eInvId=null,eDrvId=null,eCliId=null,eUs
 let pendTags=[],parsedPdf=[],parsedCsv=[],selIds=new Set(),expanded=new Set();
 let yrDrvCliFilter=''; // 年報のドライバー別月次実績を取引先で絞り込む際の選択中取引先ID
 let dashYearSpan=5; // 全体売上表の表示期間（年数）。'all'で全期間
+let dashCompareYear=null;   // 全体売上表の年間合計比較の基準年（未選択時は現在表示中の年）。2020と2026のような任意の年同士を比較できるようにするための選択値
+let anaCliCompareYear=null; // 取引先別月次実績の合計比較の基準年（未選択時は前年）
+let anaDrvCompareYear=null; // ドライバー別月次実績の合計比較の基準年（未選択時は前年）
 let pendOtherDeductions=[]; // ドライバー登録モーダルの「その他の控除項目」編集中リスト（{name, amount}の配列）
 let sessionTimer=null,sessionLeft=900;
 let users=[],clients=[],drvs=[],recs=[];
@@ -9660,9 +9663,45 @@ function periodDiffBadge(diff, pct, unit, eqLabel) {
 }
 
 function setYrDrvCliFilter(v){ yrDrvCliFilter = v ? +v : ''; renderDrvAnalysis(); }
+function setAnaCliCompareYear(v){ anaCliCompareYear = +v; renderCliAnalysis(); }
+function setAnaDrvCompareYear(v){ anaDrvCompareYear = +v; renderDrvAnalysis(); }
+
+// 実績データが存在する年の一覧（比較年セレクトの選択肢作成に使用）
+function allDataYears(){
+  return [...new Set(recs.map(r=>r.date?.slice(0,4)).filter(Boolean).map(Number))].sort((a,b)=>a-b);
+}
+// 「比較年」セレクトのHTML。表示中の期間に関係なく実績のある全年から任意の年（例: 2020と2026）を選んで比較できるようにする
+function compareYearSelectHtml(id, onchangeFn, currentYear, selectedCompareYear){
+  const years = allDataYears();
+  if (!years.includes(+currentYear)) years.push(+currentYear);
+  years.sort((a,b)=>b-a);
+  const opts = years.map(yr=>`<option value="${yr}" ${selectedCompareYear===yr?'selected':''}>${yr}年</option>`).join('');
+  return `<select id="${id}" onchange="${onchangeFn}(this.value)" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" title="任意の年を選んで比較できます">${opts}</select>`;
+}
+// 単月（1ヶ月分）の前年比・前月比を計算。prevAmtsは1年前の12ヶ月分の金額（無ければnull扱い）
+function monthlyYoyMomPcts(amts, prevAmts){
+  const yoyPcts = amts.map((v,i)=>{
+    const p = prevAmts ? prevAmts[i] : 0;
+    return p>0 ? Math.round((v-p)/p*100) : null;
+  });
+  const momPcts = amts.map((v,i)=>{
+    const p = i===0 ? (prevAmts ? prevAmts[11] : 0) : amts[i-1];
+    return p>0 ? Math.round((v-p)/p*100) : null;
+  });
+  return { yoyPcts, momPcts };
+}
+// 月次マトリクス表のセルに添える前年比・前月比の小さな表示（金額の下に一行で）
+function monthCellPctLine(yoyPct, momPct){
+  const part = (label, pct) => pct==null ? '' : `<span class="${pct>0?'kpi-up':pct<0?'kpi-dn':'kpi-eq'}">${label}${pct>0?'+':''}${pct}%</span>`;
+  const y = part('前年', yoyPct), m = part('前月', momPct);
+  if (!y && !m) return '';
+  return `<div style="font-size:8.5px;line-height:1.5;white-space:nowrap">${y}${y&&m?' ':''}${m}</div>`;
+}
 
 // ドライバー別・取引先別の12ヶ月マトリクス表（右端に合計列・下端に合計行）を共通生成
-function monthMatrixTableHtml(rows, rowLabelHeader, emptyMsg) {
+// opts: { prevAmtsById: Map(id->前年12ヶ月分) で単月の前年比・前月比を表示、compareYear/compareTotalsById: Map(id->年間合計) で年間合計の比較列を表示（省略時は列自体を出さない）
+function monthMatrixTableHtml(rows, rowLabelHeader, emptyMsg, opts={}) {
+  const { prevAmtsById=null, compareYear=null, compareTotalsById=null } = opts;
   const cell = 'padding:5px 4px;text-align:right;border-bottom:0.5px solid var(--border)';
   if (!rows.length) return `<div style="color:var(--text2);font-size:11px;padding:6px 0">${emptyMsg}</div>`;
   const colTotals = new Array(12).fill(0);
@@ -9672,21 +9711,33 @@ function monthMatrixTableHtml(rows, rowLabelHeader, emptyMsg) {
       <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">${rowLabelHeader}</th>
       ${Array.from({length:12},(_,i)=>`<th style="${cell}">${i+1}月</th>`).join('')}
       <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">合計</th>
+      ${compareYear!=null?`<th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">${compareYear}年比</th>`:''}
     </tr></thead>
-    <tbody>${rows.map(r => `<tr>
+    <tbody>${rows.map(r => {
+      const prevAmts = prevAmtsById ? prevAmtsById.get(r.id) : null;
+      const { yoyPcts, momPcts } = monthlyYoyMomPcts(r.amts, prevAmts);
+      const total = r.amts.reduce((a,v)=>a+v,0);
+      const compareTotal = compareTotalsById ? compareTotalsById.get(r.id) : null;
+      const cmpDiff = compareTotal!=null ? total-compareTotal : null;
+      const cmpPct = (compareTotal!=null && compareTotal>0) ? Math.round(cmpDiff/compareTotal*100) : null;
+      return `<tr>
       <td style="padding:5px 8px;border-bottom:0.5px solid var(--border);font-weight:500">${escHtml(r.label)}</td>
-      ${r.amts.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
-      <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${yen(r.amts.reduce((a,v)=>a+v,0))}</td>
-    </tr>`).join('')}</tbody>
+      ${r.amts.map((v,i)=>`<td style="${cell}"><div style="font-size:10px">${v?yen(v):''}</div>${monthCellPctLine(yoyPcts[i],momPcts[i])}</td>`).join('')}
+      <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${yen(total)}</td>
+      ${compareYear!=null?`<td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-size:10px">${compareTotal!=null?periodDiffBadge(cmpDiff,cmpPct,'yen',`${compareYear}年と同額`):'<span style="color:var(--text2)">—</span>'}</td>`:''}
+    </tr>`;
+    }).join('')}</tbody>
     <tfoot><tr style="font-weight:600;background:var(--bg2)">
       <td style="padding:5px 8px">合計</td>
       ${colTotals.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
       <td style="padding:5px 8px;text-align:right">${yen(colTotals.reduce((a,v)=>a+v,0))}</td>
+      ${compareYear!=null?'<td></td>':''}
     </tr></tfoot>
   </table></div>`;
 }
 
 function setDashYearSpan(v){ dashYearSpan = v==='all' ? 'all' : +v; renderDash(); }
+function setDashCompareYear(v){ dashCompareYear = +v; renderDash(); }
 
 // 選択中の対象年（year）を基準に、表示期間内の各年がどれだけ増減しているかを横並びで比較できる一覧表
 function buildFiveYearTableHtml(year) {
@@ -9704,34 +9755,49 @@ function buildFiveYearTableHtml(year) {
     const { monthlyAmt } = buildYearStats(String(yr));
     return { yr, monthlyAmt, total: monthlyAmt.reduce((a,v)=>a+v,0) };
   });
+  // 各行の単月・前年比を出すため、表示範囲より前の年（最古年-1）が要る場合だけ追加取得する
+  const monthlyAmtByYear = new Map(rows.map(r=>[r.yr, r.monthlyAmt]));
+  const minDisplayedYear = years[0];
+  if (!monthlyAmtByYear.has(minDisplayedYear-1)) {
+    monthlyAmtByYear.set(minDisplayedYear-1, buildYearStats(String(minDisplayedYear-1)).monthlyAmt);
+  }
   const colTotals = new Array(12).fill(0);
   rows.forEach(r=>r.monthlyAmt.forEach((v,i)=>colTotals[i]+=v));
   const hasAny = rows.some(r=>r.total>0);
-  const baseTotal = rows.find(r=>r.yr===y)?.total ?? 0;
+  // 年間合計の比較基準年（未選択なら現在表示中の年）。表示範囲外の年（例: 2020）も選べるようにする
+  const compareYear = dashCompareYear || y;
+  const compareRow = rows.find(r=>r.yr===compareYear);
+  const baseTotal = compareRow ? compareRow.total : buildYearStats(String(compareYear)).monthlyAmt.reduce((a,v)=>a+v,0);
   const spanOptions = [3,5,10].map(n=>`<option value="${n}" ${dashYearSpan===n?'selected':''}>${n}年</option>`).join('')
     + `<option value="all" ${dashYearSpan==='all'?'selected':''}>全期間</option>`;
   return `<div class="cwrap" style="grid-column:1/-1">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:6px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:10px">
       <div class="ctitle" style="margin-bottom:0">📊 全体売上表（${years[0]}〜${years[years.length-1]}年・税込）</div>
-      <select onchange="setDashYearSpan(this.value)" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
-        ${spanOptions}
-      </select>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)">比較年 ${compareYearSelectHtml('dashCompareYearSel','setDashCompareYear', y, compareYear)}</div>
+        <select onchange="setDashYearSpan(this.value)" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          ${spanOptions}
+        </select>
+      </div>
     </div>
     ${hasAny ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap">
       <thead><tr style="background:var(--bg2)">
         <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">年</th>
         ${Array.from({length:12},(_,i)=>`<th style="${cell}">${i+1}月</th>`).join('')}
         <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">年間合計</th>
-        <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">${y}年比</th>
+        <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">${compareYear}年比</th>
       </tr></thead>
       <tbody>${rows.map(r=>{
         const diff = r.total-baseTotal;
         const pct = baseTotal>0 ? Math.round(diff/baseTotal*100) : null;
-        return `<tr${r.yr===y?' style="background:var(--blue-bg)"':''}>
-          <td style="padding:5px 8px;border-bottom:0.5px solid var(--border);font-weight:500">${r.yr}年</td>
-          ${r.monthlyAmt.map(v=>`<td style="${cell};font-size:10px">${v?yen(v):''}</td>`).join('')}
+        const prevAmts = monthlyAmtByYear.get(r.yr-1);
+        const { yoyPcts, momPcts } = monthlyYoyMomPcts(r.monthlyAmt, prevAmts);
+        const rowStyle = r.yr===y ? ' style="background:var(--blue-bg)"' : (r.yr===compareYear ? ' style="background:var(--amber-bg)"' : '');
+        return `<tr${rowStyle}>
+          <td style="padding:5px 8px;border-bottom:0.5px solid var(--border);font-weight:500">${r.yr}年${r.yr===compareYear?' <span style="font-size:9px;color:var(--text2)">(比較基準)</span>':''}</td>
+          ${r.monthlyAmt.map((v,i)=>`<td style="${cell}"><div style="font-size:10px">${v?yen(v):''}</div>${monthCellPctLine(yoyPcts[i],momPcts[i])}</td>`).join('')}
           <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${yen(r.total)}</td>
-          <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-size:10px">${periodDiffBadge(diff,pct,'yen',`${y}年と同額`)}</td>
+          <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-size:10px">${periodDiffBadge(diff,pct,'yen',`${compareYear}年と同額`)}</td>
         </tr>`;
       }).join('')}</tbody>
       <tfoot><tr style="font-weight:600;background:var(--bg2)">
@@ -9932,9 +9998,18 @@ function buildYearReportHtml(year, statusHtml) {
 // 「取引先分析」タブの年選択時の内容（取引先別 月次実績マトリクス）。renderCliAnalysisから呼ばれる。
 function buildCliYearAnalysisHtml(year) {
   const { cliRows } = buildYearStats(year);
+  const y = +year;
+  const compareYear = anaCliCompareYear || (y-1); // 未選択時は前年比をデフォルトに
+  const prevRows = buildYearStats(String(y-1)).cliRows;
+  const prevAmtsById = new Map(prevRows.map(({c,amts})=>[c.id,amts]));
+  const compareRows = compareYear===y-1 ? prevRows : buildYearStats(String(compareYear)).cliRows;
+  const compareTotalsById = new Map(compareRows.map(({c,amts})=>[c.id, amts.reduce((a,v)=>a+v,0)]));
   return `<div class="cwrap" style="grid-column:1/-1">
-    <div class="ctitle">🏢 取引先別 月次実績（${year}年・税込）</div>
-    ${monthMatrixTableHtml(cliRows.map(({c,amts})=>({label:c.name,amts})), '取引先', 'この年の実績データがありません')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:10px">
+      <div class="ctitle" style="margin-bottom:0">🏢 取引先別 月次実績（${year}年・税込）</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)">比較年 ${compareYearSelectHtml('anaCliCompareYearSel','setAnaCliCompareYear', y, compareYear)}</div>
+    </div>
+    ${monthMatrixTableHtml(cliRows.map(({c,amts})=>({id:c.id,label:c.name,amts})), '取引先', 'この年の実績データがありません', {prevAmtsById, compareYear, compareTotalsById})}
   </div>`;
 }
 
@@ -9943,15 +10018,24 @@ function buildDrvYearAnalysisHtml(year) {
   const { drvRows } = buildYearStats(year, yrDrvCliFilter||null);
   const cliOptions = [...clients].sort((a,b)=>(parseInt(a.client_no,10)||999999)-(parseInt(b.client_no,10)||999999))
     .map(c=>`<option value="${c.id}" ${yrDrvCliFilter===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('');
+  const y = +year;
+  const compareYear = anaDrvCompareYear || (y-1); // 未選択時は前年比をデフォルトに
+  const prevRows = buildYearStats(String(y-1), yrDrvCliFilter||null).drvRows;
+  const prevAmtsById = new Map(prevRows.map(({d,amts})=>[d.id,amts]));
+  const compareRows = compareYear===y-1 ? prevRows : buildYearStats(String(compareYear), yrDrvCliFilter||null).drvRows;
+  const compareTotalsById = new Map(compareRows.map(({d,amts})=>[d.id, amts.reduce((a,v)=>a+v,0)]));
   return `<div class="cwrap" style="grid-column:1/-1">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:6px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;flex-wrap:wrap;gap:10px">
       <div class="ctitle" style="margin-bottom:0">👥 ドライバー別 月次実績（${year}年・税込）</div>
-      <select onchange="setYrDrvCliFilter(this.value)" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
-        <option value="">全取引先</option>
-        ${cliOptions}
-      </select>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)">比較年 ${compareYearSelectHtml('anaDrvCompareYearSel','setAnaDrvCompareYear', y, compareYear)}</div>
+        <select onchange="setYrDrvCliFilter(this.value)" style="padding:3px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">全取引先</option>
+          ${cliOptions}
+        </select>
+      </div>
     </div>
-    ${monthMatrixTableHtml(drvRows.map(({d,amts})=>({label:d.name,amts})), 'ドライバー', yrDrvCliFilter?'この取引先の実績データがありません':'この年の実績データがありません')}
+    ${monthMatrixTableHtml(drvRows.map(({d,amts})=>({id:d.id,label:d.name,amts})), 'ドライバー', yrDrvCliFilter?'この取引先の実績データがありません':'この年の実績データがありません', {prevAmtsById, compareYear, compareTotalsById})}
   </div>`;
 }
 
