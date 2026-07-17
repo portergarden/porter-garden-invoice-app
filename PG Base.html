@@ -2111,6 +2111,19 @@ td.dim{color:var(--text2)}
   </div>
 </div>
 
+<!-- モーダル: ログイン情報（発行直後、そのままLINE/SMS等に貼り付けてドライバーに送れるように） -->
+<div class="overlay" id="mLoginInfo">
+  <div class="modal" style="width:400px">
+    <div class="mh">🔑 ログイン情報 <button class="ibtn" onclick="closeM('mLoginInfo')">✕</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px">このドライバーに、下の内容をそのままLINEやSMSで送ってください。</div>
+    <textarea id="loginInfoText" readonly rows="5" style="width:100%;padding:8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text);resize:vertical;font-family:inherit"></textarea>
+    <div class="mfoot">
+      <button class="btn" onclick="closeM('mLoginInfo')">閉じる</button>
+      <button class="btn pri" onclick="copyLoginInfoText()">📋 コピーする</button>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: 取引先/ドライバー個別比較レポート -->
 <div class="overlay" id="mEntityCompare">
   <div class="modal" style="width:640px;max-width:95vw">
@@ -4641,7 +4654,9 @@ async function saveDrv(){
         }catch(e2){showT(`ドライバーは登録しましたが、ログイン作成に失敗しました: ${e2.message}（ユーザー管理から追加してください）`,'ter');}
       }
     }
-    closeM('mDrv');renderDrv();renderInv();showT(createLogin?'ドライバーとログインを登録しました（初期パスワード: 1234）':'ドライバーを登録しました');
+    closeM('mDrv');renderDrv();renderInv();
+    if(createLogin && users.find(u=>u.id===loginId)){showT('ドライバーとログインを登録しました');showLoginCreatedInfo(loginId,'1234');}
+    else showT('ドライバーを登録しました');
   }catch(e){showT(e.code==='23505'?`ドライバーID「${supId}」は既に使用されています`:'保存エラー: '+e.message,'ter');}
   showLoad(false);
 }
@@ -4843,6 +4858,7 @@ async function saveUsr(){
       // 新規アカウントは管理者が決めたパスワードなので、初回ログイン時に本人へ変更を求める
       const{data,error}=await sb.from('users').insert({id,name:n,role,auth_uid:fnData.auth_uid,driver_id:driverId,must_change_password:true}).select().single();
       if(error)throw error;users.push(data);addLog('ユーザー追加',n);
+      if(role==='driver'){closeM('mUsr');renderUsr();showT('ユーザーを保存しました');showLoginCreatedInfo(id,pw);showLoad(false);return;}
     }
     closeM('mUsr');renderUsr();showT('ユーザーを保存しました');
   }catch(e){showT('保存エラー: '+e.message,'ter');}
@@ -4904,6 +4920,20 @@ function copyDriverInviteUrl(){
   navigator.clipboard?.writeText(el.value).then(()=>showT('URLをコピーしました')).catch(()=>showT('コピーに失敗しました。手動で選択してコピーしてください','ter'));
 }
 
+// ログインを新規発行した直後、そのままLINE/SMS等に貼り付けて本人へ送れる文面を表示する
+// （管理者がドライバーへの連絡手段を自分で選べるよう、自動送信ではなくコピー用の画面にとどめている）
+function showLoginCreatedInfo(loginId, password='1234'){
+  const url = location.origin + location.pathname;
+  document.getElementById('loginInfoText').value =
+    `ログインURL: ${url}\nログインID: ${loginId}\n初期パスワード: ${password}\n\n初回ログイン時にパスワードの変更が必要です。`;
+  document.getElementById('mLoginInfo').classList.add('on');
+}
+function copyLoginInfoText(){
+  const el = document.getElementById('loginInfoText');
+  el.select();
+  navigator.clipboard?.writeText(el.value).then(()=>showT('コピーしました')).catch(()=>showT('コピーに失敗しました。手動で選択してコピーしてください','ter'));
+}
+
 // ===== ドライバー自己登録（招待URL/QRコードで開いた場合。ログイン不要のためsb.rpc経由でトークンを検証する） =====
 let currentInviteToken = null;
 const INVITE_REASON_MSG = { invalid:'このリンクは無効です。招待URLを再度ご確認ください。', used:'このリンクはすでに使用済みです。管理者に新しいリンクを発行してもらってください。', expired:'このリンクの有効期限が切れています。管理者に新しいリンクを発行してもらってください。' };
@@ -4915,7 +4945,9 @@ async function checkDriverInviteToken(token){
     if (error) throw error;
     const row = data?.[0];
     if (!row?.valid) {
-      statusEl.textContent = INVITE_REASON_MSG[row?.reason] || 'このリンクは使用できません。';
+      // 使用済み・期限切れの招待リンクを再度開いた場合、行き止まりにせず通常のログイン画面へ誘導する
+      statusEl.innerHTML = `<div>${escHtml(INVITE_REASON_MSG[row?.reason] || 'このリンクは使用できません。')}</div>
+        <button class="btn pri sml" style="margin-top:10px" onclick="location.href=location.origin+location.pathname">ログイン画面はこちら</button>`;
       return;
     }
     statusEl.style.display = 'none';
