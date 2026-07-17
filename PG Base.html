@@ -502,8 +502,8 @@ td.dim{color:var(--text2)}
         <div class="fld"><label>電話番号（任意）</label><input type="text" id="diTel" placeholder="090-0000-0000"></div>
         <div class="fld">
           <label>担当車番（複数可・任意）</label>
-          <div id="cTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
-          <div style="display:flex;gap:5px"><input type="text" id="dCi" placeholder="例: 仙台480れ141" style="flex:1" onkeydown="if(event.key==='Enter'){addTag();event.preventDefault()}"><button class="btn" onclick="addTag()">＋ 追加</button></div>
+          <div id="diTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
+          <div style="display:flex;gap:5px"><input type="text" id="diCi" placeholder="例: 仙台480れ141" style="flex:1" onkeydown="if(event.key==='Enter'){addTag('di');event.preventDefault()}"><button class="btn" onclick="addTag('di')">＋ 追加</button></div>
         </div>
         <div class="lerr" id="diErr"></div>
         <button class="btn pri" style="width:100%;justify-content:center;margin-top:8px" onclick="submitDriverSelfRegistration()">登録する</button>
@@ -4468,9 +4468,10 @@ function onLeaseCompanySelChange(){
   sel.value = name;
 }
 function openDrvM(){populatePartnerList();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dCompany','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
-function addTag(){const v=document.getElementById('dCi').value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);document.getElementById('dCi').value='';renderTags();}
+// src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
+function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');const v=inp.value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
-function renderTags(){document.getElementById('cTags').innerHTML=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');}
+function renderTags(){const html=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');['cTags','diTags'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=html;});}
 
 // ドライバー登録の「その他の控除項目」（保険料・家賃など、名称＋金額を複数追加できる自由入力欄）
 function addOtherDeduction(){
@@ -4837,7 +4838,7 @@ async function checkDriverInviteToken(token){
     pendTags = [];
     document.getElementById('diName').value = '';
     document.getElementById('diTel').value = '';
-    document.getElementById('dCi').value = '';
+    document.getElementById('diCi').value = '';
     renderTags();
     document.getElementById('driverInviteForm').style.display = 'block';
   }catch(e){
