@@ -13047,7 +13047,7 @@ CREATE TABLE IF NOT EXISTS driver_invites (
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
   used_at timestamptz,
-  driver_id integer REFERENCES drivers(id)
+  driver_id integer REFERENCES drivers(id) ON DELETE SET NULL -- ドライバー削除時にFK違反で失敗しないよう、招待履歴側はNULLにするだけにする
 );
 
 -- ユーザー（認証はSupabase Auth。pwは廃止済み・互換用にnullable列のみ残置）
