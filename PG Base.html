@@ -242,6 +242,12 @@ let parsedPayCsv = [];
 }
 html{overflow-x:hidden}
 body{font-family:"Hiragino Sans","Meiryo",sans-serif;font-size:13px;color:var(--text);background:var(--bg);min-height:100vh;overflow-x:hidden;max-width:100vw}
+/* ドライバーポータル表示中は、bodyそのものを固定してスクロールできなくする。
+   iOSでは100vh/100dvhで#pgDriver側の高さを合わせても、ページ全体（body）が
+   わずかにズレて一緒にスクロール・横揺れしてしまうことがあり、これがトップバー/タブが
+   固定されない・横に動く原因になっていた。bodyを完全に固定し、スクロールは
+   #drvContent（各画面の中身）だけで起こるようにする */
+body.drv-lock{position:fixed;inset:0;width:100%;height:100%;overflow:hidden}
 .hide{display:none!important}
 input,select,textarea{font-family:inherit;font-size:13px;padding:6px 8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);outline:none}
 input:focus,select:focus{border-color:var(--blue)}
@@ -1583,7 +1589,7 @@ try {
   <!-- ===== 日報入力フォーム ===== -->
   <!-- dailyFormAreaHost: ドライバーポータル(#dpg0)へ一時的に移動したdailyFormAreaを、管理画面側に戻す際の元の位置マーカー -->
   <span id="dailyFormAreaHost" style="display:none"></span>
-  <div id="dailyFormArea" style="display:none;overflow-y:auto;max-height:calc(100vh - 160px)">
+  <div id="dailyFormArea" style="display:none;overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 160px)">
     <div class="mob-form" style="max-width:560px">
 
       <!-- セクション1: 基本情報 -->
@@ -2920,6 +2926,7 @@ async function login(){
 async function logout(exp=false){
   stopSess();
   unsubscribeDrvChatRealtime();
+  document.body.classList.remove('drv-lock');
   if(me)await addLog('ログアウト',exp?'セッション期限切れ':`${me.name}がログアウト`);
   me=null;selIds=new Set();recs=[];clients=[];drvs=[];users=[];
   // ドライバーポータル・管理画面のどちらも必ず非表示のままにする。
@@ -8663,6 +8670,7 @@ function applyDriverPortal() {
   if (main) { main.classList.add('hide'); main.style.display = 'none'; }
   const portal = document.getElementById('pgDriver');
   if (portal) { portal.classList.remove('hide'); portal.style.display = 'flex'; }
+  document.body.classList.add('drv-lock'); // iOSでトップバー/タブが固定されるようbodyごとロックする
 
   // 名前・バッジセット
   document.getElementById('drvPortalName').textContent = me.name || '';
