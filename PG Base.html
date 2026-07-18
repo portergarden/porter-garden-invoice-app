@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PG Base</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -454,6 +454,9 @@ td.dim{color:var(--text2)}
   #dailyFormArea input[type="checkbox"]{width:18px;height:18px;flex-shrink:0}
   #dailyFormArea label[style*="padding:4px 6px"]{padding:8px 10px!important}
   #dailyFormArea button.btn.sml{padding:8px 12px!important;font-size:13px!important;width:100%;justify-content:center}
+  /* ドライバーポータルの上部タブ(.drv-nav)を、横スクロールさせず5個とも画面幅に収まるよう均等割りにする */
+  .drv-nav{overflow-x:hidden}
+  .drv-nav .ntab{flex:1 1 0;min-width:0;justify-content:center;text-align:center;padding:6px 2px;font-size:10px;white-space:normal;line-height:1.25;gap:2px}
 }
 .big-btn{width:100%;padding:12px;font-size:15px;border-radius:var(--radius);border:none;background:var(--blue);color:#fff;cursor:pointer;font-weight:500;margin-top:6px}
 .big-btn:active{background:var(--blue2)}
@@ -1960,10 +1963,10 @@ try {
 </div>
 
 <!-- ===== ドライバーポータル ===== -->
-<div id="pgDriver" class="hide" style="display:none;flex-direction:column;height:100vh;overflow:hidden">
+<div id="pgDriver" class="hide" style="display:none;flex-direction:column;height:100vh;height:100dvh;overflow:hidden">
   <!-- ドライバー用トップバー -->
 
-  <div class="topbar" style="display:flex;align-items:center;justify-content:space-between;padding:0 14px">
+  <div class="topbar" style="display:flex;align-items:center;justify-content:space-between;padding:0 14px;flex-shrink:0;padding-top:env(safe-area-inset-top)">
     <div style="display:flex;align-items:center;gap:8px">
       <span style="font-size:13px;font-weight:600;color:var(--blue)">PG</span>
       <span style="font-size:11px;font-weight:500">ドライバーポータル</span>
@@ -1975,8 +1978,8 @@ try {
       <button class="ibtn" onclick="logout()" title="ログアウト">⏏</button>
     </div>
   </div>
-  <!-- ドライバー用ナビ -->
-  <nav style="display:flex;gap:2px;padding:4px 8px;border-bottom:0.5px solid var(--border);overflow-x:auto">
+  <!-- ドライバー用ナビ。狭い画面でも5タブが横スクロールなしで収まるよう .drv-nav で幅を均等割りにする（CSSはmob-form付近を参照） -->
+  <nav class="drv-nav" style="display:flex;gap:2px;padding:4px 8px;border-bottom:0.5px solid var(--border);flex-shrink:0">
     <!-- お知らせ（掲示板）とチャットは「連絡」タブに統合。dpg3/dpg5内のサブタブで切り替える -->
     <div class="ntab on" id="dnt3" onclick="goDrvPage(3,this)">📢 連絡</div>
     <div class="ntab" id="dnt0" onclick="goDrvPage(0,this)">📋 日報</div>
@@ -1985,7 +1988,7 @@ try {
     <div class="ntab" id="dnt4" onclick="goDrvPage(4,this)">📷 書類</div>
   </nav>
   <!-- ドライバー用コンテンツ -->
-  <div id="drvContent" style="flex:1;overflow-y:auto">
+  <div id="drvContent" style="flex:1;overflow-y:auto;overflow-x:hidden;min-height:0">
 
     <!-- D0: 日報入力（管理者のpg10と同じフォームを流用） -->
     <div id="dpg0">
@@ -2048,9 +2051,10 @@ try {
         <div class="ntab" onclick="goDrvPage(3,document.getElementById('dnt3'))">📢 会社からのお知らせ</div>
         <div class="ntab on">💬 チャット（個別連絡）</div>
       </div>
-      <div id="drvChatPortalList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px"></div>
-      <div style="display:flex;gap:6px;padding:8px 14px;border-top:0.5px solid var(--border)">
-        <input type="text" id="drvChatPortalInput" placeholder="メッセージを入力…" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')sendDrvPortalChatMessage()">
+      <div id="drvChatPortalList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px;min-height:0"></div>
+      <!-- スマホのジェスチャーバー・戻るボタンと重ならないよう、下端にセーフエリア分の余白を足す（viewport-fit=coverが必要） -->
+      <div style="display:flex;gap:6px;padding:8px 14px calc(8px + env(safe-area-inset-bottom));border-top:0.5px solid var(--border);flex-shrink:0">
+        <input type="text" id="drvChatPortalInput" placeholder="メッセージを入力…" style="flex:1;padding:8px;font-size:16px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')sendDrvPortalChatMessage()">
         <button class="btn pri" onclick="sendDrvPortalChatMessage()">送信</button>
       </div>
     </div>
