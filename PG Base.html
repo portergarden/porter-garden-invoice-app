@@ -1281,6 +1281,7 @@ try {
         <button class="btn pri hide" id="bAddD" onclick="openDrvM()">＋ ドライバー追加</button>
       </div>
     </div>
+    <div id="drvKpi" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
     <div id="dAlert" class="hide"></div>
     <div class="cardgrid" id="drvGrid"></div>
   </div>
@@ -1301,6 +1302,7 @@ try {
       </div>
       <button class="btn pri hide" id="bAddC" onclick="openCliM()">＋ 取引先追加</button>
     </div>
+    <div id="cliKpi" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
     <div class="cardgrid" id="cliGrid"></div>
   </div>
   <div id="pg4" class="hide">
@@ -4772,6 +4774,18 @@ function renderCli(){
   const grid=document.getElementById('cliGrid');
   if (!grid) return;
   const canE=me&&me.role!=='viewer';
+  const cliKpiEl = document.getElementById('cliKpi');
+  if (cliKpiEl) {
+    const now = new Date();
+    const thisM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const partnerCnt = clients.filter(c=>c.is_partner).length;
+    const monthCnt = recs.filter(r=>r.cli!=null && (r.date||'').startsWith(thisM)).length;
+    cliKpiEl.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">総取引先数</div><div class="kpi-val">${clients.length}社</div></div>
+      <div class="kpi-card"><div class="kpi-label">協力会社数</div><div class="kpi-val">${partnerCnt}社</div></div>
+      <div class="kpi-card"><div class="kpi-label">今月（${thisM}）の請求明細</div><div class="kpi-val">${monthCnt}件</div></div>
+    `;
+  }
   if(!clients.length){grid.innerHTML=`<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">取引先が登録されていません</div>`;return;}
   const q=nm(document.getElementById('cliSearch')?.value||'');
   const filteredCli=q?clients.filter(c=>nm(c.name).includes(q)||nm(c.short||'').includes(q)):clients;
@@ -5510,13 +5524,24 @@ function renderDrv() {
   if (!grid) return;
 
   const unC = [...new Set(recs.filter(r => !recDrv(r)).map(r => r.car))];
+  const docIssues = summarizeDocAlerts();
   if (da) {
-    const docIssues = summarizeDocAlerts();
     const bars = [];
     if (unC.length) bars.push(`<div class="alert-bar">⚠ 未配車: ${unC.join('、')}</div>`);
     if (docIssues.length) bars.push(`<div class="alert-bar">📄 書類期限に注意: ${docIssues.map(i=>`${i.drv.name}・${i.t.label}（${i.st.label}）`).join('、')} <button class="btn sml" style="margin-left:8px" onclick="openDocStatusM()">一覧を開く</button></div>`);
     if (bars.length) { da.classList.remove('hide'); da.innerHTML = bars.join(''); }
     else da.classList.add('hide');
+  }
+  const drvKpiEl = document.getElementById('drvKpi');
+  if (drvKpiEl) {
+    const expiredCnt = docIssues.filter(i=>i.st.cls==='expired').length;
+    const soonCnt = docIssues.filter(i=>i.st.cls==='soon').length;
+    drvKpiEl.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">総ドライバー数</div><div class="kpi-val">${drvs.length}名</div></div>
+      <div class="kpi-card"><div class="kpi-label">書類期限切れ</div><div class="kpi-val" style="color:${expiredCnt?'var(--red)':'var(--green)'}">${expiredCnt}件</div></div>
+      <div class="kpi-card"><div class="kpi-label">書類期限間近</div><div class="kpi-val" style="color:${soonCnt?'var(--amber-text)':'var(--green)'}">${soonCnt}件</div></div>
+      <div class="kpi-card"><div class="kpi-label">未読チャット</div><div class="kpi-val" style="color:${driverChatUnreadIds.size?'var(--amber-text)':'var(--green)'}">${driverChatUnreadIds.size}名</div></div>
+    `;
   }
 
   const canE = me && me.role !== 'viewer';
