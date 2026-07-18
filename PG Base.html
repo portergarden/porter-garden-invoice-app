@@ -4693,6 +4693,12 @@ async function saveDrv(){
   const name=document.getElementById('dN').value.trim();if(!name){alert('名前は必須です');return;}
   const supId=document.getElementById('dSup').value.trim();
   if(supId){const dup=drvs.find(d=>d.supplier_id===supId&&d.id!==eDrvId);if(dup){alert(`ドライバーID「${supId}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
+  // 協力会社名はIDでなく名前の完全一致で取引先管理の登録と紐づくため、表記ゆれがあると
+  // 支払日設定などの連携が静かに外れてしまう。保存前に候補と一致するか確認する
+  const companyInput = document.getElementById('dCompany').value.trim();
+  if (companyInput && !clients.some(c=>c.is_partner && nm(c.name)===nm(companyInput))) {
+    if (!confirm(`⚠ 協力会社「${companyInput}」が取引先管理の協力会社名と一致しませんでした。\n表記が違うと支払日設定などが連携されません。このまま保存しますか？`)) return;
+  }
   // 新規登録時のみ「ログインアカウントも作成する」を選べる（編集時は対象外）
   const createLogin = eDrvId===null && document.getElementById('dCreateLogin')?.checked;
   let loginId = '';
