@@ -2636,7 +2636,8 @@ try {
       <div class="fld"><label>振込先銀行口座（任意）</label><input type="text" id="pnBank" placeholder="〇〇銀行 〇〇支店 普通 1234567"></div>
       <div class="fld"><label>適格請求書発行事業者登録番号（任意）</label><input type="text" id="pnInvoiceNo" placeholder="例: T1234567890123"></div>
       <div style="border-top:0.5px solid var(--border2);margin:10px 0 10px;padding-top:10px">
-        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">この会社にドライバーを供給してもらっている場合の支払日設定（ドライバー個別設定より優先されます）</div>
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">この会社にドライバーを供給してもらっている場合の支払手数料率・支払日設定（ドライバー個別設定より優先されます）</div>
+        <div class="fld"><label>支払手数料率（%・任意）</label><input type="number" id="pnPayOutFeeRate" placeholder="例: -5" step="0.1" title="この会社への支払額から控除する手数料の割合。マイナスで控除"></div>
         <div class="g2">
           <div class="fld"><label>支払月ズレ</label>
             <select id="pnPayOutMonthOffset" style="width:100%">
@@ -5070,8 +5071,8 @@ function renderPartners(){
         ${(p.zip||p.address) ? `<div style="font-size:11.5px;color:var(--text2)">${p.zip?`〒${escHtml(p.zip)} `:''}${escHtml(p.address||'')}</div>` : ''}
         ${p.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${escHtml(p.person)}</div>`:''}
         ${p.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${escHtml(p.tel)}</div>`:'<div style="margin-bottom:5px"></div>'}
-        <div style="font-size:11.5px;color:var(--text2)">支払日: ${partnerPayOutLabel(p)}${p.fee_rate?`　手数料: ${p.fee_rate}%`:''}</div>
-        <div style="font-size:11.5px;color:var(--text2)">入金日: ${partnerReceivableLabel(p)}</div>
+        <div style="font-size:11.5px;color:var(--text2)">支払日: ${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`　支払手数料: ${p.pay_out_fee_rate}%`:''}</div>
+        <div style="font-size:11.5px;color:var(--text2)">入金日: ${partnerReceivableLabel(p)}${p.fee_rate?`　入金手数料: ${p.fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2);margin-top:2px">供給ドライバー: ${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
         ${p.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(p.note)}</div>`:''}
       </div>`;
@@ -5087,9 +5088,8 @@ function renderPartners(){
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:150px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${escHtml(p.name)}</div>
-          <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${p.fee_rate?`手数料:${p.fee_rate}%`:'—'}</div>
-          <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${partnerReceivableLabel(p)}</div>
-          <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">支払:${partnerPayOutLabel(p)}</div>
+          <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
+          <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">支払:${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
           <div style="flex:1;min-width:0;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(suppliedDrvs.map(d=>d.name).join('、'))}">供給:${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
         </div>
@@ -5104,7 +5104,7 @@ function renderPartners(){
 
 function openPartnerM(){
   switchModalTab('mPartner','basic'); ePartnerId=null;
-  ['pnName','pnShort','pnPerson','pnTel','pnZip','pnAddress','pnBank','pnInvoiceNo','pnNote','pnFeeRate'].forEach(id=>document.getElementById(id).value='');
+  ['pnName','pnShort','pnPerson','pnTel','pnZip','pnAddress','pnBank','pnInvoiceNo','pnNote','pnFeeRate','pnPayOutFeeRate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('pnPayOutMonthOffset').value='2';
   document.getElementById('pnPayOutDay').value='end';
   document.getElementById('pnPayMonthOffset').value='1';
@@ -5126,6 +5126,7 @@ function editPartner(id){
   document.getElementById('pnNote').value=p.note||'';
   document.getElementById('pnPayOutMonthOffset').value=p.pay_out_month_offset??2;
   document.getElementById('pnPayOutDay').value=p.pay_out_day||'end';
+  document.getElementById('pnPayOutFeeRate').value=p.pay_out_fee_rate||'';
   document.getElementById('pnFeeRate').value=p.fee_rate||'';
   document.getElementById('pnPayMonthOffset').value=p.pay_month_offset??1;
   document.getElementById('pnPayDay').value=p.pay_day||'end';
@@ -5136,6 +5137,7 @@ async function savePartner(){
   const name = document.getElementById('pnName').value.trim();
   if (!name) { alert('会社名は必須です'); return; }
   const feeRateVal = document.getElementById('pnFeeRate').value;
+  const payOutFeeRateVal = document.getElementById('pnPayOutFeeRate').value;
   const obj = {
     name,
     short: document.getElementById('pnShort').value.trim()||null,
@@ -5148,6 +5150,7 @@ async function savePartner(){
     note: document.getElementById('pnNote').value.trim()||null,
     pay_out_month_offset: +document.getElementById('pnPayOutMonthOffset').value||0,
     pay_out_day: document.getElementById('pnPayOutDay').value||'end',
+    pay_out_fee_rate: payOutFeeRateVal===''?0:parseFloat(payOutFeeRateVal),
     fee_rate: feeRateVal===''?0:parseFloat(feeRateVal),
     pay_month_offset: +document.getElementById('pnPayMonthOffset').value||0,
     pay_day: document.getElementById('pnPayDay').value||'end',
@@ -13664,7 +13667,7 @@ CREATE TABLE IF NOT EXISTS partner_companies (
   id bigserial PRIMARY KEY, name text NOT NULL,
   short text, zip text, address text, person text, tel text,
   bank text, invoice_no text,
-  pay_out_month_offset int DEFAULT 2, pay_out_day text DEFAULT 'end', -- 支払設定（ドライバー供給時）
+  pay_out_month_offset int DEFAULT 2, pay_out_day text DEFAULT 'end', pay_out_fee_rate numeric DEFAULT 0, -- 支払設定（ドライバー供給時）
   fee_rate numeric DEFAULT 0,
   pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end', -- 入金設定（仕事をくれる取引先時）
   note text, created_at timestamptz NOT NULL DEFAULT now()
