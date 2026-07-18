@@ -1311,6 +1311,15 @@ try {
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span style="font-size:11.5px;color:var(--text2)">ドライバーを供給している会社・仕事をくれる会社をまとめて登録します</span>
         <input type="text" id="partnerSearch" placeholder="🔍 協力会社名で検索…" oninput="renderPartners()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+        <div style="display:inline-flex;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg2);margin-left:12px;align-items:stretch;">
+          <button id="bPartnerViewCard" style="border:none;padding:6px 14px;cursor:pointer;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;" onclick="setPartnerView('card')" title="四角表示">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:2px;width:12px;height:12px;">
+              <div style="background:currentColor;border-radius:1px;"></div><div style="background:currentColor;border-radius:1px;"></div>
+              <div style="background:currentColor;border-radius:1px;"></div><div style="background:currentColor;border-radius:1px;"></div>
+            </div>
+          </button>
+          <button id="bPartnerViewList" style="border:none;padding:6px 14px;cursor:pointer;background:var(--blue);color:#fff;font-weight:bold;font-size:13px;display:flex;align-items:center;justify-content:center;" onclick="setPartnerView('list')" title="横長表示">▤</button>
+        </div>
       </div>
       <button class="btn pri hide" id="bAddPartner" onclick="openPartnerM()">＋ 協力会社追加</button>
     </div>
@@ -2605,7 +2614,8 @@ try {
     <div class="mh" id="mPartnerH">協力会社 追加・編集 <button class="ibtn" onclick="closeM('mPartner')">✕</button></div>
     <div class="mtab-bar" id="mPartnerTabBar">
       <button type="button" class="mtab-btn on" data-tab="basic" onclick="switchModalTab('mPartner','basic')">基本情報</button>
-      <button type="button" class="mtab-btn" data-tab="pay" onclick="switchModalTab('mPartner','pay')">支払設定</button>
+      <button type="button" class="mtab-btn" data-tab="payout" onclick="switchModalTab('mPartner','payout')">支払設定</button>
+      <button type="button" class="mtab-btn" data-tab="receivable" onclick="switchModalTab('mPartner','receivable')">入金・手数料設定</button>
       <button type="button" class="mtab-btn" data-tab="note" onclick="switchModalTab('mPartner','note')">備考</button>
     </div>
     <div class="mtab-panel on" data-tab="basic">
@@ -2622,7 +2632,7 @@ try {
         <div class="fld"><label>住所（任意）</label><input type="text" id="pnAddress"></div>
       </div>
     </div>
-    <div class="mtab-panel" data-tab="pay">
+    <div class="mtab-panel" data-tab="payout">
       <div class="fld"><label>振込先銀行口座（任意）</label><input type="text" id="pnBank" placeholder="〇〇銀行 〇〇支店 普通 1234567"></div>
       <div class="fld"><label>適格請求書発行事業者登録番号（任意）</label><input type="text" id="pnInvoiceNo" placeholder="例: T1234567890123"></div>
       <div style="border-top:0.5px solid var(--border2);margin:10px 0 10px;padding-top:10px">
@@ -2645,6 +2655,29 @@ try {
               <option value="25">25日</option>
             </select>
           </div>
+        </div>
+      </div>
+    </div>
+    <div class="mtab-panel" data-tab="receivable">
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">この会社が仕事をくれる（請求先になる）場合の手数料率・入金予定日設定</div>
+      <div class="fld"><label>手数料率（%・任意）</label><input type="number" id="pnFeeRate" placeholder="例: 3" step="0.1" title="請求金額に上乗せする手数料の割合"></div>
+      <div class="g2">
+        <div class="fld"><label>入金月ズレ</label>
+          <select id="pnPayMonthOffset" style="width:100%">
+            <option value="0">当月入金</option>
+            <option value="1" selected>翌月入金</option>
+            <option value="2">翌々月入金</option>
+          </select>
+        </div>
+        <div class="fld"><label>入金日</label>
+          <select id="pnPayDay" style="width:100%">
+            <option value="end">末日</option>
+            <option value="5">5日</option>
+            <option value="10">10日</option>
+            <option value="15">15日</option>
+            <option value="20">20日</option>
+            <option value="25">25日</option>
+          </select>
         </div>
       </div>
     </div>
@@ -4863,6 +4896,12 @@ function partnerPayOutLabel(p) {
   const d = p.pay_out_day==='end'||!p.pay_out_day?'末日':p.pay_out_day+'日';
   return m+d;
 }
+// この協力会社が仕事をくれる（請求先になる）場合の入金予定日ラベル
+function partnerReceivableLabel(p) {
+  const m = p.pay_month_offset===0?'当月':p.pay_month_offset===1?'翌月':'翌々月';
+  const d = p.pay_day==='end'||!p.pay_day?'末日':p.pay_day+'日';
+  return m+d;
+}
 function renderCli(){
   const grid=document.getElementById('cliGrid');
   if (!grid) return;
@@ -4978,6 +5017,22 @@ let partnerCompanies = [];
 let partnerDocs = [];
 let ePartnerId = null;
 
+let partnerViewMode = 'list';
+function setPartnerView(mode) {
+  partnerViewMode = mode;
+  const bCard = document.getElementById('bPartnerViewCard');
+  const bList = document.getElementById('bPartnerViewList');
+  if (bCard && bList) {
+    if (mode === 'card') {
+      bCard.style.background = 'var(--blue)'; bCard.style.color = '#fff';
+      bList.style.background = 'transparent'; bList.style.color = 'var(--text)';
+    } else {
+      bList.style.background = 'var(--blue)'; bList.style.color = '#fff';
+      bCard.style.background = 'transparent'; bCard.style.color = 'var(--text)';
+    }
+  }
+  renderPartners();
+}
 function renderPartners(){
   const grid = document.getElementById('partnerGrid');
   if (!grid) return;
@@ -4995,36 +5050,65 @@ function renderPartners(){
   const filtered = q ? partnerCompanies.filter(p=>nm(p.name).includes(q)||nm(p.short||'').includes(q)) : partnerCompanies;
   if (q && !filtered.length) { grid.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">該当する協力会社が見つかりません</div>`; return; }
   const sorted = [...filtered].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja'));
-  grid.className = 'cardgrid';
-  grid.style.display = 'grid';
-  grid.style.padding = '10px 14px';
-  grid.innerHTML = sorted.map(p => {
-    const ini = (p.short||p.name||'?').slice(0,2);
-    const suppliedDrvs = drvs.filter(d=>d.partner_id===p.id);
-    return `<div class="card">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
-        <div class="av cli">${ini}</div>
-        <div style="display:flex;gap:1px">
+
+  if (partnerViewMode === 'card') {
+    grid.className = 'cardgrid';
+    grid.style.display = 'grid';
+    grid.style.padding = '10px 14px';
+    grid.innerHTML = sorted.map(p => {
+      const ini = (p.short||p.name||'?').slice(0,2);
+      const suppliedDrvs = drvs.filter(d=>d.partner_id===p.id);
+      return `<div class="card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+          <div class="av cli">${ini}</div>
+          <div style="display:flex;gap:1px">
+            <button class="ibtn" title="添付書類" onclick="openPartnerDocsM(${p.id})">📄</button>
+            ${canE ? `<button class="ibtn" onclick="editPartner(${p.id})">✎</button><button class="ibtn" onclick="delPartner(${p.id})">🗑</button>` : ''}
+          </div>
+        </div>
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${escHtml(p.name)}</div>
+        ${(p.zip||p.address) ? `<div style="font-size:11.5px;color:var(--text2)">${p.zip?`〒${escHtml(p.zip)} `:''}${escHtml(p.address||'')}</div>` : ''}
+        ${p.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${escHtml(p.person)}</div>`:''}
+        ${p.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${escHtml(p.tel)}</div>`:'<div style="margin-bottom:5px"></div>'}
+        <div style="font-size:11.5px;color:var(--text2)">支払日: ${partnerPayOutLabel(p)}${p.fee_rate?`　手数料: ${p.fee_rate}%`:''}</div>
+        <div style="font-size:11.5px;color:var(--text2)">入金日: ${partnerReceivableLabel(p)}</div>
+        <div style="font-size:11.5px;color:var(--text2);margin-top:2px">供給ドライバー: ${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
+        ${p.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(p.note)}</div>`:''}
+      </div>`;
+    }).join('');
+  } else {
+    grid.className = '';
+    grid.style.display = 'block';
+    grid.style.padding = '10px 14px';
+    grid.innerHTML = sorted.map(p => {
+      const ini = (p.short||p.name||'?').slice(0,2);
+      const suppliedDrvs = drvs.filter(d=>d.partner_id===p.id);
+      return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+          <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
+          <div style="width:150px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${escHtml(p.name)}</div>
+          <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${p.fee_rate?`手数料:${p.fee_rate}%`:'—'}</div>
+          <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${partnerReceivableLabel(p)}</div>
+          <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">支払:${partnerPayOutLabel(p)}</div>
+          <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
+          <div style="flex:1;min-width:0;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(suppliedDrvs.map(d=>d.name).join('、'))}">供給:${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
+        </div>
+        <div style="display:flex;gap:1px;flex-shrink:0;">
           <button class="ibtn" title="添付書類" onclick="openPartnerDocsM(${p.id})">📄</button>
           ${canE ? `<button class="ibtn" onclick="editPartner(${p.id})">✎</button><button class="ibtn" onclick="delPartner(${p.id})">🗑</button>` : ''}
         </div>
-      </div>
-      <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${escHtml(p.name)}</div>
-      ${(p.zip||p.address) ? `<div style="font-size:11.5px;color:var(--text2)">${p.zip?`〒${escHtml(p.zip)} `:''}${escHtml(p.address||'')}</div>` : ''}
-      ${p.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${escHtml(p.person)}</div>`:''}
-      ${p.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${escHtml(p.tel)}</div>`:'<div style="margin-bottom:5px"></div>'}
-      <div style="font-size:11.5px;color:var(--text2)">支払日: ${partnerPayOutLabel(p)}</div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:2px">供給ドライバー: ${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
-      ${p.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(p.note)}</div>`:''}
-    </div>`;
-  }).join('');
+      </div>`;
+    }).join('');
+  }
 }
 
 function openPartnerM(){
   switchModalTab('mPartner','basic'); ePartnerId=null;
-  ['pnName','pnShort','pnPerson','pnTel','pnZip','pnAddress','pnBank','pnInvoiceNo','pnNote'].forEach(id=>document.getElementById(id).value='');
+  ['pnName','pnShort','pnPerson','pnTel','pnZip','pnAddress','pnBank','pnInvoiceNo','pnNote','pnFeeRate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('pnPayOutMonthOffset').value='2';
   document.getElementById('pnPayOutDay').value='end';
+  document.getElementById('pnPayMonthOffset').value='1';
+  document.getElementById('pnPayDay').value='end';
   document.getElementById('mPartnerH').innerHTML='協力会社追加 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
   document.getElementById('mPartner').classList.add('on');
 }
@@ -5042,12 +5126,16 @@ function editPartner(id){
   document.getElementById('pnNote').value=p.note||'';
   document.getElementById('pnPayOutMonthOffset').value=p.pay_out_month_offset??2;
   document.getElementById('pnPayOutDay').value=p.pay_out_day||'end';
+  document.getElementById('pnFeeRate').value=p.fee_rate||'';
+  document.getElementById('pnPayMonthOffset').value=p.pay_month_offset??1;
+  document.getElementById('pnPayDay').value=p.pay_day||'end';
   document.getElementById('mPartnerH').innerHTML='協力会社編集 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
   document.getElementById('mPartner').classList.add('on');
 }
 async function savePartner(){
   const name = document.getElementById('pnName').value.trim();
   if (!name) { alert('会社名は必須です'); return; }
+  const feeRateVal = document.getElementById('pnFeeRate').value;
   const obj = {
     name,
     short: document.getElementById('pnShort').value.trim()||null,
@@ -5060,6 +5148,9 @@ async function savePartner(){
     note: document.getElementById('pnNote').value.trim()||null,
     pay_out_month_offset: +document.getElementById('pnPayOutMonthOffset').value||0,
     pay_out_day: document.getElementById('pnPayOutDay').value||'end',
+    fee_rate: feeRateVal===''?0:parseFloat(feeRateVal),
+    pay_month_offset: +document.getElementById('pnPayMonthOffset').value||0,
+    pay_day: document.getElementById('pnPayDay').value||'end',
   };
   showLoad(true);
   try {
@@ -13573,7 +13664,9 @@ CREATE TABLE IF NOT EXISTS partner_companies (
   id bigserial PRIMARY KEY, name text NOT NULL,
   short text, zip text, address text, person text, tel text,
   bank text, invoice_no text,
-  pay_out_month_offset int DEFAULT 2, pay_out_day text DEFAULT 'end',
+  pay_out_month_offset int DEFAULT 2, pay_out_day text DEFAULT 'end', -- 支払設定（ドライバー供給時）
+  fee_rate numeric DEFAULT 0,
+  pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end', -- 入金設定（仕事をくれる取引先時）
   note text, created_at timestamptz NOT NULL DEFAULT now()
 );
 
