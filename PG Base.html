@@ -2866,7 +2866,9 @@ async function submitForcePwChange() {
   try {
     const { error } = await sb.auth.updateUser({ password: pw1 });
     if (error) throw error;
-    const { error: uErr } = await sb.from('users').update({ must_change_password: false }).eq('id', me.id);
+    // usersテーブルのUPDATEはRLSでadmin専用のため、直接updateすると0行更新で静かに失敗し
+    // 毎回パスワード変更を強制され続けるバグになる。本人専用のSECURITY DEFINER RPCでフラグを消す
+    const { error: uErr } = await sb.rpc('clear_own_password_flag');
     if (uErr) throw uErr;
     me.must_change_password = false;
     document.getElementById('mForcePw').classList.remove('on');
@@ -9818,7 +9820,8 @@ CREATE TABLE IF NOT EXISTS board_posts (
   recurrence_id text
 );
 ALTER TABLE board_posts ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING (true);
+-- ドライバーは「公開済み かつ 自分宛（または全員宛）」の投稿のみ。管理側ロールは全件
+CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR ((publish_at IS NULL OR publish_at <= now()) AND (target_driver_ids IS NULL OR cardinality(target_driver_ids) = 0 OR (SELECT driver_id FROM users WHERE auth_uid = auth.uid()) = ANY(target_driver_ids))));
 CREATE POLICY "board_posts_insert" ON board_posts FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 CREATE POLICY "board_posts_update" ON board_posts FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 CREATE POLICY "board_posts_delete" ON board_posts FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));`;
@@ -13476,11 +13479,25 @@ RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS
   SELECT id FROM public.users WHERE auth_uid = auth.uid() LIMIT 1;
 $function$;
 
--- ドライバーが取引先名だけを参照できるようにする窓口（clients本体はadmin/editor/viewer限定のため）
+-- ドライバーが取引先名だけを参照できるようにする窓口（clients本体はadmin/editor/viewer限定のため）。
+-- ログイン済み専用（anonに開けると取引先名一覧が誰でも取得できてしまう）
 CREATE OR REPLACE FUNCTION public.list_client_names()
 RETURNS TABLE(id bigint, name text) LANGUAGE sql SECURITY DEFINER SET search_path TO 'public' AS $function$
   SELECT id, name FROM clients ORDER BY name;
 $function$;
+REVOKE EXECUTE ON FUNCTION public.list_client_names() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.list_client_names() FROM public;
+GRANT EXECUTE ON FUNCTION public.list_client_names() TO authenticated;
+
+-- 初回パスワード変更完了フラグをドライバー本人が消すための専用RPC
+-- （usersテーブルのUPDATEポリシーはadmin専用のため、本人の直接UPDATEは0行で静かに失敗する）
+CREATE OR REPLACE FUNCTION public.clear_own_password_flag()
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path TO 'public' AS $function$
+  UPDATE public.users SET must_change_password = false WHERE auth_uid = auth.uid();
+$function$;
+REVOKE EXECUTE ON FUNCTION public.clear_own_password_flag() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.clear_own_password_flag() FROM public;
+GRANT EXECUTE ON FUNCTION public.clear_own_password_flag() TO authenticated;
 
 -- 招待トークンの有効性を確認する（匿名で呼べるが、渡したトークン1件の結果のみ返し、一覧は返さない）
 CREATE OR REPLACE FUNCTION public.check_driver_invite(p_token text)
@@ -13633,7 +13650,7 @@ CREATE POLICY "audit_logs_insert" ON audit_logs FOR INSERT TO authenticated WITH
 -- 支払明細書・請求明細書: 社内のみ閲覧・編集可
 ALTER TABLE payment_slips ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "payment_slips_select" ON payment_slips;
-CREATE POLICY "payment_slips_select" ON payment_slips FOR SELECT TO authenticated USING (true);
+CREATE POLICY "payment_slips_select" ON payment_slips FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 DROP POLICY IF EXISTS "payment_slips_insert" ON payment_slips;
 CREATE POLICY "payment_slips_insert" ON payment_slips FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "payment_slips_update" ON payment_slips;
@@ -13643,7 +13660,7 @@ CREATE POLICY "payment_slips_delete" ON payment_slips FOR DELETE TO authenticate
 
 ALTER TABLE invoice_slips ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "invoice_slips_select" ON invoice_slips;
-CREATE POLICY "invoice_slips_select" ON invoice_slips FOR SELECT TO authenticated USING (true);
+CREATE POLICY "invoice_slips_select" ON invoice_slips FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 DROP POLICY IF EXISTS "invoice_slips_insert" ON invoice_slips;
 CREATE POLICY "invoice_slips_insert" ON invoice_slips FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "invoice_slips_update" ON invoice_slips;
@@ -13683,10 +13700,10 @@ CREATE POLICY "receipt_schedules_update" ON receipt_schedules FOR UPDATE TO auth
 DROP POLICY IF EXISTS "receipt_schedules_delete" ON receipt_schedules;
 CREATE POLICY "receipt_schedules_delete" ON receipt_schedules FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
--- 掲示板: 全員閲覧可、投稿・編集・削除は社内のみ
+-- 掲示板: 管理側ロールは全件。ドライバーは「公開済み かつ 自分宛（または全員宛）」のみ。投稿・編集・削除は社内のみ
 ALTER TABLE board_posts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "board_posts_select" ON board_posts;
-CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING (true);
+CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR ((publish_at IS NULL OR publish_at <= now()) AND (target_driver_ids IS NULL OR cardinality(target_driver_ids) = 0 OR (SELECT driver_id FROM users WHERE auth_uid = auth.uid()) = ANY(target_driver_ids))));
 DROP POLICY IF EXISTS "board_posts_insert" ON board_posts;
 CREATE POLICY "board_posts_insert" ON board_posts FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "board_posts_update" ON board_posts;
@@ -13697,7 +13714,7 @@ CREATE POLICY "board_posts_delete" ON board_posts FOR DELETE TO authenticated US
 -- 手入力テンプレート: 全員閲覧可、編集は社内のみ
 ALTER TABLE input_templates ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "input_templates_select" ON input_templates;
-CREATE POLICY "input_templates_select" ON input_templates FOR SELECT TO authenticated USING (true);
+CREATE POLICY "input_templates_select" ON input_templates FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 DROP POLICY IF EXISTS "input_templates_insert" ON input_templates;
 CREATE POLICY "input_templates_insert" ON input_templates FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "input_templates_update" ON input_templates;
