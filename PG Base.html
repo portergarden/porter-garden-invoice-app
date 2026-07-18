@@ -2652,7 +2652,7 @@ try {
   <div class="modal" style="width:360px">
     <div class="mh">🔒 パスワードの変更が必要です</div>
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">初期パスワードのままです。セキュリティのため、新しいパスワードに変更してください。</div>
-    <div class="fld"><label>新しいパスワード（4文字以上）</label><input type="password" id="fpwNew" autocomplete="new-password"></div>
+    <div class="fld"><label>新しいパスワード（8文字以上）</label><input type="password" id="fpwNew" autocomplete="new-password"></div>
     <div class="fld"><label>新しいパスワード（確認）</label><input type="password" id="fpwConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitForcePwChange()"></div>
     <div id="fpwErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
     <div class="mfoot"><button class="btn" onclick="logout()">ログアウト</button><button class="btn pri" onclick="submitForcePwChange()">変更する</button></div>
@@ -2860,7 +2860,8 @@ async function submitForcePwChange() {
   const pw2 = document.getElementById('fpwConfirm').value;
   const errEl = document.getElementById('fpwErr');
   errEl.textContent = '';
-  if (pw1.length < 4) { errEl.textContent = '4文字以上で入力してください'; return; }
+  // 公開URLになり総当たりのリスクが上がったため8文字以上を必須にする
+  if (pw1.length < 8) { errEl.textContent = '8文字以上で入力してください'; return; }
   if (pw1 !== pw2) { errEl.textContent = 'パスワードが一致しません'; return; }
   showLoad(true);
   try {
@@ -9298,7 +9299,7 @@ async function publishPayStatements() {
   const groups = checked.map(id => window._aggPayGroups?.[String(id)]).filter(g=>g?.rows?.length);
   if (!groups.length) { alert('対象データがありません'); return; }
   const month = (document.getElementById('aggPayFrom')?.value||'').slice(0,7);
-  if (!confirm(`${groups.length}名のドライバーのポータルに支払明細書を配信しますか？\n対象月: ${month||'—'}`)) return;
+  if (!confirm(`${groups.length}名のドライバーのポータルに支払明細書を配信しますか？\n対象月: ${month||'—'}\n※同じ月に配信済みのドライバーは最新の内容・レイアウトで上書きされます`)) return;
   showLoad(true);
   let ok = 0, fails = [];
   for (const g of groups) {
@@ -9309,11 +9310,29 @@ async function publishPayStatements() {
       const path = `drv${g.drv.id}/${month||'unknown'}_${Date.now()}.html`;
       const {error: upErr} = await sb.storage.from('driver-statements').upload(path, new Blob([html], {type:'text/html'}), {contentType:'text/html'});
       if (upErr) throw upErr;
-      const {error} = await sb.from('driver_statements').insert({
-        drv_id: g.drv.id, month: month||'', title: `${month||''}分 支払明細書（${d.docNo}）`,
-        file_path: path, amount: d.summary.grand, published_by: me?.name||'',
-      });
-      if (error) throw error;
+      // 同じドライバー×同じ月の配信済み明細書があれば上書き（重複配信を作らない）。
+      // 明細書HTMLは配信時点の内容で固定保存されるため、レイアウト修正後の作り直しもこの再配信で行う
+      const {data: exist} = await sb.from('driver_statements').select('id,file_path').eq('drv_id', g.drv.id).eq('month', month||'');
+      if (exist?.length) {
+        const keep = exist[0];
+        const {error} = await sb.from('driver_statements').update({
+          title: `${month||''}分 支払明細書（${d.docNo}）`,
+          file_path: path, amount: d.summary.grand, published_by: me?.name||'',
+          read_at: null,  // 内容が変わったので未読に戻す
+        }).eq('id', keep.id);
+        if (error) throw error;
+        // 過去に重複して配信された行があれば整理し、置き換え済みの旧HTMLファイルも削除する
+        const dupIds = exist.slice(1).map(x=>x.id);
+        if (dupIds.length) await sb.from('driver_statements').delete().in('id', dupIds);
+        const oldPaths = [...new Set(exist.map(x=>x.file_path).filter(p=>p&&p!==path))];
+        if (oldPaths.length) await sb.storage.from('driver-statements').remove(oldPaths);
+      } else {
+        const {error} = await sb.from('driver_statements').insert({
+          drv_id: g.drv.id, month: month||'', title: `${month||''}分 支払明細書（${d.docNo}）`,
+          file_path: path, amount: d.summary.grand, published_by: me?.name||'',
+        });
+        if (error) throw error;
+      }
       ok++;
       // LINE/メール通知（同じ月の再配信では通知を重複させない）
       notifyDrivers([g.drv.id], 'statement', `stmt-${g.drv.id}-${month}`, '支払明細書が届きました', `${month}分の支払明細書をポータルに配信しました。ログインしてご確認ください。`, true);
