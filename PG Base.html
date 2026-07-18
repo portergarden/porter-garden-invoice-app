@@ -483,8 +483,6 @@ td.dim{color:var(--text2)}
 .dr-card{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px}
 .dr-card:hover{background:var(--bg2)}
 .dr-status{display:inline-block;font-size:10px;padding:1px 7px;border-radius:99px;font-weight:500}
-.dr-status.pending{background:var(--amber-bg);color:var(--amber-text)}
-.dr-status.approved{background:var(--green-bg);color:var(--green-text)}
 .dr-status.rejected{background:var(--red-bg);color:var(--red-text)}
 .dr-alc-warn{color:var(--red-text);font-weight:600}
 .dr-section{font-size:10px;color:var(--text2);margin-top:3px;display:flex;flex-wrap:wrap;gap:8px}
@@ -1764,10 +1762,8 @@ try {
         <option value="">全ドライバー</option>
       </select>
       <select id="drListStatus" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDailyList()">
-        <option value="">全ステータス</option>
-        <option value="pending">未確認</option>
-        <option value="approved">承認済</option>
-        <option value="rejected">差戻し</option>
+        <option value="">全て</option>
+        <option value="rejected">差戻しのみ</option>
       </select>
       <button class="btn sml" onclick="exportDailyReportCsv()">⬇ CSV</button>
       <button class="btn sml pri" onclick="printDailyReports()" title="表示中の絞り込み条件に一致する日報を、日付順で印刷用書式にまとめます">🖨 印刷</button>
@@ -7651,7 +7647,8 @@ async function submitDailyReport() {
     qty_charter: +document.getElementById('drQtyCharter').value || 0,
     qty_other: +document.getElementById('drQtyOther').value || 0,
     note: document.getElementById('drNote').value.trim(),
-    // 個人事業主のドライバーが自分の記録として提出するため、承認待ちの手動チェックは設けず提出=確定とする
+    // 個人事業主のドライバーが自分の記録として提出するもので、会社の承認を必要としないため提出=確定とする。
+    // 内容に不備があれば管理側が「差戻し」でマークし、ドライバーに修正を促す
     status: 'approved',
     submitted_by: me?.name || '',
     // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
@@ -7811,7 +7808,7 @@ function renderDailyList() {
     return;
   }
 
-  const canApprove = me && (me.role==='admin'||me.role==='editor');
+  const canEdit = me && (me.role==='admin'||me.role==='editor');
   body.innerHTML = list.map(r => {
     const alcWarn = (+r.alc_before>=0.15||+r.alc_after>=0.15);
     const healthBad = r.health_before==='bad'||r.health_after==='bad';
@@ -7823,7 +7820,7 @@ function renderDailyList() {
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
             <span style="font-weight:500;font-size:12px">${r.date}</span>
             <span style="font-size:11px;color:var(--text2)">${escHtml(r.car)} ${drv?escHtml(drv.name):''}</span>
-            <span class="dr-status ${r.status||'pending'}">${{pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending']}</span>
+            ${r.status==='rejected'?'<span class="dr-status rejected">差戻し</span>':''}
             ${alcWarn?'<span class="dr-alc-warn" title="アルコール検知値超過">🚨 ALc</span>':''}
             ${healthBad?'<span style="color:var(--amber-text);font-size:10px">体調不良申告</span>':''}
             ${r.incident_flag?'<span style="color:var(--red-text);font-size:10px">🚧 事故あり</span>':''}
@@ -7841,9 +7838,8 @@ function renderDailyList() {
         </div>
         <div style="display:flex;gap:3px;flex-shrink:0">
           <button class="ibtn" onclick="showDailyForm(${r.id})" title="編集">✎</button>
-          ${canApprove&&r.status==='pending'?`<button class="ibtn" style="color:var(--green)" onclick="approveDailyReport(${r.id})" title="承認">✓</button>`:''}
-          ${canApprove&&r.status!=='rejected'?`<button class="ibtn" style="color:var(--amber-text)" onclick="rejectDailyReport(${r.id})" title="差戻し（要修正としてマークします）">↩</button>`:''}
-          ${canApprove?`<button class="ibtn" style="color:var(--red)" onclick="deleteDailyReport(${r.id})" title="削除">🗑</button>`:''}
+          ${canEdit&&r.status!=='rejected'?`<button class="ibtn" style="color:var(--amber-text)" onclick="rejectDailyReport(${r.id})" title="差戻し（要修正としてマークします）">↩</button>`:''}
+          ${canEdit?`<button class="ibtn" style="color:var(--red)" onclick="deleteDailyReport(${r.id})" title="削除">🗑</button>`:''}
         </div>
       </div>
     </div>`;
@@ -7856,28 +7852,14 @@ function renderDailySummary() {
   const now = new Date();
   const thisM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const monthRep = dailyReports.filter(r=>r.date&&r.date.startsWith(thisM));
-  const pending = monthRep.filter(r=>r.status==='pending').length;
-  const approved = monthRep.filter(r=>r.status==='approved').length;
+  const rejected = monthRep.filter(r=>r.status==='rejected').length;
   const alcAlert = monthRep.filter(r=>+r.alc_before>=0.15||+r.alc_after>=0.15).length;
   bar.innerHTML = `
     <span style="font-size:10px;color:var(--text2)">今月（${thisM}）</span>
     <span style="font-size:11px">提出: <b>${monthRep.length}件</b></span>
-    <span style="font-size:11px;color:var(--amber-text)">未確認: <b>${pending}件</b></span>
-    <span style="font-size:11px;color:var(--green)">承認済: <b>${approved}件</b></span>
+    ${rejected?`<span style="font-size:11px;color:var(--red-text)">差戻し: <b>${rejected}件</b></span>`:''}
     ${alcAlert?`<span style="font-size:11px;color:var(--red)">🚨 アルコール超過記録: ${alcAlert}件</span>`:''}
   `;
-}
-
-async function approveDailyReport(id) {
-  try {
-    const {error} = await sb.from('daily_reports').update({status:'approved',reviewed_by:me?.name||'',reviewed_at:new Date().toISOString()}).eq('id',id);
-    if (error) throw error;
-    const r = dailyReports.find(x=>x.id===id);
-    if (r) { r.status='approved'; r.reviewed_by=me?.name||''; }
-    addLog('日報承認', r?.car+' '+r?.date);
-    renderDailyList(); renderDailySummary();
-    showT('承認しました');
-  } catch(e) { showT('エラー: '+e.message,'ter'); }
 }
 
 async function rejectDailyReport(id) {
@@ -7956,7 +7938,7 @@ function downloadDailyReportCsv(list, filenameLabel) {
     r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_charter||0,r.qty_other||0,
     (r.note||'').replace(/\n/g,' '),
     r.incident_flag?'あり':'', r.incident_cause||'', r.incident_prevention||'',
-    {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending']
+    r.status==='rejected'?'差戻し':''
   ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
   const bom = new Uint8Array([0xEF,0xBB,0xBF]);
   const blob = new Blob([bom,[headers.join(','),...rows].join('\n')],{type:'text/csv;charset=utf-8'});
@@ -7997,7 +7979,6 @@ function dailyReportPrintCss() {
 function buildDailyReportHtml(r) {
   // 取引先名: 管理者はclients、ドライバー（clientsを読めない）はRPCで取得済みのdriverClientNamesから解決する
   const cli = lkC(r.cli) || (r.cli ? (driverClientNames||[]).find(c=>c.id===r.cli) : null);
-  const statusLabel = {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending'];
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
   const inspList = [['insp_tire','タイヤ'],['insp_brake','ブレーキ'],['insp_light','灯火類'],['insp_wiper','ワイパー'],['insp_engine','エンジン'],
     ['insp_mirror','ミラー'],['insp_horn','ホーン'],['insp_battery','バッテリー'],['insp_cargo','積載装置'],['insp_fuel','燃料']];
@@ -8050,9 +8031,9 @@ function buildDailyReportHtml(r) {
     <table class="drp-table"><tr><td style="min-height:32px">${escHtml(r.note).replace(/\n/g,'<br>')||'—'}</td></tr></table>
     ${r.incident_flag?`<table class="drp-table"><tr><th>事故原因</th><td>${escHtml(r.incident_cause)||'—'}</td></tr><tr><th>再発防止策</th><td>${escHtml(r.incident_prevention)||'—'}</td></tr></table>`:''}
 
-    <table class="drp-table">
-      <tr><th>ステータス</th><td>${statusLabel}</td><th>承認者</th><td>${escHtml(r.reviewed_by)||'—'}${r.reviewed_at?`（${(r.reviewed_at||'').slice(0,16).replace('T',' ')}）`:''}</td></tr>
-    </table>
+    ${r.status==='rejected'?`<table class="drp-table">
+      <tr><th>ステータス</th><td>差戻し</td><th>差戻し者</th><td>${escHtml(r.reviewed_by)||'—'}${r.reviewed_at?`（${(r.reviewed_at||'').slice(0,16).replace('T',' ')}）`:''}</td></tr>
+    </table>`:''}
   </div>`;
 }
 // 複数日報を日付の古い順（時系列）にまとめ、1つの印刷用ドキュメントにする
@@ -8488,7 +8469,7 @@ async function renderMonthlyReport() {
                       <td style="padding:3px 6px;text-align:right">${r.qty_charter||0}</td>
                       <td style="padding:3px 6px;text-align:center;${alcWarn?'color:var(--red);font-weight:600':''}">${r.alc_before??'—'}/${r.alc_after??'—'}</td>
                       <td style="padding:3px 6px;text-align:center;${healthBad?'color:var(--amber-text)':''}">${{good:'良',normal:'普',bad:'不'}[r.health_before||'good']}</td>
-                      <td style="padding:3px 6px;text-align:center"><span class="dr-status ${r.status||'pending'}">${{pending:'未',approved:'承',rejected:'差'}[r.status||'pending']}</span></td>
+                      <td style="padding:3px 6px;text-align:center">${r.status==='rejected'?'<span class="dr-status rejected">差</span>':''}</td>
                       <td style="padding:3px 6px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.note)}">${escHtml(r.note)}</td>
                     </tr>`;
                   }).join('')}
@@ -8529,7 +8510,7 @@ function exportMonthlyCsv() {
         r.qty_takkyubin||0, r.qty_nekopos||0, r.qty_charter||0, r.qty_other||0,
         r.alc_before??'', r.alc_after??'',
         {good:'良好',normal:'普通',bad:'不調'}[r.health_before||'good'],
-        {pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending'],
+        r.status==='rejected'?'差戻し':'',
         (r.note||'').replace(/,/g,'、').replace(/\n/g,' ')
       ].join(','));
     });
@@ -8622,10 +8603,10 @@ async function checkSlipVsDailyReport() {
       warnings.push(`<b>${d.name}</b>: 日報はあるが明細書に含まれていない日があります（${missingPay.slice(0,3).join('、')}${missingPay.length>3?'…':''}）`);
     }
 
-    // 未承認日報がある場合
-    const unapproved = dDailyReps.filter(r=>r.status==='pending').length;
-    if (unapproved) {
-      warnings.push(`<b>${d.name}</b>: 未承認の日報が ${unapproved}件 あります`);
+    // 差戻し（要修正）のまま放置されている日報がある場合
+    const rejected = dDailyReps.filter(r=>r.status==='rejected').length;
+    if (rejected) {
+      warnings.push(`<b>${d.name}</b>: 差戻し（要修正）の日報が ${rejected}件 あります`);
     }
   });
 
@@ -9459,7 +9440,7 @@ async function loadDriverDailyList() {
       return `<div class="dr-card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div>
-            <div style="font-weight:500;font-size:12px">${r.date} <span class="dr-status ${r.status||'pending'}">${{pending:'未確認',approved:'承認済',rejected:'差戻し'}[r.status||'pending']}</span>
+            <div style="font-weight:500;font-size:12px">${r.date} ${r.status==='rejected'?'<span class="dr-status rejected">差戻し</span>':''}
               ${alcWarn?'<span style="color:var(--red);font-size:10px;margin-left:4px">🚨 ALC</span>':''}
               ${inspFailed?'<span style="color:var(--amber-text);font-size:10px;margin-left:4px">⚠ 点検</span>':''}
             </div>
@@ -13201,7 +13182,7 @@ async function showDriverStats(drvId) {
 
   const totalKm = drReports.reduce((a,r)=>a+(+r.distance_km||0),0);
   const alcAlerts = drReports.filter(r=>+r.alc_before>=0.15||+r.alc_after>=0.15).length;
-  const pendingDr = drReports.filter(r=>r.status==='pending').length;
+  const rejectedDr = drReports.filter(r=>r.status==='rejected').length;
 
   const barHtml = months.map((m,i)=>{
     const pct = Math.round(mAmts[i]/maxAmt*100);
@@ -13219,7 +13200,7 @@ async function showDriverStats(drvId) {
       <div style="padding:10px 12px">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
           <div class="kpi-card"><div class="kpi-label">直近6ヶ月 走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
-          <div class="kpi-card"><div class="kpi-label">未承認日報</div><div class="kpi-val" style="color:${pendingDr?'var(--amber-text)':'var(--green)'}">${pendingDr}件</div></div>
+          <div class="kpi-card"><div class="kpi-label">差戻し日報</div><div class="kpi-val" style="color:${rejectedDr?'var(--amber-text)':'var(--green)'}">${rejectedDr}件</div></div>
           <div class="kpi-card"><div class="kpi-label">アルコール超過</div><div class="kpi-val" style="color:${alcAlerts?'var(--red)':'var(--green)'}">${alcAlerts}件</div></div>
         </div>
         <div style="font-size:11px;font-weight:500;color:var(--text2);margin-bottom:6px">月次売上推移（直近6ヶ月）</div>
