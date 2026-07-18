@@ -9274,6 +9274,15 @@ function buildStatementHtmlForDelivery(rows) {
     window.addEventListener('resize', fitDoc);
     window.addEventListener('orientationchange', fitDoc);
     window.addEventListener('load', fitDoc);
+    // 印刷時は画面表示用の縮小(transform)を必ず解除する（CSS側のtransform:none!importantと二重の保険）。
+    // 印刷が終わったら（キャンセル含む）画面表示用の縮小表示に戻す
+    window.addEventListener('beforeprint', () => {
+      const doc = document.querySelector('.doc');
+      const wrap = document.querySelector('.doc-scale-wrap');
+      if (doc) doc.style.transform = 'none';
+      if (wrap) wrap.style.height = 'auto';
+    });
+    window.addEventListener('afterprint', fitDoc);
     fitDoc();
   })();
   <\/script>
@@ -10387,7 +10396,9 @@ function getDocCss() {
      文字色（白）だけ残って薄く・読めなくなる（PDF出力時に色が薄く見える不具合の原因） */
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
   @page{size:A4 portrait;margin:10mm}
-  @media print{body{background:#fff;padding:0}.doc{border:none;padding:12mm;max-width:none}@page{size:A4 portrait;margin:10mm}}
+  /* スマホ表示用にJSで.docへ掛けたtransform:scale()は、印刷時にそのまま残ると
+     レイアウトが縮小されたまま左上に寄って印刷されてしまうため、印刷時は必ず解除する */
+  @media print{body{background:#fff;padding:0}.doc{border:none;padding:12mm;max-width:none;transform:none!important}.doc-scale-wrap{height:auto!important;overflow:visible!important}@page{size:A4 portrait;margin:10mm}}
   /* スマホ画面での表示時のみ：列幅・文字サイズを個別に変えると9列の密な表で文字が潰れたり
      支払金額欄がはみ出たりするため、A4のデザインは一切変えずに.doc-scale-wrap内でJSにより
      画面幅に合わせて縮小表示する（PDFビューアの「幅に合わせる」表示と同じ考え方。印刷結果には影響しない） */
