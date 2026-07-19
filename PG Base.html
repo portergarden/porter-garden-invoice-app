@@ -2001,6 +2001,7 @@ try {
         <input type="month" id="drvMrMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDriverMonthly()">
         <button class="btn sml" onclick="singleMonthShift('drvMrMonth',1,renderDriverMonthly)" title="翌月">▶</button>
         <button class="btn sml" onclick="exportDriverMonthlyCsv()">⬇ CSV</button>
+        <button class="btn sml" onclick="printDriverMonthlyReportA4()" title="1日〜月末までの日めくり表（A4縦1枚）を作成して印刷・保存します">🖨 月報印刷</button>
       </div>
       <div id="drvMonthlyBody" style="padding:8px 14px"></div>
     </div>
@@ -10199,6 +10200,120 @@ function exportDriverMonthlyCsv() {
   if (!list.length) { showT('対象の日報がありません', 'twa'); return; }
   downloadDailyReportCsv([...list].sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.id-b.id)), month);
   showT('月報CSVをダウンロードしました');
+}
+
+// ドライバーポータル向けA4月報印刷。printMonthlyReportA4()と同じ日めくりレイアウトを使うが、
+// 自分（me.driver_data）の分のみを対象とし、他ドライバーのデータには一切触れない。
+async function printDriverMonthlyReportA4() {
+  const d = me?.driver_data;
+  if (!d) return;
+  const month = document.getElementById('drvMrMonth')?.value || '';
+  if (!month) { showT('対象月を選択してください', 'twa'); return; }
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const monthStr = `${y}-${String(m).padStart(2,'0')}`;
+  const monthFrom = `${monthStr}-01`;
+  const monthTo = `${monthStr}-${String(lastDay).padStart(2,'0')}`;
+
+  let dReports = [];
+  try {
+    const {data, error} = await sb.from('daily_reports').select('*')
+      .in('car', d.cars||[]).gte('date', monthFrom).lte('date', monthTo).order('date');
+    if (error) throw error;
+    dReports = data || [];
+  } catch(e) { showT('日報データの取得に失敗しました: ' + e.message, 'twa'); return; }
+
+  if (!dReports.length) { showT('対象月の日報データがありません', 'twa'); return; }
+
+  const weekdayLabel = ['日','月','火','水','木','金','土'];
+  const cAll = companySettings || {};
+  const byDate = {};
+  dReports.forEach(r => { byDate[r.date] = r; });
+
+  const partner = d.partner_id ? partnerCompanies.find(p=>p.id===d.partner_id) : null;
+
+  const drWorkDays = dReports.length;
+  const drKm  = dReports.reduce((a,r)=>a+(+r.distance_km||0),0);
+  const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
+  const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
+  const drChar= dReports.reduce((a,r)=>a+(+r.qty_charter||0),0);
+  const drOtherQty=dReports.reduce((a,r)=>a+(+r.qty_other||0),0);
+
+  const dayRows = [];
+  for (let day=1; day<=lastDay; day++) {
+    const dateStr = `${monthStr}-${String(day).padStart(2,'0')}`;
+    const wd = new Date(y, m-1, day).getDay();
+    const holName = jpHolidayName(dateStr);
+    const r = byDate[dateStr];
+    const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
+    const site = r ? lkC(r.cli) : null;
+    const rowCls = alcWarn ? 'alc' : holName ? 'hol' : wd===0 ? 'sun' : wd===6 ? 'sat' : '';
+    dayRows.push(`<tr${rowCls?` class="${rowCls}"`:''}>
+      <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${day}</td>
+      <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${weekdayLabel[wd]}</td>
+      <td class="car">${r?escHtml(r.car||''):''}</td>
+      <td class="center">${r&&(r.start_time||r.end_time)?`${r.start_time||'?'}-${r.end_time||'?'}`:''}</td>
+      <td class="site" title="${r&&site?escHtml(site.name):''}">${r&&site?escHtml(site.short||site.name):''}</td>
+      <td class="num">${r?(r.distance_km||0):''}</td>
+      <td class="num">${r?(r.qty_takkyubin||0):''}</td>
+      <td class="num">${r?(r.qty_nekopos||0):''}</td>
+      <td class="num">${r?(r.qty_charter||0):''}</td>
+      <td class="center">${r?`${r.alc_before??'—'}/${r.alc_after??'—'}`:''}</td>
+      <td class="center">${r?({good:'良',normal:'普',bad:'不'}[r.health_before||'good']):''}</td>
+      <td class="center">${r&&r.status==='rejected'?'差戻し':''}</td>
+    </tr>`);
+  }
+
+  const page = `<div class="mr-page">
+    <div class="mr-head">
+      <div>
+        <div class="mr-title">月報（日報自動集計）</div>
+        <div class="mr-period">${y}年${m}月　${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}${partner?`　協力会社: ${escHtml(partner.name)}`:''}</div>
+      </div>
+      <div class="mr-company">
+        ${escHtml(cAll.name || '株式会社ポーターガーデン')}<br>
+        発行日: ${fmtLocalDate(new Date())}
+      </div>
+    </div>
+    <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ネコポス ${drNeko.toLocaleString()}　チャーター ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
+    <table class="mr-table">
+      <thead><tr>
+        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:11%">車番</th><th style="width:11%">稼働時間</th><th style="width:13%">稼働先</th><th style="width:8%">走行km</th><th style="width:8%">宅配便</th><th style="width:8%">ネコポス</th><th style="width:8%">チャーター</th><th style="width:11%">Alc前/後</th><th style="width:6%">体調</th><th style="width:8%">状態</th>
+      </tr></thead>
+      <tbody>${dayRows.join('')}</tbody>
+    </table>
+  </div>`;
+
+  const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+  <title>月報_${monthStr}</title>
+  <style>
+    @page{size:A4 portrait;margin:10mm}
+    *{box-sizing:border-box}
+    body{font-family:"Hiragino Sans","Meiryo",sans-serif;color:#222;margin:0}
+    .mr-page{page-break-after:always}
+    .mr-page:last-child{page-break-after:auto}
+    .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+    .mr-title{font-size:16px;font-weight:700}
+    .mr-period{font-size:12px;color:#555;margin-top:2px}
+    .mr-company{text-align:right;font-size:10px;color:#555;line-height:1.5}
+    .mr-summary{font-size:10px;color:#333;margin-bottom:6px;padding:4px 6px;background:#f2f2f2;border-radius:3px}
+    table.mr-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.7px}
+    table.mr-table th,table.mr-table td{border:0.5px solid #999;padding:2px 3px}
+    table.mr-table th{background:#eee;font-weight:600}
+    table.mr-table td.num{text-align:right}
+    table.mr-table td.center{text-align:center}
+    table.mr-table td.car,table.mr-table td.site{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
+    tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
+    tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
+    tr.alc{background:#fdeaea}
+  </style></head><body>
+  ${page}
+  <script>window.onload=()=>window.print();<\/script>
+  </body></html>`;
+
+  const win = window.open('','_blank');
+  writeStatementWindow(win, () => html);
 }
 
 /* ===== 掲示板 ===== */
