@@ -606,7 +606,6 @@ try {
     <div class="ntab" id="nt3" onclick="goPage(3,this)">🏢 取引先管理</div>
     <div class="ntab" id="nt25" onclick="goPage(25,this)">🤝 協力会社管理</div>
     <div class="ntab" id="nt15" onclick="goPage(15,this)">💰 入金管理</div>
-    <div class="ntab" id="nt16" onclick="goPage(16,this)">⛽ 経費管理</div>
     <div class="ntab hide" id="nt4" onclick="goPage(4,this)">🕐 操作ログ</div>
     <div class="ntab hide" id="nt5" onclick="goPage(5,this)">🔐 ユーザー管理</div>
     <div class="ntab" id="nt17" onclick="goPage(17,this)">⚙ セットアップ</div>
@@ -1857,49 +1856,6 @@ try {
   <div id="piList" style="overflow-y:auto;max-height:calc(100vh - 200px);padding:0 14px 14px"></div>
 </div>
 
-<!-- ===== pg16: 経費管理 ===== -->
-<div id="pg16" class="hide">
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
-    <span style="font-size:13px;font-weight:500">⛽ 経費管理</span>
-    <div style="display:flex;gap:6px;align-items:center">
-      <input type="date" id="expFrom" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderExpense()">
-      <span style="font-size:11px;color:var(--text2)">〜</span>
-      <input type="date" id="expTo" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderExpense()">
-      <button class="btn sml" onclick="monthRangeShift('expFrom','expTo',-1,renderExpense)" title="前月">◀</button>
-      <button class="btn sml" onclick="monthRangeShift('expFrom','expTo',1,renderExpense)" title="翌月">▶</button>
-      <button class="btn pri sml" onclick="openExpenseM()">＋ 経費登録</button>
-      <button class="btn sml" onclick="exportExpenseCsv()">⬇ CSV</button>
-    </div>
-  </div>
-  <!-- KPI -->
-  <div id="expKpi" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
-  <!-- 燃費計算パネル -->
-  <div style="margin:8px 14px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius);border:0.5px solid var(--border)">
-    <div style="font-size:11px;font-weight:500;margin-bottom:8px">⛽ 燃費・ガソリン代 自動試算</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end">
-      <div class="fld"><label style="font-size:10px">燃費（km/L）</label>
-        <input type="number" id="fuelEff" value="15" min="1" max="50" step="0.1" style="width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" oninput="calcFuelCost()">
-      </div>
-      <div class="fld"><label style="font-size:10px">ガソリン単価（円/L）</label>
-        <input type="number" id="fuelPrice" value="170" min="100" max="300" style="width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" oninput="calcFuelCost()">
-      </div>
-      <div class="fld"><label style="font-size:10px">対象月の走行距離（km）</label>
-        <input type="number" id="fuelKm" placeholder="日報から自動取得" style="width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" oninput="calcFuelCost()">
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--text2);margin-bottom:3px">推定ガソリン代</div>
-        <div id="fuelEstimate" style="font-size:16px;font-weight:600;color:var(--blue)">—</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:6px;margin-top:8px">
-      <button class="btn sml" onclick="loadFuelKmFromReport()">📋 日報から走行距離を取得</button>
-      <button class="btn sml grn" onclick="registerFuelAsExpense()">＋ 燃料費として登録</button>
-    </div>
-  </div>
-  <!-- 経費一覧 -->
-  <div id="expList" style="overflow-y:auto;max-height:calc(100vh - 340px);padding:0 14px 14px"></div>
-</div>
-
 <!-- ===== pg17: セットアップ ===== -->
 <div id="pg17" class="hide">
   <div style="padding:8px 14px;border-bottom:0.5px solid var(--border)">
@@ -2283,36 +2239,6 @@ try {
 </div>
 
 <!-- モーダル: 経費登録 -->
-<div class="overlay" id="mExpense">
-  <div class="modal">
-    <div class="mh">経費登録 <button class="ibtn" onclick="closeM('mExpense')">✕</button></div>
-    <div class="g2">
-      <div class="fld"><label>日付</label><input type="date" id="expDate"></div>
-      <div class="fld"><label>金額（円）</label><input type="number" id="expAmt" placeholder="0" min="0"></div>
-    </div>
-    <div class="fld"><label>経費種別</label>
-      <select id="expCat" style="width:100%">
-        <option value="fuel">燃料費</option>
-        <option value="highway">高速代</option>
-        <option value="parking">駐車場</option>
-        <option value="maintenance">車両整備</option>
-        <option value="insurance">保険料</option>
-        <option value="communication">通信費</option>
-        <option value="supplies">消耗品</option>
-        <option value="other">その他</option>
-      </select>
-    </div>
-    <div class="fld"><label>ドライバー</label>
-      <select id="expDrv" style="width:100%"><option value="">全体（共通経費）</option></select>
-    </div>
-    <div class="fld"><label>備考</label><input type="text" id="expNote" placeholder="任意"></div>
-    <div class="mfoot">
-      <button class="btn" onclick="closeM('mExpense')">キャンセル</button>
-      <button class="btn pri" onclick="saveExpense()">登録</button>
-    </div>
-  </div>
-</div>
-
 <!-- モーダル: 掲示板投稿 -->
 <div class="overlay" id="mBoard">
   <div class="modal" style="width:560px;max-width:95vw">
@@ -4159,7 +4085,7 @@ const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
   1:'analysis', 8:'analysis', 23:'analysis', 24:'analysis',
   10:'driver', 12:'driver', 14:'driver',
-  2:'admin', 3:'admin', 25:'admin', 15:'admin', 16:'admin', 4:'admin', 5:'admin', 17:'admin',
+  2:'admin', 3:'admin', 25:'admin', 15:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
 
 function switchNavGroup(group, skipPageSwitch) {
@@ -4204,7 +4130,6 @@ function goPage(n,el){
   if(n===12){initMonthlyReport();renderMonthlyReport();}
   if(n===14){loadBoard(true);}
   if(n===15){initPaymentIn();}
-  if(n===16){initExpense();}
   if(n===17){renderSetupPage();}
   if(n===18){switchEntryTab();}
   // ブラウザの「戻る」でシステム内の一つ前の画面に戻れるよう、画面遷移のたびに履歴を積む
@@ -10866,7 +10791,7 @@ function exportYearCsv() {
    このJSONエクスポートが唯一のバックアップ手段。全テーブルを対象にする */
 const BACKUP_TABLES = [
   'invoices','drivers','clients','partner_companies','users','daily_reports',
-  'payment_schedules','receipt_schedules','payment_in','expenses',
+  'payment_schedules','receipt_schedules','payment_in',
   'company_settings','board_posts','price_master','input_templates',
   'file_mappings','driver_documents','driver_statements','partner_company_docs','payment_slips','invoice_slips'
 ];
@@ -14062,13 +13987,6 @@ CREATE TABLE IF NOT EXISTS bank_payer_aliases (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 経費管理
-CREATE TABLE IF NOT EXISTS expenses (
-  id bigserial PRIMARY KEY, date date NOT NULL, amt int NOT NULL,
-  category text DEFAULT 'other', drv_id bigint,
-  note text, created_at timestamptz DEFAULT now()
-);
-
 -- 会社設定（1行のみ）
 CREATE TABLE IF NOT EXISTS company_settings (
   id int PRIMARY KEY DEFAULT 1, reg_no text, name text,
@@ -14413,16 +14331,6 @@ CREATE POLICY "payment_in_update" ON payment_in FOR UPDATE TO authenticated USIN
 DROP POLICY IF EXISTS "payment_in_delete" ON payment_in;
 CREATE POLICY "payment_in_delete" ON payment_in FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
-ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "expenses_select" ON expenses;
-CREATE POLICY "expenses_select" ON expenses FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
-DROP POLICY IF EXISTS "expenses_insert" ON expenses;
-CREATE POLICY "expenses_insert" ON expenses FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
-DROP POLICY IF EXISTS "expenses_update" ON expenses;
-CREATE POLICY "expenses_update" ON expenses FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
-DROP POLICY IF EXISTS "expenses_delete" ON expenses;
-CREATE POLICY "expenses_delete" ON expenses FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
-
 -- 会社設定: 全員閲覧可、編集は社内のみ
 ALTER TABLE company_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "company_settings_select" ON company_settings;
@@ -14560,7 +14468,7 @@ CREATE POLICY "board_attachments_delete" ON storage.objects FOR DELETE TO authen
 const REQUIRED_TABLES = [
   'invoices','drivers','clients','partner_companies','users','audit_logs','payment_slips','invoice_slips',
   'daily_reports','payment_schedules','receipt_schedules','board_posts','input_templates',
-  'file_mappings','price_master','payment_in','expenses','company_settings',
+  'file_mappings','price_master','payment_in','company_settings',
   'driver_documents','driver_statements','partner_company_docs'
 ];
 
@@ -15007,173 +14915,6 @@ async function importBankCsvRows(){
   addLog('銀行CSV取込', `${ok}件（自動消込${matched}件）`);
   if (errs.length) showT(`${ok}件取込・${errs.length}件失敗: ${errs[0]}`,'twa');
   else showT(`${ok}件を取り込みました（入金予定の自動消込: ${matched}件）`);
-}
-
-/* ===== 経費管理 ===== */
-let expenses = [];
-
-async function initExpense() {
-  ensureMonthRangeDefault('expFrom', 'expTo');
-  await loadExpenses();
-}
-
-async function loadExpenses() {
-  if (!sb) return;
-  const from = document.getElementById('expFrom')?.value||'';
-  const to = document.getElementById('expTo')?.value||'';
-  try {
-    let q = sb.from('expenses').select('*').order('date',{ascending:false});
-    if (from) q = q.gte('date',from);
-    if (to) q = q.lte('date',to);
-    const {data,error} = await q.limit(200);
-    if (error) {
-      if (error.message.includes('does not exist')) {
-        document.getElementById('expList').innerHTML='<div style="padding:16px;color:var(--amber-text);font-size:12px">⚠ expensesテーブルが未作成です。<br><button class="btn sml" style="margin-top:6px" onclick="goPage(17,document.getElementById(\'nt17\'))">セットアップページへ</button></div>';
-        return;
-      }
-      throw error;
-    }
-    expenses = data||[];
-    renderExpense();
-    // 日報から走行距離を自動取得
-    loadFuelKmFromReport();
-  } catch(e) {}
-}
-
-const expCatLabel = {fuel:'燃料費',highway:'高速代',parking:'駐車場',maintenance:'車両整備',insurance:'保険料',communication:'通信費',supplies:'消耗品',other:'その他'};
-const expCatColor = {fuel:'#F97316',highway:'#6366F1',parking:'#14B8A6',maintenance:'#EF4444',insurance:'#8B5CF6',communication:'#0EA5E9',supplies:'#84CC16',other:'#6B7280'};
-
-function renderExpense() {
-  const kpi = document.getElementById('expKpi');
-  const list = document.getElementById('expList');
-  if (!kpi||!list) return;
-
-  const total = expenses.reduce((a,e)=>a+(e.amt||0),0);
-  const bycat = {};
-  expenses.forEach(e=>{ bycat[e.category]=(bycat[e.category]||0)+(e.amt||0); });
-  const topCat = Object.entries(bycat).sort((a,b)=>b[1]-a[1])[0];
-
-  kpi.innerHTML = `
-    <div class="kpi-card"><div class="kpi-label">経費合計</div><div class="kpi-val">${yen(total)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">件数</div><div class="kpi-val">${expenses.length}件</div></div>
-    <div class="kpi-card"><div class="kpi-label">最多カテゴリ</div><div class="kpi-val" style="font-size:12px">${topCat?expCatLabel[topCat[0]]+'<br>'+yen(topCat[1]):'-'}</div></div>
-    <div class="kpi-card"><div class="kpi-label">燃料費</div><div class="kpi-val">${yen(bycat.fuel||0)}</div></div>
-  `;
-
-  if (!expenses.length) { list.innerHTML='<div style="text-align:center;padding:24px;color:var(--text2);font-size:12px">経費記録がありません</div>'; return; }
-
-  list.innerHTML = expenses.map(e=>{
-    const drv = drvs.find(d=>d.id===e.drv_id);
-    const color = expCatColor[e.category]||'#6B7280';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border);font-size:12px">
-      <div style="width:6px;height:32px;border-radius:3px;background:${color};flex-shrink:0"></div>
-      <div style="flex:1">
-        <div style="font-weight:500">${e.date} <span style="font-size:10px;color:var(--text2)">${expCatLabel[e.category]||e.category}</span></div>
-        <div style="font-size:10px;color:var(--text2)">${drv?drv.name+' / ':''} ${e.note||''}</div>
-      </div>
-      <div style="font-weight:600">${yen(e.amt)}</div>
-      <button class="ibtn" style="color:var(--red)" onclick="deleteExpense(${e.id})">🗑</button>
-    </div>`;
-  }).join('');
-}
-
-function openExpenseM() {
-  const now = new Date();
-  document.getElementById('expDate').value = fmtLocalDate(now);
-  document.getElementById('expAmt').value = '';
-  document.getElementById('expNote').value = '';
-  document.getElementById('expCat').value = 'fuel';
-  const sel = document.getElementById('expDrv');
-  sel.innerHTML = '<option value="">全体（共通経費）</option>' + drvs.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
-  document.getElementById('mExpense').classList.add('on');
-}
-
-async function saveExpense() {
-  const date = document.getElementById('expDate').value;
-  const amt = +document.getElementById('expAmt').value||0;
-  if (!date||!amt) { alert('日付と金額は必須です'); return; }
-  showLoad(true);
-  try {
-    const row = {date,amt,category:document.getElementById('expCat').value,drv_id:+document.getElementById('expDrv').value||null,note:document.getElementById('expNote').value.trim()};
-    const {data,error} = await sb.from('expenses').insert(row).select().single();
-    if (error) throw error;
-    expenses.unshift(data);
-    closeM('mExpense');
-    renderExpense();
-    addLog('経費登録', `${expCatLabel[row.category]} ${yen(amt)}`);
-    showT('経費を登録しました');
-  } catch(e) { showT('エラー: '+e.message,'ter'); }
-  showLoad(false);
-}
-
-async function deleteExpense(id) {
-  if (!confirm('削除しますか？')) return;
-  try {
-    const {error} = await sb.from('expenses').delete().eq('id',id);
-    if (error) throw error;
-    expenses = expenses.filter(e=>e.id!==id);
-    renderExpense();
-    showT('削除しました');
-  } catch(e) { showT('エラー: '+e.message,'ter'); }
-}
-
-// 燃費計算
-function calcFuelCost() {
-  const km = +document.getElementById('fuelKm')?.value||0;
-  const eff = +document.getElementById('fuelEff')?.value||15;
-  const price = +document.getElementById('fuelPrice')?.value||170;
-  const cost = km > 0 ? Math.round(km/eff*price) : 0;
-  const el = document.getElementById('fuelEstimate');
-  if (el) el.textContent = km > 0 ? yen(cost) : '—';
-}
-
-async function loadFuelKmFromReport() {
-  const from = document.getElementById('expFrom')?.value||'';
-  const to = document.getElementById('expTo')?.value||'';
-  if (!from||!to||!sb) return;
-  try {
-    const {data} = await sb.from('daily_reports').select('distance_km')
-      .gte('date',from).lte('date',to);
-    const totalKm = (data||[]).reduce((a,r)=>a+(+r.distance_km||0),0);
-    const el = document.getElementById('fuelKm');
-    if (el && totalKm > 0) { el.value = totalKm; calcFuelCost(); showT(`日報から${totalKm}kmを取得しました`); }
-    else if (el) showT('日報の走行距離データがありません','twa');
-  } catch(e) {}
-}
-
-async function registerFuelAsExpense() {
-  const km = +document.getElementById('fuelKm')?.value||0;
-  const eff = +document.getElementById('fuelEff')?.value||15;
-  const price = +document.getElementById('fuelPrice')?.value||170;
-  if (!km) { alert('走行距離を入力または取得してください'); return; }
-  const cost = Math.round(km/eff*price);
-  const from = document.getElementById('expFrom')?.value||'';
-  const note = `${km}km / 燃費${eff}km/L / @${price}円`;
-  if (!confirm(`燃料費 ${yen(cost)} を経費登録しますか？\n${note}`)) return;
-  showLoad(true);
-  try {
-    const date = from || fmtLocalDate(new Date());
-    const {data,error} = await sb.from('expenses').insert({date,amt:cost,category:'fuel',note}).select().single();
-    if (error) throw error;
-    expenses.unshift(data);
-    renderExpense();
-    addLog('燃料費登録', `${yen(cost)} ${note}`);
-    showT(`燃料費 ${yen(cost)} を登録しました`);
-  } catch(e) { showT('エラー: '+e.message,'ter'); }
-  showLoad(false);
-}
-
-function exportExpenseCsv() {
-  const from = document.getElementById('expFrom')?.value||'';
-  const to = document.getElementById('expTo')?.value||'';
-  const headers = ['日付','カテゴリ','金額','ドライバー','備考'];
-  const rows = expenses.map(e=>{
-    const drv = drvs.find(d=>d.id===e.drv_id);
-    return [e.date,expCatLabel[e.category]||e.category,e.amt,drv?.name||'共通',e.note||''].join(',');
-  });
-  const bom = new Uint8Array([0xEF,0xBB,0xBF]);
-  const blob = new Blob([bom,[headers.join(','),...rows].join('\r\n')],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`経費_${from}_${to}.csv`;a.click();
 }
 
 // 会社設定はログイン後に自動読み込み（checkSchedAlertsと同タイミング）
