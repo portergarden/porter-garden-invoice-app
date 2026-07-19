@@ -9006,6 +9006,38 @@ async function renderMonthlyReport() {
   }
 }
 
+// 日本の祝日名を返す（固定日・ハッピーマンデー・春分/秋分の近似計算・日曜が祝日の場合の振替休日）。
+// 「国民の休日」（祝日と祝日に挟まれた平日）等の稀な例外は対象外。月報印刷の色分け表示用の簡易実装
+function jpHolidayName(dateStr) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const nthMonday = (month, n) => {
+    const firstDow = new Date(y, month-1, 1).getDay();
+    const firstMonday = 1 + ((8 - firstDow) % 7);
+    return firstMonday + (n-1)*7;
+  };
+  const vernal = Math.floor(20.8431 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+  const autumnal = Math.floor(23.2488 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+  const fixed = {
+    '1-1':'元日', '2-11':'建国記念の日', '2-23':'天皇誕生日', '4-29':'昭和の日',
+    '5-3':'憲法記念日', '5-4':'みどりの日', '5-5':'こどもの日', '8-11':'山の日',
+    '11-3':'文化の日', '11-23':'勤労感謝の日',
+  };
+  if (fixed[`${m}-${d}`]) return fixed[`${m}-${d}`];
+  if (m===1 && d===nthMonday(1,2)) return '成人の日';
+  if (m===7 && d===nthMonday(7,3)) return '海の日';
+  if (m===9 && d===nthMonday(9,3)) return '敬老の日';
+  if (m===10 && d===nthMonday(10,2)) return 'スポーツの日';
+  if (m===3 && d===vernal) return '春分の日';
+  if (m===9 && d===autumnal) return '秋分の日';
+  // 振替休日: 前日が日曜かつ祝日なら、当日（多くの場合は月曜）も休日扱い
+  const dt = new Date(y, m-1, d);
+  if (dt.getDay() !== 0) {
+    const prev = new Date(y, m-1, d-1);
+    if (prev.getDay() === 0 && jpHolidayName(fmtLocalDate(prev))) return '振替休日';
+  }
+  return null;
+}
+
 // 月報（日報自動集計）を「1日〜月末までの日めくり表」としてドライバーごとに1ページずつまとめ、
 // 印刷用ウィンドウを開く。各ページは対象月の全日数分の行を持ち、日報が無い日は空欄行のまま
 // 印字する（休みとして扱わず、単に空欄で「未提出/非稼働」を表す）。1ドライバー分がA4縦1枚に
@@ -9039,6 +9071,8 @@ async function printMonthlyReportA4() {
       const byDate = {};
       dReports.forEach(r => { byDate[r.date] = r; }); // 同日複数件は最後の1件を優先
 
+      const partner = d.partner_id ? partnerCompanies.find(p=>p.id===d.partner_id) : null;
+
       const drWorkDays = dReports.length;
       const drKm  = dReports.reduce((a,r)=>a+(+r.distance_km||0),0);
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
@@ -9050,12 +9084,17 @@ async function printMonthlyReportA4() {
       for (let day=1; day<=lastDay; day++) {
         const dateStr = `${monthStr}-${String(day).padStart(2,'0')}`;
         const wd = new Date(y, m-1, day).getDay();
+        const holName = jpHolidayName(dateStr);
         const r = byDate[dateStr];
         const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
-        const healthBad = r && (r.health_before==='bad'||r.health_after==='bad');
-        dayRows.push(`<tr${wd===0?' class="sun"':wd===6?' class="sat"':''}${alcWarn?' class="alc"':''}>
-          <td class="center">${day}</td>
-          <td class="center">${weekdayLabel[wd]}</td>
+        const site = r ? lkC(r.cli) : null;
+        const rowCls = alcWarn ? 'alc' : holName ? 'hol' : wd===0 ? 'sun' : wd===6 ? 'sat' : '';
+        dayRows.push(`<tr${rowCls?` class="${rowCls}"`:''}>
+          <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${day}</td>
+          <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${weekdayLabel[wd]}</td>
+          <td class="car">${r?escHtml(r.car||''):''}</td>
+          <td class="center">${r&&(r.start_time||r.end_time)?`${r.start_time||'?'}-${r.end_time||'?'}`:''}</td>
+          <td class="site" title="${r&&site?escHtml(site.name):''}">${r&&site?escHtml(site.short||site.name):''}</td>
           <td class="num">${r?(r.distance_km||0):''}</td>
           <td class="num">${r?(r.qty_takkyubin||0):''}</td>
           <td class="num">${r?(r.qty_nekopos||0):''}</td>
@@ -9070,7 +9109,7 @@ async function printMonthlyReportA4() {
         <div class="mr-head">
           <div>
             <div class="mr-title">月報（日報自動集計）</div>
-            <div class="mr-period">${y}年${m}月　${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}</div>
+            <div class="mr-period">${y}年${m}月　${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}${partner?`　協力会社: ${escHtml(partner.name)}`:''}</div>
           </div>
           <div class="mr-company">
             ${escHtml(cAll.name || '株式会社ポーターガーデン')}<br>
@@ -9080,7 +9119,7 @@ async function printMonthlyReportA4() {
         <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ネコポス ${drNeko.toLocaleString()}　チャーター ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
         <table class="mr-table">
           <thead><tr>
-            <th style="width:7%">日</th><th style="width:7%">曜</th><th style="width:13%">走行km</th><th style="width:11%">宅配便</th><th style="width:11%">ネコポス</th><th style="width:11%">チャーター</th><th style="width:15%">Alc前/後</th><th style="width:9%">体調</th><th style="width:16%">状態</th>
+            <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:11%">車番</th><th style="width:11%">稼働時間</th><th style="width:13%">稼働先</th><th style="width:8%">走行km</th><th style="width:8%">宅配便</th><th style="width:8%">ネコポス</th><th style="width:8%">チャーター</th><th style="width:11%">Alc前/後</th><th style="width:6%">体調</th><th style="width:8%">状態</th>
           </tr></thead>
           <tbody>${dayRows.join('')}</tbody>
         </table>
@@ -9103,13 +9142,15 @@ async function printMonthlyReportA4() {
     .mr-period{font-size:12px;color:#555;margin-top:2px}
     .mr-company{text-align:right;font-size:10px;color:#555;line-height:1.5}
     .mr-summary{font-size:10px;color:#333;margin-bottom:6px;padding:4px 6px;background:#f2f2f2;border-radius:3px}
-    table.mr-table{width:100%;border-collapse:collapse;font-size:9.5px}
-    table.mr-table th,table.mr-table td{border:0.5px solid #999;padding:2.5px 4px}
+    table.mr-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.7px}
+    table.mr-table th,table.mr-table td{border:0.5px solid #999;padding:2px 3px}
     table.mr-table th{background:#eee;font-weight:600}
     table.mr-table td.num{text-align:right}
     table.mr-table td.center{text-align:center}
+    table.mr-table td.car,table.mr-table td.site{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
     tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
     tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
+    tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
     tr.alc{background:#fdeaea}
   </style></head><body>
   ${pages.join('')}
