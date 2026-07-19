@@ -1809,7 +1809,7 @@ try {
       <button class="btn sml" onclick="monthRangeShift('mrFrom','mrTo',-1,renderMonthlyReport)" title="前月">◀</button>
       <button class="btn sml" onclick="monthRangeShift('mrFrom','mrTo',1,renderMonthlyReport)" title="翌月">▶</button>
       <button class="btn sml" onclick="exportMonthlyCsv()">⬇ CSV</button>
-      <button class="btn sml" onclick="printMonthlyReportA4()" title="日報を集計した月報をA4縦1枚の一覧表にまとめて印刷します">🖨 印刷（A4一覧）</button>
+      <button class="btn sml" onclick="printMonthlyReportA4()" title="ドライバーごとに1日〜月末までの日めくり表（A4縦1枚）を作成して印刷します">🖨 印刷（ドライバー別）</button>
     </div>
   </div>
 
@@ -9006,123 +9006,113 @@ async function renderMonthlyReport() {
   }
 }
 
-// 月報（日報自動集計）をA4縦1枚に収まる一覧表としてまとめ、印刷用ウィンドウを開く。
-// 画面表示のカードはドライバーごとに折りたたみ式で情報量が多いため、印刷ではその要約だけを
-// 1ドライバー1行の表にして、何名いても目視で全体を見渡せる1枚の書類にする
+// 月報（日報自動集計）を「1日〜月末までの日めくり表」としてドライバーごとに1ページずつまとめ、
+// 印刷用ウィンドウを開く。各ページは対象月の全日数分の行を持ち、日報が無い日は空欄行のまま
+// 印字する（休みとして扱わず、単に空欄で「未提出/非稼働」を表す）。1ドライバー分がA4縦1枚に
+// 収まるよう、列は既存の日別明細テーブルと同じ構成（走行距離・宅配便・ネコポス・チャーター・
+// Alc前後・体調・状態）にとどめ、フォントを小さくして31行+ヘッダーが収まるようにしている
 async function printMonthlyReportA4() {
   const from = document.getElementById('mrFrom')?.value;
-  const to = document.getElementById('mrTo')?.value;
-  if (!from || !to) { alert('対象期間を選択してください'); return; }
+  if (!from) { alert('対象期間を選択してください'); return; }
+  const [y, m] = from.slice(0,7).split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate(); // 対象月の末日（28〜31）
+  const monthStr = `${y}-${String(m).padStart(2,'0')}`;
+  const monthFrom = `${monthStr}-01`;
+  const monthTo = `${monthStr}-${String(lastDay).padStart(2,'0')}`;
 
   let drReports = [];
   try {
-    const {data, error} = await sb.from('daily_reports').select('*').gte('date', from).lte('date', to).order('date');
+    const {data, error} = await sb.from('daily_reports').select('*').gte('date', monthFrom).lte('date', monthTo).order('date');
     if (error) throw error;
     drReports = data || [];
   } catch(e) { alert('日報データの取得に失敗しました: ' + e.message); return; }
 
-  const invMonth = recs.filter(r => r.date && r.date >= from && r.date <= to);
+  const weekdayLabel = ['日','月','火','水','木','金','土'];
+  const cAll = companySettings || {};
 
-  const rows = drvs
+  const pages = drvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
     .map(d => {
       const dCars = d.cars || [];
       const dReports = drReports.filter(r => dCars.some(c => nm(c)===nm(r.car)));
-      if (!dReports.length) return null; // 日報提出がない月はこの一覧では省略（画面のカードは「日報なし」と出すが、A4一覧では空行を並べる意味が薄いため）
-      const drWorkDays = new Set(dReports.map(r=>r.date)).size;
+      if (!dReports.length) return null; // その月の日報が1件もないドライバーは出力対象外
+      const byDate = {};
+      dReports.forEach(r => { byDate[r.date] = r; }); // 同日複数件は最後の1件を優先
+
+      const drWorkDays = dReports.length;
       const drKm  = dReports.reduce((a,r)=>a+(+r.distance_km||0),0);
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
       const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
+      const drChar= dReports.reduce((a,r)=>a+(+r.qty_charter||0),0);
       const drOtherQty=dReports.reduce((a,r)=>a+(+r.qty_other||0),0);
-      const drAlcAlert = dReports.filter(r=>+r.alc_before>=0.15||+r.alc_after>=0.15).length;
 
-      const invRecs = invMonth.filter(r => dCars.some(c=>nm(c)===nm(r.car)));
-      const invDays = new Set(invRecs.map(r=>r.date)).size;
-      const hasDiff = dReports.length>0 && invRecs.length>0 && Math.abs(drWorkDays-invDays)>=2;
+      const dayRows = [];
+      for (let day=1; day<=lastDay; day++) {
+        const dateStr = `${monthStr}-${String(day).padStart(2,'0')}`;
+        const wd = new Date(y, m-1, day).getDay();
+        const r = byDate[dateStr];
+        const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
+        const healthBad = r && (r.health_before==='bad'||r.health_after==='bad');
+        dayRows.push(`<tr${wd===0?' class="sun"':wd===6?' class="sat"':''}${alcWarn?' class="alc"':''}>
+          <td class="center">${day}</td>
+          <td class="center">${weekdayLabel[wd]}</td>
+          <td class="num">${r?(r.distance_km||0):''}</td>
+          <td class="num">${r?(r.qty_takkyubin||0):''}</td>
+          <td class="num">${r?(r.qty_nekopos||0):''}</td>
+          <td class="num">${r?(r.qty_charter||0):''}</td>
+          <td class="center">${r?`${r.alc_before??'—'}/${r.alc_after??'—'}`:''}</td>
+          <td class="center">${r?({good:'良',normal:'普',bad:'不'}[r.health_before||'good']):''}</td>
+          <td class="center">${r&&r.status==='rejected'?'差戻し':''}</td>
+        </tr>`);
+      }
 
-      return { name:d.name, supplierId:d.supplier_id||'', drWorkDays, drKm, drTak, drNeko, drOtherQty, drAlcAlert, hasDiff };
+      return `<div class="mr-page">
+        <div class="mr-head">
+          <div>
+            <div class="mr-title">月報（日報自動集計）</div>
+            <div class="mr-period">${y}年${m}月　${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}</div>
+          </div>
+          <div class="mr-company">
+            ${escHtml(cAll.name || '株式会社ポーターガーデン')}<br>
+            発行日: ${fmtLocalDate(new Date())}
+          </div>
+        </div>
+        <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ネコポス ${drNeko.toLocaleString()}　チャーター ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
+        <table class="mr-table">
+          <thead><tr>
+            <th style="width:7%">日</th><th style="width:7%">曜</th><th style="width:13%">走行km</th><th style="width:11%">宅配便</th><th style="width:11%">ネコポス</th><th style="width:11%">チャーター</th><th style="width:15%">Alc前/後</th><th style="width:9%">体調</th><th style="width:16%">状態</th>
+          </tr></thead>
+          <tbody>${dayRows.join('')}</tbody>
+        </table>
+      </div>`;
     })
     .filter(Boolean);
 
-  if (!rows.length) { alert('対象期間に日報データがありません'); return; }
-
-  const totals = rows.reduce((a,r)=>({
-    workDays:a.workDays+r.drWorkDays, km:a.km+r.drKm, tak:a.tak+r.drTak, neko:a.neko+r.drNeko, other:a.other+r.drOtherQty, alc:a.alc+r.drAlcAlert,
-  }), {workDays:0, km:0, tak:0, neko:0, other:0, alc:0});
-
-  const cAll = companySettings || {};
-  const periodLabel = `${from.replace(/-/g,'/')} 〜 ${to.replace(/-/g,'/')}`;
+  if (!pages.length) { alert('対象月に日報データがありません'); return; }
 
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
-  <title>月報_${from}_${to}</title>
+  <title>月報_${monthStr}</title>
   <style>
-    @page{size:A4 portrait;margin:12mm}
+    @page{size:A4 portrait;margin:10mm}
     *{box-sizing:border-box}
     body{font-family:"Hiragino Sans","Meiryo",sans-serif;color:#222;margin:0}
-    .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
-    .mr-title{font-size:20px;font-weight:700}
-    .mr-period{font-size:12px;color:#555;margin-top:4px}
-    .mr-company{text-align:right;font-size:11px;color:#555;line-height:1.6}
-    .mr-kpi{display:flex;gap:10px;margin-bottom:12px}
-    .mr-kpi-item{flex:1;border:1px solid #ccc;border-radius:4px;padding:6px 8px}
-    .mr-kpi-label{font-size:9px;color:#666}
-    .mr-kpi-val{font-size:15px;font-weight:700}
-    table.mr-table{width:100%;border-collapse:collapse;font-size:10.5px}
-    table.mr-table th,table.mr-table td{border:0.5px solid #999;padding:4px 5px}
+    .mr-page{page-break-after:always}
+    .mr-page:last-child{page-break-after:auto}
+    .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+    .mr-title{font-size:16px;font-weight:700}
+    .mr-period{font-size:12px;color:#555;margin-top:2px}
+    .mr-company{text-align:right;font-size:10px;color:#555;line-height:1.5}
+    .mr-summary{font-size:10px;color:#333;margin-bottom:6px;padding:4px 6px;background:#f2f2f2;border-radius:3px}
+    table.mr-table{width:100%;border-collapse:collapse;font-size:9.5px}
+    table.mr-table th,table.mr-table td{border:0.5px solid #999;padding:2.5px 4px}
     table.mr-table th{background:#eee;font-weight:600}
     table.mr-table td.num{text-align:right}
     table.mr-table td.center{text-align:center}
-    table.mr-table tfoot td{font-weight:700;background:#f5f5f5}
-    tr.alc td{background:#fdeaea}
-    .mr-foot{margin-top:8px;font-size:9px;color:#777}
-    @media print{.mr-noprint{display:none}}
+    tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
+    tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
+    tr.alc{background:#fdeaea}
   </style></head><body>
-  <div class="mr-head">
-    <div>
-      <div class="mr-title">月報（日報自動集計）</div>
-      <div class="mr-period">対象期間: ${periodLabel}</div>
-    </div>
-    <div class="mr-company">
-      ${escHtml(cAll.name || '株式会社ポーターガーデン')}<br>
-      発行日: ${fmtLocalDate(new Date())}
-    </div>
-  </div>
-  <div class="mr-kpi">
-    <div class="mr-kpi-item"><div class="mr-kpi-label">対象ドライバー</div><div class="mr-kpi-val">${rows.length}名</div></div>
-    <div class="mr-kpi-item"><div class="mr-kpi-label">稼働日数計</div><div class="mr-kpi-val">${totals.workDays}日</div></div>
-    <div class="mr-kpi-item"><div class="mr-kpi-label">総走行距離</div><div class="mr-kpi-val">${totals.km.toLocaleString()}km</div></div>
-    <div class="mr-kpi-item"><div class="mr-kpi-label">配送個数計</div><div class="mr-kpi-val">${(totals.tak+totals.neko+totals.other).toLocaleString()}個</div></div>
-    <div class="mr-kpi-item"><div class="mr-kpi-label">🍺 アルコール超過</div><div class="mr-kpi-val" style="color:${totals.alc?'#c0392b':'#222'}">${totals.alc}件</div></div>
-  </div>
-  <table class="mr-table">
-    <thead><tr>
-      <th>ID</th><th>ドライバー名</th><th>稼働日数</th><th>走行距離</th><th>宅配便</th><th>ネコポス</th><th>その他</th><th>配送個数計</th><th>状態</th>
-    </tr></thead>
-    <tbody>
-      ${rows.map(r=>`<tr${r.drAlcAlert?' class="alc"':''}>
-        <td class="center">${escHtml(r.supplierId)||'—'}</td>
-        <td>${escHtml(r.name)}</td>
-        <td class="num">${r.drWorkDays}日</td>
-        <td class="num">${r.drKm.toLocaleString()}km</td>
-        <td class="num">${r.drTak.toLocaleString()}</td>
-        <td class="num">${r.drNeko.toLocaleString()}</td>
-        <td class="num">${r.drOtherQty.toLocaleString()}</td>
-        <td class="num">${(r.drTak+r.drNeko+r.drOtherQty).toLocaleString()}</td>
-        <td class="center">${r.hasDiff?'⚠差異':''}${r.drAlcAlert?' 🚨Alc':''}</td>
-      </tr>`).join('')}
-    </tbody>
-    <tfoot><tr>
-      <td colspan="2">合計</td>
-      <td class="num">${totals.workDays}日</td>
-      <td class="num">${totals.km.toLocaleString()}km</td>
-      <td class="num">${totals.tak.toLocaleString()}</td>
-      <td class="num">${totals.neko.toLocaleString()}</td>
-      <td class="num">${totals.other.toLocaleString()}</td>
-      <td class="num">${(totals.tak+totals.neko+totals.other).toLocaleString()}</td>
-      <td></td>
-    </tr></tfoot>
-  </table>
-  <div class="mr-foot">⚠差異＝日報の稼働日数と請求明細書の稼働日数が2日以上ずれている（詳細は画面の月報タブで確認してください）</div>
+  ${pages.join('')}
   <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
 
