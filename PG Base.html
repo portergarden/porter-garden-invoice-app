@@ -5256,8 +5256,10 @@ async function viewPartnerDoc(filePath){
   // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
   // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
   // 取得後にそのタブへ遷移させる
-  const win = window.open('', '_blank', 'noopener');
+  const win = window.open('', '_blank');
   if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
+  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
+  try { win.opener = null; } catch(_) {}
   try {
     const {data, error} = await sb.storage.from('partner-docs').createSignedUrl(filePath, 3600);
     if (error) throw error;
@@ -6374,7 +6376,7 @@ function bulkCreatePaySlipPdf() {
   if (!checked.length) { alert('ドライバーを選択してください'); return; }
   const groups = checked.map(drvId => window._aggPayGroups?.[String(drvId)]?.rows).filter(rows=>rows && rows.length);
   if (!groups.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   writeStatementWindow(win, () => buildStatementHtmlMulti('payment', groups));
 }
@@ -6508,7 +6510,7 @@ function printLeaseStatement(company) {
   </div>
   <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!writeStatementWindow(win, () => html)) return;
   addLog('リース代明細書作成', `${company} ${month} ${itemRows.length}台 ${yen(total)}`);
 }
@@ -6560,7 +6562,7 @@ async function bulkCreatePaySlipPdfWithCover() {
   // 移ってしまい、宛先モーダルが元のタブに隠れたまま気付かれず応答待ちで止まって見える
   // （実質「発行できない」ように見える）ため、開いた直後に元のタブへフォーカスを戻し、
   // 宛先確定後にその開いたタブへ内容を書き込んで表に出す
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   window.focus();
   const addressee = await openKanAte(suggested);
@@ -7392,7 +7394,7 @@ CREATE TABLE payment_slips (
 );
 ALTER TABLE payment_slips ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow all" ON payment_slips FOR ALL USING (true) WITH CHECK (true);`;
-  const w = window.open('','_blank','width=640,height=320,noopener');
+  const w = window.open('','_blank','width=640,height=320');
   w.document.write(`<html><body style="font-family:monospace;padding:16px;background:#1e1e1e;color:#d4d4d4"><pre>${sql}</pre><button onclick="navigator.clipboard.writeText(document.querySelector('pre').innerText).then(()=>alert('コピーしました'))">コピー</button></body></html>`);
 }
 
@@ -8276,7 +8278,7 @@ CREATE TABLE IF NOT EXISTS daily_reports (
 );
 ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all" ON daily_reports FOR ALL USING (true) WITH CHECK (true);`;
-  const win = window.open('','_blank','width=700,height=500,noopener');
+  const win = window.open('','_blank','width=700,height=500');
   win.document.write(`<html><head><title>daily_reports SQL</title></head><body style="font-family:monospace;padding:20px"><h3>SupabaseのSQL Editorで実行してください</h3><pre style="background:#f5f5f5;padding:16px;border-radius:6px;overflow:auto;font-size:12px">${sql}</pre><button onclick="navigator.clipboard.writeText(\`${sql.replace(/`/g,"'")}\`)">コピー</button></body></html>`);
 }
 
@@ -8581,16 +8583,20 @@ function buildDailyReportsPrintDoc(reports) {
 function printDailyReports() {
   const list = filteredDailyReportsForExport();
   if (!list.length) { alert('対象の日報がありません'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
+  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
+  try { win.opener = null; } catch(_) {}
   win.document.open(); win.document.write(buildDailyReportsPrintDoc(list)); win.document.close();
   addLog('日報印刷', `${list.length}件`);
 }
 // ドライバーポータル: 現在表示中の月の自分の日報を印刷（loadDriverDailyListがdailyReportsに反映済み）
 async function printDriverDailyReports() {
   if (!dailyReports.length) { alert('対象の日報がありません'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
+  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
+  try { win.opener = null; } catch(_) {}
   // 取引先名の解決用（ドライバーはclientsを読めないためRPC経由の候補が必要）。未取得なら先に読み込む
   if (me?.role === 'driver' && driverClientNames === null) await populateDriverCliList();
   win.document.open(); win.document.write(buildDailyReportsPrintDoc(dailyReports)); win.document.close();
@@ -9090,7 +9096,7 @@ async function printMonthlyReportA4() {
   // await(データ取得)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
   // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
   // データが揃ってからそのタブへ内容を書き込む
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
 
   let drReports = [];
@@ -9529,8 +9535,10 @@ async function viewDriverDoc(drvId, docType) {
   // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
   // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
   // 取得後にそのタブへ遷移させる
-  const win = window.open('', '_blank', 'noopener');
+  const win = window.open('', '_blank');
   if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
+  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
+  try { win.opener = null; } catch(_) {}
   try {
     const {data, error} = await sb.storage.from('driver-docs').createSignedUrl(doc.file_path, 3600);
     if (error) throw error;
@@ -10077,8 +10085,10 @@ async function openStmtStatusM() {
 // 直接window.open(signedUrl)すると生のソースがそのまま表示され文字化けもするため、
 // fetchで本文を取得してから自分でウィンドウに書き込む（既存のPDF表示と同じ方式）
 async function viewStatementFile(path) {
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'ter'); return; }
+  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
+  try { win.opener = null; } catch(_) {}
   try {
     const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
     if (error) throw error;
@@ -10119,8 +10129,10 @@ async function loadDriverStatements() {
   } catch(e) { el.innerHTML = `<span style="color:var(--red-text)">読み込みエラー: ${e.message}</span>`; }
 }
 async function openDriverStatement(id, path, isRead) {
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'ter'); return; }
+  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
+  try { win.opener = null; } catch(_) {}
   try {
     const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
     if (error) throw error;
@@ -10238,7 +10250,7 @@ async function printDriverMonthlyReportA4() {
   // await(データ取得)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
   // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
   // データが揃ってからそのタブへ内容を書き込む
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
 
   let dReports = [];
@@ -10593,8 +10605,10 @@ async function openBoardAttachment(path) {
   // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
   // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
   // 取得後にそのタブへ遷移させる
-  const win = window.open('', '_blank', 'noopener');
+  const win = window.open('', '_blank');
   if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
+  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
+  try { win.opener = null; } catch(_) {}
   try {
     const { data, error } = await sb.storage.from('board-attachments').createSignedUrl(path, 3600);
     if (error) throw error;
@@ -10643,7 +10657,7 @@ CREATE TABLE IF NOT EXISTS payment_schedules (
 );
 ALTER TABLE payment_schedules ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all" ON payment_schedules FOR ALL USING (true) WITH CHECK (true);`;
-  const win = window.open('','_blank','width=680,height=420,noopener');
+  const win = window.open('','_blank','width=680,height=420');
   win.document.write('<html><body style="font-family:monospace;padding:20px"><h3>Supabase SQL Editorで実行してください</h3><pre style="background:#f5f5f5;padding:12px;font-size:12px;overflow:auto">' + sql + '</pre><button onclick="navigator.clipboard.writeText(document.querySelector(\'pre\').textContent)">コピー</button></body></html>');
 }
 function showBoardSql() {
@@ -10667,7 +10681,7 @@ CREATE POLICY "board_posts_select" ON board_posts FOR SELECT TO authenticated US
 CREATE POLICY "board_posts_insert" ON board_posts FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 CREATE POLICY "board_posts_update" ON board_posts FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 CREATE POLICY "board_posts_delete" ON board_posts FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));`;
-  const win = window.open('','_blank','width=660,height=400,noopener');
+  const win = window.open('','_blank','width=660,height=400');
   win.document.write(`<html><body style="font-family:monospace;padding:20px"><h3>SQL Editor で実行</h3><pre style="background:#f5f5f5;padding:12px;font-size:12px">${sql}</pre><button onclick="navigator.clipboard.writeText(\`${sql}\`)">コピー</button></body></html>`);
 }
 
@@ -11344,9 +11358,15 @@ function statementDocStyle() {
 // window.open()したポップアップへ帳票HTMLを書き込む共通処理。
 // document.write中に例外が発生しても画面が無反応にならないよう、必ず利用者に見える形でエラーを通知する
 // （htmlBuilderFnは遅延評価にして、構築時の例外もここで一括して捕捉する）
+// 注意: window.open()の第3引数に'noopener'を付けてはいけない。noopener指定はタブが開いても
+// 戻り値がnullになる仕様のため、ここへwinを渡せず「ポップアップがブロックされました」と
+// 誤判定して発行不能になる（実際に全PDFボタンが発行できなくなる障害の原因だった）。
+// 元のタブとの分離（閉じた後にボタンが効かなくなる問題の対策）は、参照を受け取った上で
+// opener切断（win.opener=null）によって行う
 function writeStatementWindow(win, htmlBuilderFn) {
   try {
     if (!win || win.closed) throw new Error('PDF表示用のウィンドウが閉じられました。ポップアップブロックの設定をご確認のうえ、再度お試しください');
+    try { win.opener = null; } catch(_) {}
     const html = htmlBuilderFn();
     win.document.open();
     win.document.write(html);
@@ -11506,7 +11526,7 @@ function printPnlPdf(drvId, month, explicitRows) {
   if (!drv) return;
   const monthRecs = explicitRows || recs.filter(r=>r.date?.startsWith(month)&&(drv.cars||[]).some(c=>nm(c)===nm(r.car)));
   if (!monthRecs.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   writeStatementWindow(win, () => buildStatementHtml('payment', monthRecs));
 }
@@ -11517,7 +11537,7 @@ function printInvoicePdf(cliId, month, explicitRows) {
   if (!cli) return;
   const monthRecs = explicitRows || recs.filter(r=>r.date?.startsWith(month)&&r.cli===cliId);
   if (!monthRecs.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   writeStatementWindow(win, () => buildStatementHtml('billing', monthRecs));
 }
@@ -12926,7 +12946,7 @@ function bulkCreateInvoicePdf() {
   if (!checked.length) { alert('取引先を選択してください'); return; }
   const groups = checked.map(cliId => Object.values(window._aggInvGroups||{}).find(g=>g.cli===cliId)?.rows).filter(rows=>rows && rows.length);
   if (!groups.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   writeStatementWindow(win, () => buildStatementHtmlMulti('billing', groups));
 }
@@ -12937,7 +12957,7 @@ function bulkCreateInvoicePdfWithCover() {
   if (!checked.length) { alert('取引先を選択してください'); return; }
   const groups = checked.map(cliId => Object.values(window._aggInvGroups||{}).find(g=>g.cli===cliId)?.rows).filter(rows=>rows && rows.length);
   if (!groups.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   if (!writeStatementWindow(win, () => buildStatementHtmlMultiWithCover('billing', groups, null))) return;
   addLog('PDF出力', `請求明細書（鑑形式） 選択${checked.length}件`);
@@ -13641,7 +13661,7 @@ CREATE TABLE IF NOT EXISTS file_mappings (
 ALTER TABLE file_mappings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all" ON file_mappings FOR ALL USING (true) WITH CHECK (true);`;
 
-  const win = window.open('','_blank','width=720,height=520,noopener');
+  const win = window.open('','_blank','width=720,height=520');
   win.document.write(`<html><head><meta charset="UTF-8"><title>SQL</title></head>
     <body style="font-family:monospace;padding:20px">
     <h3>Supabase SQL Editorで実行してください</h3>
@@ -14005,7 +14025,7 @@ function showPriceMasterSql() {
 );
 ALTER TABLE price_master ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all" ON price_master FOR ALL USING (true) WITH CHECK (true);`;
-  const win = window.open('','_blank','width=680,height=400,noopener');
+  const win = window.open('','_blank','width=680,height=400');
   win.document.write(`<html><body style="font-family:monospace;padding:20px"><h3>price_master テーブル作成SQL</h3><pre style="background:#f5f5f5;padding:12px;font-size:12px">${sql}</pre><button onclick="navigator.clipboard.writeText(document.querySelector('pre').textContent).then(()=>alert('コピーしました'))">コピー</button></body></html>`);
 }
 
@@ -15251,7 +15271,7 @@ async function importBankCsvRows(){
 function printAllPnlPdf2() {
   const groups = Object.values(window._aggPayGroups || {}).map(g => g.rows).filter(rows => rows.length);
   if (!groups.length) { showT('対象データがありません','twa'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   writeStatementWindow(win, () => buildStatementHtmlMulti('payment', groups));
 }
@@ -15260,7 +15280,7 @@ function printAllPnlPdf2() {
 function printAllInvPdf() {
   const groups = Object.values(window._aggInvGroups || {}).map(g => g.rows).filter(rows => rows.length);
   if (!groups.length) { showT('対象データがありません','twa'); return; }
-  const win = window.open('','_blank','noopener');
+  const win = window.open('','_blank');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   writeStatementWindow(win, () => buildStatementHtmlMulti('billing', groups));
 }
