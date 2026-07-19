@@ -6553,14 +6553,20 @@ async function bulkCreatePaySlipPdfWithCover() {
   if (!groups.length) { alert('対象データがありません'); return; }
   const companies = [...new Set(groups.map(rows => recDrv(rows[0])?.company).filter(Boolean))];
   const suggested = companies.length === 1 ? companies[0] : '';
-  // 宛先確定モーダルを先に表示し、確定後にその場でウィンドウを開く。先にウィンドウを開くと
-  // 新規タブへフォーカスが移ってしまい、宛先モーダルが元のタブに隠れたまま気付かれず
-  // 応答待ちで止まって見える（実質「発行できない」ように見える）ため、この順序にする
-  const addressee = await openKanAte(suggested);
-  if (addressee === undefined) return;
+  // クリック直後（ユーザー操作の一連の流れ）でなくなってからwindow.open()すると、
+  // ブラウザにポップアップとしてブロックされる（宛先確定モーダルでの入力待ちをawaitで
+  // 挟んだ後に開くと発生。「ポップアップがブロックされました」報告の原因だった）。
+  // そのためクリック時に空タブを先に開いておく。ただし先に開くと新規タブへフォーカスが
+  // 移ってしまい、宛先モーダルが元のタブに隠れたまま気付かれず応答待ちで止まって見える
+  // （実質「発行できない」ように見える）ため、開いた直後に元のタブへフォーカスを戻し、
+  // 宛先確定後にその開いたタブへ内容を書き込んで表に出す
   const win = window.open('','_blank','noopener');
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
+  window.focus();
+  const addressee = await openKanAte(suggested);
+  if (addressee === undefined) { win.close(); return; }
   if (!writeStatementWindow(win, () => buildStatementHtmlMultiWithCover('payment', groups, addressee))) return;
+  win.focus();
   addLog('PDF出力', `支払明細書（鑑形式） 選択${checked.length}件${addressee?' 宛て:'+addressee.name:''}`);
 }
 
