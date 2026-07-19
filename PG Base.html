@@ -2619,6 +2619,7 @@ try {
       <button type="button" class="mtab-btn" data-tab="note" onclick="switchModalTab('mPartner','note')">備考</button>
     </div>
     <div class="mtab-panel on" data-tab="basic">
+      <div class="fld"><label>協力会社ID</label><input type="text" id="pnCode" placeholder="自動採番"></div>
       <div class="g2">
         <div class="fld"><label>会社名</label><input type="text" id="pnName" placeholder="例: 〇〇運送"></div>
         <div class="fld"><label>略称（任意）</label><input type="text" id="pnShort" placeholder="例: 〇〇運送"></div>
@@ -2631,6 +2632,7 @@ try {
         <div class="fld"><label>郵便番号（任意）</label><input type="text" id="pnZip" placeholder="例: 123-4567"></div>
         <div class="fld"><label>住所（任意）</label><input type="text" id="pnAddress"></div>
       </div>
+      <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pnIsLease" style="width:auto"> 車両リース会社（ドライバーの車両リース代の支払先）として使う<br><span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:22px">ドライバー登録の「リース会社」プルダウンの候補に表示され、リース会社別集計から明細書を発行できます</span></label></div>
     </div>
     <div class="mtab-panel" data-tab="payout">
       <div class="fld"><label>振込先銀行口座（任意）</label><input type="text" id="pnBank" placeholder="〇〇銀行 〇〇支店 普通 1234567"></div>
@@ -3471,7 +3473,7 @@ function buildStatementSheetData(side, rows) {
     ];
     var summary = { taxed: taxedTotal, taxOnly: taxAmt, nonTax, oth: fbAll.oth, grand: grandTotal };
   } else {
-    const d = recDrv(sortedRows[0]);
+    const d = drvPay(recDrv(sortedRows[0])); // 協力会社フォールバック（振込先・登録番号・手数料率）を適用
     groupId = d?.id;
     headLabel = '支払明細書';
     docPrefix = 'PS';
@@ -4747,27 +4749,43 @@ async function onDrvPartnerSelChange(){
     addLog('協力会社追加', name);
   } catch(e) { showT('協力会社の追加に失敗しました: '+e.message, 'ter'); sel.value = ''; }
 }
-// リース会社をプルダウン化: 既存ドライバーで使われているリース会社名から選ぶ（clients側にマスタは持たない軽量実装）。
-// 一覧に無い会社は「＋ 新しいリース会社を追加...」から都度追加する
+// リース会社をプルダウン化: 協力会社管理で「車両リース会社」として登録した会社を候補に出す。
+// 既存ドライバーの入力値（マスタ未登録の旧データ）も選択肢に残して互換を保つ。
+// 一覧に無い会社は「＋ 新しいリース会社を追加...」から協力会社マスタへその場で登録する
 function populateLeaseCompanyList(selected){
   const sel = document.getElementById('dLeaseCompany');
   if (!sel) return;
-  const companies = [...new Set(drvs.map(d=>d.lease_company).filter(Boolean))].sort();
+  const fromMaster = partnerCompanies.filter(p=>p.is_lease).map(p=>p.name);
+  const fromDrivers = drvs.map(d=>d.lease_company).filter(Boolean);
+  const companies = [...new Set([...fromMaster, ...fromDrivers])].sort((a,b)=>nm(a).localeCompare(nm(b),'ja'));
   if (selected && !companies.includes(selected)) companies.push(selected);
   sel.innerHTML = '<option value="">（未設定）</option>'
     + companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')
     + '<option value="__new__">＋ 新しいリース会社を追加...</option>';
   sel.value = selected || '';
 }
-function onLeaseCompanySelChange(){
+async function onLeaseCompanySelChange(){
   const sel = document.getElementById('dLeaseCompany');
   if (!sel || sel.value !== '__new__') return;
   const name = (prompt('新しいリース会社名を入力してください:')||'').trim();
   if (!name) { sel.value = ''; return; }
-  const opt = document.createElement('option');
-  opt.value = name; opt.textContent = name;
-  sel.insertBefore(opt, sel.lastElementChild);
-  sel.value = name;
+  try {
+    // 既に協力会社として登録済みの会社名ならリース会社フラグだけ立てる
+    const existing = partnerCompanies.find(p=>nm(p.name)===nm(name));
+    if (existing) {
+      if (!existing.is_lease) {
+        const {data, error} = await sb.from('partner_companies').update({is_lease:true}).eq('id', existing.id).select().single();
+        if (error) throw error;
+        existing.is_lease = true;
+      }
+    } else {
+      const {data, error} = await sb.from('partner_companies').insert({name, is_lease:true, partner_no: nextIdFor(partnerCompanies,'partner_no')}).select().single();
+      if (error) throw error;
+      partnerCompanies.push(data);
+      addLog('協力会社追加', `${name}（リース会社）`);
+    }
+    populateLeaseCompanyList(name);
+  } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
 function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
@@ -4952,7 +4970,20 @@ function renderCli(){
     grid.className = '';
     grid.style.display = 'block';
     grid.style.padding = '10px 14px';
-    grid.innerHTML=sortedCli.map(c=>{
+    const cliHeaderRow = `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 12px 6px;gap:12px;font-size:10.5px;color:var(--text2);font-weight:600">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+        <div style="width:26px;flex-shrink:0;"></div>
+        <div style="width:80px;flex-shrink:0;">ID</div>
+        <div style="width:135px;flex-shrink:0;">取引先名</div>
+        <div style="width:85px;flex-shrink:0;">締日</div>
+        <div style="width:90px;flex-shrink:0;">手数料</div>
+        <div style="width:100px;flex-shrink:0;">電話番号</div>
+        <div style="width:65px;text-align:right;flex-shrink:0;">請求件数</div>
+        <div style="width:95px;text-align:right;flex-shrink:0;">請求合計</div>
+      </div>
+      <div style="width:52px;flex-shrink:0;"></div>
+    </div>`;
+    grid.innerHTML=cliHeaderRow+sortedCli.map(c=>{
       const ini=(c.short||c.name||'?').slice(0,2);
       const cnt=recs.filter(r=>r.cli===c.id).length;
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
@@ -5050,7 +5081,13 @@ function renderPartners(){
   const q = nm(document.getElementById('partnerSearch')?.value || '');
   const filtered = q ? partnerCompanies.filter(p=>nm(p.name).includes(q)||nm(p.short||'').includes(q)) : partnerCompanies;
   if (q && !filtered.length) { grid.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">該当する協力会社が見つかりません</div>`; return; }
-  const sorted = [...filtered].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja'));
+  // 他の管理タブと同じくID（協力会社ID）の数値順で並べる
+  const sorted = [...filtered].sort((a,b) => {
+    const idA = a.partner_no ? parseInt(a.partner_no,10) || 999999 : 999999;
+    const idB = b.partner_no ? parseInt(b.partner_no,10) || 999999 : 999999;
+    return idA - idB;
+  });
+  const leaseBadge = p => p.is_lease ? ' <span title="車両リース会社" style="font-size:10.5px;font-weight:500;padding:1px 5px;background:var(--amber-bg);color:var(--amber-text);border-radius:99px">🚗 リース</span>' : '';
 
   if (partnerViewMode === 'card') {
     grid.className = 'cardgrid';
@@ -5067,7 +5104,8 @@ function renderPartners(){
             ${canE ? `<button class="ibtn" onclick="editPartner(${p.id})">✎</button><button class="ibtn" onclick="delPartner(${p.id})">🗑</button>` : ''}
           </div>
         </div>
-        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${escHtml(p.name)}</div>
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${escHtml(p.name)}${leaseBadge(p)}</div>
+        ${p.partner_no?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">協力会社ID: ${escHtml(p.partner_no)}</div>`:''}
         ${(p.zip||p.address) ? `<div style="font-size:11.5px;color:var(--text2)">${p.zip?`〒${escHtml(p.zip)} `:''}${escHtml(p.address||'')}</div>` : ''}
         ${p.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${escHtml(p.person)}</div>`:''}
         ${p.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${escHtml(p.tel)}</div>`:'<div style="margin-bottom:5px"></div>'}
@@ -5081,17 +5119,30 @@ function renderPartners(){
     grid.className = '';
     grid.style.display = 'block';
     grid.style.padding = '10px 14px';
-    grid.innerHTML = sorted.map(p => {
+    const headerRow = `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 12px 6px;gap:12px;font-size:10.5px;color:var(--text2);font-weight:600">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+        <div style="width:26px;flex-shrink:0;"></div>
+        <div style="width:60px;flex-shrink:0;">ID</div>
+        <div style="width:150px;flex-shrink:0;">会社名</div>
+        <div style="width:150px;flex-shrink:0;">入金（手数料）</div>
+        <div style="width:150px;flex-shrink:0;">支払（手数料）</div>
+        <div style="width:100px;flex-shrink:0;">電話番号</div>
+        <div style="flex:1;min-width:0;">供給ドライバー</div>
+      </div>
+      <div style="width:76px;flex-shrink:0;"></div>
+    </div>`;
+    grid.innerHTML = headerRow + sorted.map(p => {
       const ini = (p.short||p.name||'?').slice(0,2);
       const suppliedDrvs = drvs.filter(d=>d.partner_id===p.id);
       return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
-          <div style="width:150px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${escHtml(p.name)}</div>
-          <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
-          <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">支払:${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
+          <div style="width:60px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${p.partner_no ? 'ID: '+escHtml(p.partner_no) : 'ID: —'}</div>
+          <div style="width:150px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}</div>
+          <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
+          <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
-          <div style="flex:1;min-width:0;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(suppliedDrvs.map(d=>d.name).join('、'))}">供給:${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
+          <div style="flex:1;min-width:0;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(suppliedDrvs.map(d=>d.name).join('、'))}">${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
         </div>
         <div style="display:flex;gap:1px;flex-shrink:0;">
           <button class="ibtn" title="添付書類" onclick="openPartnerDocsM(${p.id})">📄</button>
@@ -5105,6 +5156,8 @@ function renderPartners(){
 function openPartnerM(){
   switchModalTab('mPartner','basic'); ePartnerId=null;
   ['pnName','pnShort','pnPerson','pnTel','pnZip','pnAddress','pnBank','pnInvoiceNo','pnNote','pnFeeRate','pnPayOutFeeRate'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('pnCode').value=nextIdFor(partnerCompanies,'partner_no');
+  document.getElementById('pnIsLease').checked=false;
   document.getElementById('pnPayOutMonthOffset').value='2';
   document.getElementById('pnPayOutDay').value='end';
   document.getElementById('pnPayMonthOffset').value='1';
@@ -5115,6 +5168,8 @@ function openPartnerM(){
 function editPartner(id){
   const p = partnerCompanies.find(x=>x.id===id); if (!p) return;
   switchModalTab('mPartner','basic'); ePartnerId=id;
+  document.getElementById('pnCode').value=p.partner_no||'';
+  document.getElementById('pnIsLease').checked=!!p.is_lease;
   document.getElementById('pnName').value=p.name;
   document.getElementById('pnShort').value=p.short||'';
   document.getElementById('pnPerson').value=p.person||'';
@@ -5136,10 +5191,17 @@ function editPartner(id){
 async function savePartner(){
   const name = document.getElementById('pnName').value.trim();
   if (!name) { alert('会社名は必須です'); return; }
+  const codeVal = document.getElementById('pnCode').value.trim();
+  if (codeVal) {
+    const dup = partnerCompanies.find(p=>p.partner_no===codeVal && p.id!==ePartnerId);
+    if (dup) { alert(`協力会社ID「${codeVal}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`); return; }
+  }
   const feeRateVal = document.getElementById('pnFeeRate').value;
   const payOutFeeRateVal = document.getElementById('pnPayOutFeeRate').value;
   const obj = {
     name,
+    partner_no: codeVal||null,
+    is_lease: document.getElementById('pnIsLease').checked,
     short: document.getElementById('pnShort').value.trim()||null,
     person: document.getElementById('pnPerson').value.trim()||null,
     tel: document.getElementById('pnTel').value.trim()||null,
@@ -5165,12 +5227,21 @@ async function savePartner(){
     }
     if (error) throw error;
     if (ePartnerId !== null) {
+      const prevName = partnerCompanies.find(x=>x.id===ePartnerId)?.name;
       const idx = partnerCompanies.findIndex(x=>x.id===ePartnerId); if (idx>=0) partnerCompanies[idx]=data;
       // 会社名が変わった場合、供給ドライバー側のcompanyテキスト（表示・集計用の複製）も追随させる
       const linkedDrvs = drvs.filter(d=>d.partner_id===ePartnerId);
       if (linkedDrvs.length) {
         const { error: syncErr } = await sb.from('drivers').update({ company: data.name }).eq('partner_id', ePartnerId);
         if (!syncErr) linkedDrvs.forEach(d=>{ d.company = data.name; });
+      }
+      // リース会社名の変更も、ドライバー側のリース会社テキスト（名前一致で紐づく）に追随させる
+      if (prevName && prevName !== data.name) {
+        const leaseDrvs = drvs.filter(d=>d.lease_company && nm(d.lease_company)===nm(prevName));
+        if (leaseDrvs.length) {
+          const { error: leaseErr } = await sb.from('drivers').update({ lease_company: data.name }).eq('lease_company', prevName);
+          if (!leaseErr) leaseDrvs.forEach(d=>{ d.lease_company = data.name; });
+        }
       }
       addLog('協力会社編集', name);
     } else {
@@ -5998,7 +6069,19 @@ function renderDrv() {
     grid.style.display = 'block';
     grid.style.padding = '10px 14px';
 
-    grid.innerHTML = sortedDrvs.map(d => {
+    const drvHeaderRow = `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 12px 6px;gap:12px;font-size:10.5px;color:var(--text2);font-weight:600">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+        <div style="width:26px;flex-shrink:0;"></div>
+        <div style="width:80px;flex-shrink:0;">ID</div>
+        <div style="width:115px;flex-shrink:0;">ドライバー名</div>
+        <div style="flex:1;min-width:100px;">担当車番</div>
+        <div style="width:100px;flex-shrink:0;">電話番号</div>
+        <div style="width:170px;flex-shrink:0;">協力会社</div>
+        <div style="width:70px;text-align:right;flex-shrink:0;">請求件数</div>
+      </div>
+      <div style="width:130px;flex-shrink:0;"></div>
+    </div>`;
+    grid.innerHTML = drvHeaderRow + sortedDrvs.map(d => {
       const ini = (d.name || '').replace(/\s/g, '').slice(-2) || '?';
       const cnt = recs.filter(r => (d.cars || []).some(c => nm(c) === nm(r.car))).length;
 
@@ -6032,6 +6115,7 @@ let paySourceMode = 'recs';
 
 // 支払明細書CSV（明細一覧タブ・集計タブ共通）の1行分を組み立てる
 function buildPayCsvRow(r, d, payDate, idx) {
+  d = drvPay(d); // 協力会社フォールバック（手数料率など）を適用
   const cli = clients.find(c => c.id === r.cli);
   const cliName = cli ? (cli.short || cli.name) : '';
   const detail = [cliName, r.note].filter(Boolean).join(' ');
@@ -6179,7 +6263,7 @@ function runAggPay() {
     return na - nb;
   });
   const rowsHtml = sortedPayEntries.map(([drvId,g]) => {
-    const d = g.drv;
+    const d = drvPay(g.drv); // 協力会社フォールバック（手数料率など）を適用し、明細書と集計表示を一致させる
     const rows = g.rows;
     const cnt = rows.length;
     const grossAll = rows.reduce((a,r)=>a+subBySide(r,'payment'),0); // 全明細の税別ベース額（非課税分を含む）
@@ -6406,18 +6490,98 @@ function renderLeaseAggBody(groups) {
       <th style="padding:6px 8px">リース会社</th>
       <th style="padding:6px 8px;text-align:right">台数</th>
       <th style="padding:6px 8px;text-align:right">合計金額</th>
+      <th style="padding:6px 8px"></th>
     </tr></thead>
-    <tbody>${rows.map(([name,v])=>`<tr style="border-bottom:0.5px solid var(--border)">
-      <td style="padding:6px 8px" title="${escHtml(v.drivers.join('、'))}">${escHtml(name)}</td>
+    <tbody>${rows.map(([name,v])=>{
+      const registered = name!=='未設定' && partnerCompanies.some(p=>p.is_lease && nm(p.name)===nm(name));
+      return `<tr style="border-bottom:0.5px solid var(--border)">
+      <td style="padding:6px 8px" title="${escHtml(v.drivers.join('、'))}">${escHtml(name)}${registered?'':(name!=='未設定'?' <span style="font-size:10px;color:var(--amber-text)" title="協力会社管理でリース会社として未登録のため、明細書に住所などが自動記載されません">⚠未登録</span>':'')}</td>
       <td style="padding:6px 8px;text-align:right">${v.drivers.length}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:500">${yen(v.total)}</td>
-    </tr>`).join('')}</tbody>
+      <td style="padding:6px 8px;text-align:center">${name!=='未設定'?`<button class="btn sml" onclick="printLeaseStatement('${escHtml(name).replace(/'/g,"\\'")}')" title="このリース会社宛の車両リース代明細書（PDF印刷用）を作成します">📄 明細書</button>`:''}</td>
+    </tr>`;}).join('')}</tbody>
     <tfoot><tr style="font-weight:600;border-top:1px solid var(--border)">
       <td style="padding:6px 8px">合計</td>
       <td style="padding:6px 8px;text-align:right">${grandCnt}</td>
       <td style="padding:6px 8px;text-align:right">${yen(grandTotal)}</td>
+      <td></td>
     </tr></tfoot>
   </table>`;
+}
+
+// リース会社宛の車両リース代明細書（印刷用PDF）を作成する。
+// 集計中の支払データ（_aggPayGroups）から該当リース会社のドライバーを抽出し、
+// 協力会社管理で「車両リース会社」登録済みなら住所・担当者などを宛先に自動記載する
+function printLeaseStatement(company) {
+  const groups = window._aggPayGroups || {};
+  const entries = Object.values(groups).filter(g => (g.drv.lease_company||'') && nm(g.drv.lease_company) === nm(company));
+  if (!entries.length) { alert('対象データがありません'); return; }
+  const p = partnerCompanies.find(x => nm(x.name) === nm(company)) || null;
+  const from = document.getElementById('aggPayFrom')?.value || '';
+  const to = document.getElementById('aggPayTo')?.value || '';
+  const periodLabel = (from||to) ? `対象期間: ${from.replace(/-/g,'/')} 〜 ${to.replace(/-/g,'/')}` : '';
+  const month = from.slice(0,7);
+  const itemRows = entries
+    .sort((a,b)=> (parseInt(a.drv.supplier_id,10)||999999) - (parseInt(b.drv.supplier_id,10)||999999))
+    .map((g,i) => {
+      const cars = (g.drv.cars||[]).join('、') || '—';
+      return { no:i+1, name:g.drv.name, cars, amt: Math.abs(g.drv.vehicle_rental ?? -30000) };
+    });
+  const total = itemRows.reduce((s,it)=>s+it.amt,0);
+  const cAll = companySettings || {};
+  const companyLines = [
+    cAll.name || '株式会社ポーターガーデン',
+    ...formatCompanyAddressLines(cAll),
+    cAll.tel ? 'TEL '+cAll.tel : '',
+    cAll.reg_no ? '登録番号 '+cAll.reg_no : '',
+  ].filter(Boolean);
+  const recipientMeta = p ? [
+    [p.zip?`〒${p.zip}`:'', p.address||''].filter(Boolean).join(' '),
+    [p.person?`ご担当: ${p.person}`:'', p.tel?`TEL ${p.tel}`:''].filter(Boolean).join('　'),
+  ].filter(Boolean) : [];
+  const docNo = `LS-${month.replace('-','')}-${String(p?.partner_no||'0').padStart(3,'0')}`;
+  const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+  <title>車両リース代明細書_${escHtml(company)}御中_${month}</title>
+  <style>${getDocCss()}${statementDocStyle()}</style></head><body>
+  <div class="doc">
+    <div class="doc-head">
+      <div class="doc-no">No. ${docNo}</div>
+      <div class="doc-title">車両リース代明細書</div>
+      <div class="doc-date">${getStatementIssueDate()}</div>
+    </div>
+    <div class="doc-parties">
+      <div class="party-to">
+        <div class="name">${escHtml(company)}　御中</div>
+        <div class="meta">${recipientMeta.map(escHtml).join('<br>')}</div>
+      </div>
+      <div class="party-from">
+        <div>
+          <div class="name">${escHtml(companyLines[0])}</div>
+          <div class="meta">${companyLines.slice(1).map(escHtml).join('<br>')}</div>
+        </div>
+        ${cAll.stamp_image ? `<div class="hanko hanko-img"><img src="${cAll.stamp_image}"></div>` : `<div class="hanko"><span style="font-size:21px">印</span></div>`}
+      </div>
+    </div>
+    <div class="period-bar"><span>${escHtml(periodLabel)}</span><span>対象月: <b>${month||'—'}</b></span></div>
+    <table class="items">
+      <thead><tr>
+        <th style="width:8%">No</th><th style="width:30%">ドライバー名</th><th style="width:42%">車両番号</th><th class="num" style="width:20%">リース料（月額）</th>
+      </tr></thead>
+      <tbody>${itemRows.map(it=>`<tr>
+        <td>${it.no}</td><td>${escHtml(it.name)}</td><td>${escHtml(it.cars)}</td><td class="num">${yen(it.amt)}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    <table class="summary-table" style="margin-top:10px">
+      <tr><th>台数</th><th class="hl">支払合計金額</th></tr>
+      <tr><td>${itemRows.length}台</td><td class="hl">${yen(total)}</td></tr>
+    </table>
+    ${p?.bank ? `<div style="font-size:11px;margin-top:10px">お支払先: ${escHtml(p.bank)}</div>` : ''}
+  </div>
+  <script>window.onload=()=>window.print();<\/script>
+  </body></html>`;
+  const win = window.open('','_blank');
+  if (!writeStatementWindow(win, () => html)) return;
+  addLog('リース代明細書作成', `${company} ${month} ${itemRows.length}台 ${yen(total)}`);
 }
 
 // 「出力形式」セレクト（通常／鑑）に応じてExcel・PDFボタンの動作を振り分ける（ボタン数を増やさず集約するため）。
@@ -6640,7 +6804,7 @@ async function slipLoad(file, appendMode=false) {
           drv = drvs.find(d => nm(d.name) === nm(drvName));
         }
 
-        const feeRate = calcFeeRate ?? (drv ? (drv.fee_rate ?? -0.15) : -0.15);
+        const feeRate = calcFeeRate ?? (drv ? (drvPay(drv).fee_rate ?? -0.15) : -0.15);
 
         // 仕入先IDはドライバー登録値を優先、なければ請求書Noを使用
         const suppId = drv?.supplier_id || invoiceNo;
@@ -11133,6 +11297,23 @@ function computeDueDate(workMonth, offsetMonths, payDay) {
 // 協力会社管理に登録済みで支払日設定があればそちらを優先し、
 // なければドライバー個別の支払日設定、どちらも未設定なら翌々月末日にフォールバックする
 // （autoGenPaySchedule()の支払予定生成と同じ優先順位ルール）
+// ドライバーが協力会社に紐づいている場合、本人側が未入力の支払関連項目
+// （振込先口座・インボイス登録番号・業務手数料率）は協力会社側の値をフォールバックとして使う。
+// 支払日設定（computePayExecDateLabel/autoGenPaySchedule）と同じ「協力会社優先」ルールの拡張で、
+// 協力会社経由の支払時に同じ情報をドライバー全員へ二重入力しなくて済むようにする
+function drvPay(d) {
+  if (!d || !d.partner_id) return d;
+  const p = partnerCompanies.find(x => x.id === d.partner_id);
+  if (!p) return d;
+  return {
+    ...d,
+    bank: d.bank || p.bank || null,
+    invoice_no: d.invoice_no || p.invoice_no || null,
+    // 手数料率: ドライバー個別が0（未設定扱い）のときのみ協力会社の支払手数料率を使う。
+    // 協力会社側は%単位（例:-5）、ドライバー側は割合（例:-0.05）のため換算する
+    fee_rate: (!d.fee_rate && p.pay_out_fee_rate) ? p.pay_out_fee_rate / 100 : d.fee_rate,
+  };
+}
 function computePayExecDateLabel(drv, basisDate) {
   const workMonth = (basisDate || fmtLocalDate(new Date())).slice(0,7);
   const partner = drv && drv.partner_id ? partnerCompanies.find(p=>p.id===drv.partner_id) : null;
@@ -13662,9 +13843,11 @@ CREATE TABLE IF NOT EXISTS clients (
   invoice_no text, client_no text UNIQUE
 );
 
--- 協力会社（ドライバーを供給している会社・仕事をくれる会社のマスタ）
+-- 協力会社（ドライバーを供給している会社・仕事をくれる会社・車両リース会社のマスタ）
 CREATE TABLE IF NOT EXISTS partner_companies (
   id bigserial PRIMARY KEY, name text NOT NULL,
+  partner_no text UNIQUE,       -- 協力会社ID（他タブのclient_no/supplier_idと同形式の連番）
+  is_lease boolean NOT NULL DEFAULT false, -- 車両リース会社（ドライバーの車両リース代の支払先）として使う
   short text, zip text, address text, person text, tel text,
   bank text, invoice_no text,
   pay_out_month_offset int DEFAULT 2, pay_out_day text DEFAULT 'end', pay_out_fee_rate numeric DEFAULT 0, -- 支払設定（ドライバー供給時）
