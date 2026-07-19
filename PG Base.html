@@ -5253,12 +5253,16 @@ async function addPartnerDoc(){
   showLoad(false);
 }
 async function viewPartnerDoc(filePath){
+  // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
+  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
+  // 取得後にそのタブへ遷移させる
+  const win = window.open('', '_blank', 'noopener');
+  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
   try {
     const {data, error} = await sb.storage.from('partner-docs').createSignedUrl(filePath, 3600);
     if (error) throw error;
-    const win = window.open(data.signedUrl, '_blank', 'noopener');
-    if (!win) showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa');
-  } catch(e) { showT('表示エラー: '+e.message, 'ter'); }
+    win.location.href = data.signedUrl;
+  } catch(e) { win.close(); showT('表示エラー: '+e.message, 'ter'); }
 }
 async function deletePartnerDoc(id){
   const doc = partnerDocs.find(x=>x.id===id); if (!doc) return;
@@ -9077,12 +9081,18 @@ async function printMonthlyReportA4() {
   const monthFrom = `${monthStr}-01`;
   const monthTo = `${monthStr}-${String(lastDay).padStart(2,'0')}`;
 
+  // await(データ取得)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
+  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
+  // データが揃ってからそのタブへ内容を書き込む
+  const win = window.open('','_blank','noopener');
+  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
+
   let drReports = [];
   try {
     const {data, error} = await sb.from('daily_reports').select('*').gte('date', monthFrom).lte('date', monthTo).order('date');
     if (error) throw error;
     drReports = data || [];
-  } catch(e) { alert('日報データの取得に失敗しました: ' + e.message); return; }
+  } catch(e) { win.close(); alert('日報データの取得に失敗しました: ' + e.message); return; }
 
   const weekdayLabel = ['日','月','火','水','木','金','土'];
   const cAll = companySettings || {};
@@ -9156,7 +9166,7 @@ async function printMonthlyReportA4() {
     })
     .filter(Boolean);
 
-  if (!pages.length) { alert(mrDrvId ? '選択中のドライバーは対象月に日報データがありません' : '対象月に日報データがありません'); return; }
+  if (!pages.length) { win.close(); alert(mrDrvId ? '選択中のドライバーは対象月に日報データがありません' : '対象月に日報データがありません'); return; }
 
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>月報_${monthStr}</title>
@@ -9187,7 +9197,6 @@ async function printMonthlyReportA4() {
   <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
 
-  const win = window.open('','_blank','noopener');
   writeStatementWindow(win, () => html);
 }
 
@@ -9511,12 +9520,16 @@ async function saveDriverDoc(drvId, docType) {
 async function viewDriverDoc(drvId, docType) {
   const doc = findDriverDoc(drvId, docType);
   if (!doc?.file_path) { showT('ファイルがありません', 'twa'); return; }
+  // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
+  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
+  // 取得後にそのタブへ遷移させる
+  const win = window.open('', '_blank', 'noopener');
+  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
   try {
     const {data, error} = await sb.storage.from('driver-docs').createSignedUrl(doc.file_path, 3600);
     if (error) throw error;
-    const win = window.open(data.signedUrl, '_blank', 'noopener');
-    if (!win) showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa');
-  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+    win.location.href = data.signedUrl;
+  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
 }
 
 async function deleteDriverDoc(drvId, docType) {
@@ -10216,15 +10229,21 @@ async function printDriverMonthlyReportA4() {
   const monthFrom = `${monthStr}-01`;
   const monthTo = `${monthStr}-${String(lastDay).padStart(2,'0')}`;
 
+  // await(データ取得)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
+  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
+  // データが揃ってからそのタブへ内容を書き込む
+  const win = window.open('','_blank','noopener');
+  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
+
   let dReports = [];
   try {
     const {data, error} = await sb.from('daily_reports').select('*')
       .in('car', d.cars||[]).gte('date', monthFrom).lte('date', monthTo).order('date');
     if (error) throw error;
     dReports = data || [];
-  } catch(e) { showT('日報データの取得に失敗しました: ' + e.message, 'twa'); return; }
+  } catch(e) { win.close(); showT('日報データの取得に失敗しました: ' + e.message, 'twa'); return; }
 
-  if (!dReports.length) { showT('対象月の日報データがありません', 'twa'); return; }
+  if (!dReports.length) { win.close(); showT('対象月の日報データがありません', 'twa'); return; }
 
   const weekdayLabel = ['日','月','火','水','木','金','土'];
   const cAll = companySettings || {};
@@ -10314,7 +10333,6 @@ async function printDriverMonthlyReportA4() {
   <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
 
-  const win = window.open('','_blank','noopener');
   writeStatementWindow(win, () => html);
 }
 
@@ -10566,12 +10584,16 @@ async function submitBoardPost() {
 }
 
 async function openBoardAttachment(path) {
+  // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
+  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
+  // 取得後にそのタブへ遷移させる
+  const win = window.open('', '_blank', 'noopener');
+  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
   try {
     const { data, error } = await sb.storage.from('board-attachments').createSignedUrl(path, 3600);
     if (error) throw error;
-    const win = window.open(data.signedUrl, '_blank', 'noopener');
-    if (!win) showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa');
-  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+    win.location.href = data.signedUrl;
+  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
 }
 
 async function deleteBoardPost(id) {
