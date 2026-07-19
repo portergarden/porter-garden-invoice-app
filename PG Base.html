@@ -2509,7 +2509,8 @@ try {
         </div>
       </div>
       <div style="border-top:0.5px solid var(--border2);margin:10px 0 10px;padding-top:10px">
-        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">支払予定日・インボイス番号</div>
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">締日・支払予定日・インボイス番号</div>
+        <div class="fld"><label>締日（任意）</label><input type="text" id="dClosingDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%"></div>
         <div class="g2">
           <div class="fld"><label>支払月ズレ</label>
             <select id="dPayMonthOffset" style="width:100%">
@@ -2518,20 +2519,16 @@ try {
               <option value="2" selected>翌々月払い</option>
             </select>
           </div>
-          <div class="fld"><label>支払日</label>
-            <select id="dPayDay" style="width:100%">
-              <option value="end">末日</option>
-              <option value="5">5日</option>
-              <option value="10">10日</option>
-              <option value="15">15日</option>
-              <option value="20">20日</option>
-              <option value="25">25日</option>
-            </select>
+          <div class="fld"><label>支払日（任意）</label>
+            <input type="text" id="dPayDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
           </div>
         </div>
         <div class="fld"><label>インボイス番号（任意）</label><input type="text" id="dInvoiceNo" placeholder="例: T1234567890123"></div>
       </div>
     </div>
+    <datalist id="dayPresetsList">
+      <option value="末日"><option value="5日"><option value="10日"><option value="15日"><option value="20日"><option value="25日">
+    </datalist>
     <div class="mtab-panel" data-tab="note">
       <div class="fld"><label>備考（任意・支払明細書の備考欄に表示）</label><textarea id="dNote" placeholder="このドライバーの支払明細書に共通で記載したい内容があれば入力" rows="4" style="width:100%;resize:vertical"></textarea></div>
     </div>
@@ -2565,15 +2562,8 @@ try {
     </div>
     <div class="mtab-panel" data-tab="pay">
       <div class="g2">
-        <div class="fld"><label>締日</label>
-          <select id="cClosingDay" style="width:100%">
-            <option value="end">末日</option>
-            <option value="5">5日</option>
-            <option value="10">10日</option>
-            <option value="15">15日</option>
-            <option value="20">20日</option>
-            <option value="25">25日</option>
-          </select>
+        <div class="fld"><label>締日（任意）</label>
+          <input type="text" id="cClosingDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
         </div>
         <div class="fld"><label>手数料率（%・任意）</label><input type="number" id="cFeeRate" placeholder="例: 3" step="0.1" title="請求金額に上乗せする手数料の割合"></div>
       </div>
@@ -2587,15 +2577,8 @@ try {
               <option value="2">翌々月入金</option>
             </select>
           </div>
-          <div class="fld"><label>入金日</label>
-            <select id="cPayDay" style="width:100%">
-              <option value="end">末日</option>
-              <option value="5">5日</option>
-              <option value="10">10日</option>
-              <option value="15">15日</option>
-              <option value="20">20日</option>
-              <option value="25">25日</option>
-            </select>
+          <div class="fld"><label>入金日（任意）</label>
+            <input type="text" id="cPayDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
           </div>
         </div>
         <div class="fld"><label>インボイス番号（任意）</label><input type="text" id="cInvoiceNo" placeholder="例: T1234567890123"></div>
@@ -2648,15 +2631,8 @@ try {
               <option value="2" selected>翌々月払い</option>
             </select>
           </div>
-          <div class="fld"><label>支払日</label>
-            <select id="pnPayOutDay" style="width:100%">
-              <option value="end">末日</option>
-              <option value="5">5日</option>
-              <option value="10">10日</option>
-              <option value="15">15日</option>
-              <option value="20">20日</option>
-              <option value="25">25日</option>
-            </select>
+          <div class="fld"><label>支払日（任意）</label>
+            <input type="text" id="pnPayOutDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
           </div>
         </div>
       </div>
@@ -2672,15 +2648,8 @@ try {
             <option value="2">翌々月入金</option>
           </select>
         </div>
-        <div class="fld"><label>入金日</label>
-          <select id="pnPayDay" style="width:100%">
-            <option value="end">末日</option>
-            <option value="5">5日</option>
-            <option value="10">10日</option>
-            <option value="15">15日</option>
-            <option value="20">20日</option>
-            <option value="25">25日</option>
-          </select>
+        <div class="fld"><label>入金日（任意）</label>
+          <input type="text" id="pnPayDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
         </div>
       </div>
     </div>
@@ -4787,7 +4756,7 @@ async function onLeaseCompanySelChange(){
     populateLeaseCompanyList(name);
   } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
-function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value='end';document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
 function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');const v=inp.value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
@@ -4812,7 +4781,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.partner_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=d.pay_day||'end';document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.partner_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -4862,8 +4831,9 @@ async function saveDrv(){
     lease_company:document.getElementById('dLeaseCompany').value.trim()||null,
     hide_statement:document.getElementById('dHideStatement').checked,
     is_company:document.getElementById('dIsCompany').checked,
+    closing_day:parseDayInput(document.getElementById('dClosingDay').value),
     pay_month_offset:+document.getElementById('dPayMonthOffset').value||0,
-    pay_day:document.getElementById('dPayDay').value||'end',
+    pay_day:parseDayInput(document.getElementById('dPayDay').value),
     invoice_no:document.getElementById('dInvoiceNo').value.trim()||null,
     other_deductions:pendOtherDeductions,
   };
@@ -4910,6 +4880,21 @@ function setCliView(mode) {
   renderCli();
 }
 // 協力会社支払日の表示ラベル（ドライバー登録の支払日表示と同じ形式）
+// 締日・支払日・入金日の入力欄（自由入力＋末日/5〜25日のプリセット候補）を、
+// 保存用の内部値（'end' / '27' のような数字文字列 / 未設定はnull）に変換する。
+// 27日など想定外の日付や「未設定のまま」を許容するため、selectではなくdatalist付きテキスト欄にしている
+function parseDayInput(raw) {
+  const v = (raw||'').trim();
+  if (!v) return null;
+  if (v === '末日' || v.toLowerCase() === 'end') return 'end';
+  const n = parseInt(v.replace(/日$/,''), 10);
+  return (!isNaN(n) && n>=1 && n<=31) ? String(n) : null;
+}
+// 内部値を入力欄に表示するための文字列に戻す（parseDayInputの逆変換）
+function dayInputDisplay(val) {
+  if (!val) return '';
+  return val==='end' ? '末日' : `${val}日`;
+}
 // 「当月末日」「翌月15日」のような支払・入金サイクルの表示ラベル（3管理タブ共通）
 function payCycleLabel(offset, day) {
   const m = offset===0?'当月':offset===1?'翌月':'翌々月';
@@ -5010,8 +4995,8 @@ function renderCli(){
     }).join('');
   }
 }
-function openCliM(){switchModalTab('mCli','basic');eCliId=null;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo'].forEach(id=>document.getElementById(id).value='');document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value='end';document.getElementById('cFeeRate').value='';document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value='end';document.getElementById('mCli').classList.add('on');}
-function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=c.closing_day||'end';document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=c.pay_day||'end';document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
+function openCliM(){switchModalTab('mCli','basic');eCliId=null;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo'].forEach(id=>document.getElementById(id).value='');document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
+function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
 async function delCli(id){
   if(!confirm('削除しますか？'))return;
   try{
@@ -5026,7 +5011,7 @@ async function saveCli(){
   const codeVal=document.getElementById('cCode').value.trim();
   if(codeVal){const dup=clients.find(c=>c.client_no===codeVal&&c.id!==eCliId);if(dup){alert(`取引先ID「${codeVal}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
   const feeRateVal=document.getElementById('cFeeRate').value;
-  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:document.getElementById('cClosingDay').value,fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:document.getElementById('cPayDay').value||'end',invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
+  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:parseDayInput(document.getElementById('cClosingDay').value),fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:parseDayInput(document.getElementById('cPayDay').value),invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
   showLoad(true);
   try{
     let data,error,msg='取引先を保存しました';
@@ -5165,9 +5150,9 @@ function openPartnerM(){
   document.getElementById('pnCode').value=nextIdFor(partnerCompanies,'partner_no');
   document.getElementById('pnIsLease').checked=false;
   document.getElementById('pnPayOutMonthOffset').value='2';
-  document.getElementById('pnPayOutDay').value='end';
+  document.getElementById('pnPayOutDay').value=dayInputDisplay('end');
   document.getElementById('pnPayMonthOffset').value='1';
-  document.getElementById('pnPayDay').value='end';
+  document.getElementById('pnPayDay').value=dayInputDisplay('end');
   document.getElementById('mPartnerH').innerHTML='協力会社追加 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
   document.getElementById('mPartner').classList.add('on');
 }
@@ -5186,11 +5171,11 @@ function editPartner(id){
   document.getElementById('pnInvoiceNo').value=p.invoice_no||'';
   document.getElementById('pnNote').value=p.note||'';
   document.getElementById('pnPayOutMonthOffset').value=p.pay_out_month_offset??2;
-  document.getElementById('pnPayOutDay').value=p.pay_out_day||'end';
+  document.getElementById('pnPayOutDay').value=dayInputDisplay(p.pay_out_day);
   document.getElementById('pnPayOutFeeRate').value=p.pay_out_fee_rate||'';
   document.getElementById('pnFeeRate').value=p.fee_rate||'';
   document.getElementById('pnPayMonthOffset').value=p.pay_month_offset??1;
-  document.getElementById('pnPayDay').value=p.pay_day||'end';
+  document.getElementById('pnPayDay').value=dayInputDisplay(p.pay_day);
   document.getElementById('mPartnerH').innerHTML='協力会社編集 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
   document.getElementById('mPartner').classList.add('on');
 }
@@ -5217,11 +5202,11 @@ async function savePartner(){
     invoice_no: document.getElementById('pnInvoiceNo').value.trim()||null,
     note: document.getElementById('pnNote').value.trim()||null,
     pay_out_month_offset: +document.getElementById('pnPayOutMonthOffset').value||0,
-    pay_out_day: document.getElementById('pnPayOutDay').value||'end',
+    pay_out_day: parseDayInput(document.getElementById('pnPayOutDay').value),
     pay_out_fee_rate: payOutFeeRateVal===''?0:parseFloat(payOutFeeRateVal),
     fee_rate: feeRateVal===''?0:parseFloat(feeRateVal),
     pay_month_offset: +document.getElementById('pnPayMonthOffset').value||0,
-    pay_day: document.getElementById('pnPayDay').value||'end',
+    pay_day: parseDayInput(document.getElementById('pnPayDay').value),
   };
   showLoad(true);
   try {
@@ -6066,7 +6051,7 @@ function renderDrv() {
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px">
           ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
         </div>
-        <div style="font-size:11.5px;color:var(--text2);margin-top:3px">支払日: ${drvPayScheduleLabel(d)}</div>
+        <div style="font-size:11.5px;color:var(--text2);margin-top:3px">締日: ${closingDayLabel(d.closing_day)}　支払日: ${drvPayScheduleLabel(d)}</div>
         <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件</div>
       </div>`;
     }).join('');
@@ -6084,6 +6069,7 @@ function renderDrv() {
         <div style="flex:1;min-width:100px;">担当車番</div>
         <div style="width:100px;flex-shrink:0;">電話番号</div>
         <div style="width:170px;flex-shrink:0;">協力会社</div>
+        <div style="width:85px;flex-shrink:0;">締日</div>
         <div style="width:110px;flex-shrink:0;">支払日</div>
         <div style="width:70px;text-align:right;flex-shrink:0;">請求件数</div>
       </div>
@@ -6105,6 +6091,7 @@ function renderDrv() {
           <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
             ${d.company ? `<span style="padding:1px 6px;background:var(--bg2);border-radius:99px">${d.company}</span>` : ''}
           </div>
+          <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingDayLabel(d.closing_day)}</div>
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${drvPayScheduleLabel(d)}</div>
           <div style="width:70px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
         </div>
@@ -13880,6 +13867,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   cars text[] DEFAULT '{}', tel text, supplier_id text UNIQUE,
   fee_rate numeric DEFAULT -0.15, admin_fee int DEFAULT -10000,
   vehicle_rental int DEFAULT -30000,
+  closing_day text DEFAULT 'end',
   pay_month_offset int DEFAULT 2, pay_day text DEFAULT 'end',
   invoice_no text, other_deductions jsonb NOT NULL DEFAULT '[]',
   bank text, company text, note text, lease_company text,
