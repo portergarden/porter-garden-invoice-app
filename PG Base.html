@@ -3370,7 +3370,7 @@ function buildStatementSheetData(side, rows) {
       ['手数料など'+(feeRate?`（${feeRate}%）`:''), feeAmt],
       ['請求合計金額', grandTotal],
     ];
-    var summary = { taxed: taxedTotal, taxOnly: taxAmt, nonTax, oth: fbAll.oth, grand: grandTotal };
+    var summary = { taxed: taxedTotal, taxOnly: taxAmt, nonTax, oth: fbAll.oth, advHw: fbAll.hw + fbAll.oth, grand: grandTotal };
   } else {
     const d = drvPay(recDrv(sortedRows[0])); // 協力会社フォールバック（振込先・登録番号・手数料率）を適用
     groupId = d?.id;
@@ -3668,7 +3668,7 @@ function writeStatementBlock(ws, side, rows, startRow, merge, rowBreaksOut) {
 
   const sumLabels = side==='billing' ? [
     ['税込金額', d.summary.taxed], ['内消費税額', d.summary.taxOnly],
-    ['非課税額', d.summary.nonTax], ['立替代', d.summary.oth],
+    ['非課税額', d.summary.nonTax], ['高速・立替代', d.summary.advHw ?? d.summary.oth],
     ['請求金額', d.summary.grand],
   ] : [
     ['税込金額', d.summary.taxed], ['内消費税額', d.summary.taxOnly],
@@ -3839,8 +3839,8 @@ function writeCoverPage(ws, side, rowGroups, addressee, startRow, merge) {
 
   // 一覧表（コムトラの集計欄と同じ金額5項目を各行に記載）。見出しは折り返し表示で列幅内に収める
   const headerCols = isBilling
-    ? [['No',0,0], ['取引先ID',1,2], ['取引先名',3,6], ['(10%)\n税込金額',7,8], ['(内消費税額)',9,10], ['非課税額',11,11], ['立替代',12,12], ['合計金額',13,13]]
-    : [['No',0,0], ['ドライバーID',1,1], ['ドライバー名',2,3], ['協力会社',4,5], ['(10%)\n税込金額',6,7], ['(内消費税額)',8,9], ['非課税額',10,11], ['立替金額',12,12], ['合計金額',13,13]];
+    ? [['No',0,0], ['取引先ID',1,2], ['取引先名',3,6], ['(10%)\n税込金額',7,8], ['(内消費税額)',9,10], ['非課税額',11,11], ['高速・立替代',12,12], ['合計金額',13,13]]
+    : [['No',0,0], ['ドライバーID',1,1], ['ドライバー名',2,3], ['協力会社',4,5], ['(10%)\n税込金額',6,7], ['(内消費税額)',8,9], ['非課税額',10,11], ['高速・立替代',12,12], ['合計金額',13,13]];
   headerCols.forEach(([label,c0,c1]) => {
     stCellMerge(ws, merge, r, c0, r, c1, label, stStyle({h:'center', fill:ST_HEAD_FILL, sz:8, wrap:true}));
   });
@@ -3865,7 +3865,7 @@ function writeCoverPage(ws, side, rowGroups, addressee, startRow, merge) {
     stCellMerge(ws, merge, r, gT[0], r, gT[1], s.taxed, stStyle({h:'right', v:'center'}), numFmt);
     stCellMerge(ws, merge, r, gH[0], r, gH[1], s.taxOnly, stStyle({h:'right', v:'center'}), numFmt);
     stCellMerge(ws, merge, r, gN[0], r, gN[1], s.nonTax, stStyle({h:'right', v:'center'}), numFmt);
-    stCellMerge(ws, merge, r, gO[0], r, gO[1], isBilling ? s.oth : (s.advHw ?? s.oth), stStyle({h:'right', v:'center'}), numFmt);
+    stCellMerge(ws, merge, r, gO[0], r, gO[1], s.advHw ?? s.oth, stStyle({h:'right', v:'center'}), numFmt);
     stCellMerge(ws, merge, r, gG[0], r, gG[1], s.grand, stStyle({h:'right', v:'center', bold:true}), numFmt);
     setH(r, 34); r++;
   });
@@ -11319,11 +11319,11 @@ function buildStatementDocInner(side, rows) {
     <div class="period-bar"><span>${d.periodLabel}</span><span>${d.dateLabel}: <b>${d.dateValue}</b></span></div>
     <table class="summary-table">
       <tr>
-        <th>税込金額</th><th>内消費税額</th><th>非課税額</th><th>${isBilling?'立替代':'高速・立替代'}</th><th class="hl">${isBilling?'請求金額':'支払金額'}</th>
+        <th>税込金額</th><th>内消費税額</th><th>非課税額</th><th>高速・立替代</th><th class="hl">${isBilling?'請求金額':'支払金額'}</th>
       </tr>
       <tr>
         <td>${yen(d.summary.taxed)}</td><td>${yen(d.summary.taxOnly)}</td><td>${yen(d.summary.nonTax)}</td>
-        <td>${yen(isBilling ? d.summary.oth : (d.summary.advHw ?? d.summary.oth))}</td>
+        <td>${yen(d.summary.advHw ?? d.summary.oth)}</td>
         <td class="hl">${yen(d.summary.grand)}</td>
       </tr>
     </table>
@@ -11460,7 +11460,7 @@ function buildCoverPageHtml(side, rowGroups, addressee) {
     return `<tr>
       <td class="num">${gi+1}</td><td class="num">${idCell}</td><td class="cname">${nameCell}<div class="doc-no-ref">${d.docNo}</div></td>${companyCell}
       <td class="num">${yen(s.taxed)}</td><td class="num">${yen(s.taxOnly)}</td><td class="num">${yen(s.nonTax)}</td>
-      <td class="num">${yen(isBilling ? s.oth : (s.advHw ?? s.oth))}</td><td class="num total">${yen(s.grand)}</td>
+      <td class="num">${yen(s.advHw ?? s.oth)}</td><td class="num total">${yen(s.grand)}</td>
     </tr>`;
   }).join('');
 
@@ -11480,7 +11480,7 @@ function buildCoverPageHtml(side, rowGroups, addressee) {
         <th style="width:5%">No</th><th style="width:9%">${isBilling?'取引先ID':'ドライバーID'}</th>
         <th style="width:${isBilling?'22':'14'}%">${isBilling?'取引先名':'ドライバー名'}</th>
         ${isBilling?'':'<th style=\"width:12%\">協力会社</th>'}
-        <th>(10%)税込金額</th><th>(内消費税額)</th><th>非課税額</th><th>${isBilling?'立替代':'立替金額'}</th><th>合計金額</th>
+        <th>(10%)税込金額</th><th>(内消費税額)</th><th>非課税額</th><th>高速・立替代</th><th>合計金額</th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
       <tfoot><tr class="cover-total-row">
