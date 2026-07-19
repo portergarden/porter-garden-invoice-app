@@ -1808,8 +1808,11 @@ try {
       <input type="date" id="mrTo" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderMonthlyReport()">
       <button class="btn sml" onclick="monthRangeShift('mrFrom','mrTo',-1,renderMonthlyReport)" title="前月">◀</button>
       <button class="btn sml" onclick="monthRangeShift('mrFrom','mrTo',1,renderMonthlyReport)" title="翌月">▶</button>
+      <select id="mrDrvSel" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderMonthlyReport()">
+        <option value="">全ドライバー</option>
+      </select>
       <button class="btn sml" onclick="exportMonthlyCsv()">⬇ CSV</button>
-      <button class="btn sml" onclick="printMonthlyReportA4()" title="ドライバーごとに1日〜月末までの日めくり表（A4縦1枚）を作成して印刷します">🖨 印刷（ドライバー別）</button>
+      <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4縦1枚）を作成して印刷します">🖨 印刷（ドライバー別）</button>
     </div>
   </div>
 
@@ -8805,6 +8808,18 @@ function checkSchedAlerts() {
 /* ===== 月報 ===== */
 function initMonthlyReport() {
   ensureMonthRangeDefault('mrFrom', 'mrTo');
+  populateMrDrvSel();
+}
+// 月報タブのドライバー選択プルダウンを更新する（登録ドライバーの追加・削除に追随させるため
+// 画面表示のたびに呼び出す。選択中の値は維持する）
+function populateMrDrvSel() {
+  const sel = document.getElementById('mrDrvSel');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">全ドライバー</option>' +
+    [...drvs].sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
+      .map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${d.supplier_id}）`:''}</option>`).join('');
+  if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
 }
 
 async function renderMonthlyReport() {
@@ -8835,6 +8850,15 @@ async function renderMonthlyReport() {
   // 請求書データ（invoices）から当月分
   const invMonth = recs.filter(r => r.date && r.date >= from && r.date <= to);
 
+  // ドライバー個別選択（未選択なら全ドライバー対象のまま）。KPI・カード一覧の両方に反映する
+  populateMrDrvSel();
+  const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
+  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : drvs;
+  if (mrDrvId) {
+    const selCars = targetDrvs.flatMap(d=>d.cars||[]);
+    drReports = drReports.filter(r => selCars.some(c=>nm(c)===nm(r.car)));
+  }
+
   /* ──── 全体KPI ──── */
   const totalKm    = drReports.reduce((a,r) => a + (+r.distance_km||0), 0);
   const totalTak   = drReports.reduce((a,r) => a + (+r.qty_takkyubin||0), 0);
@@ -8851,14 +8875,14 @@ async function renderMonthlyReport() {
   `;
 
   /* ──── ドライバー別集計 ──── */
-  if (!drvs.length) {
+  if (!targetDrvs.length) {
     bodyEl.innerHTML = '<div style="color:var(--text2);padding:20px;text-align:center">ドライバー未登録</div>';
     return;
   }
 
   const diffWarnings = [];
 
-  const cards = drvs
+  const cards = targetDrvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
     .map(d => {
       const dCars = d.cars || [];
@@ -9062,7 +9086,11 @@ async function printMonthlyReportA4() {
   const weekdayLabel = ['日','月','火','水','木','金','土'];
   const cAll = companySettings || {};
 
-  const pages = drvs
+  // 月報タブで選択中のドライバーがいればその1名分のみ、未選択（全ドライバー）ならこれまで通り全員分を出力する
+  const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
+  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : drvs;
+
+  const pages = targetDrvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
     .map(d => {
       const dCars = d.cars || [];
@@ -9127,7 +9155,7 @@ async function printMonthlyReportA4() {
     })
     .filter(Boolean);
 
-  if (!pages.length) { alert('対象月に日報データがありません'); return; }
+  if (!pages.length) { alert(mrDrvId ? '選択中のドライバーは対象月に日報データがありません' : '対象月に日報データがありません'); return; }
 
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>月報_${monthStr}</title>
