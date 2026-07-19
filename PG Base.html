@@ -4910,16 +4910,19 @@ function setCliView(mode) {
   renderCli();
 }
 // 協力会社支払日の表示ラベル（ドライバー登録の支払日表示と同じ形式）
-function partnerPayOutLabel(p) {
-  const m = p.pay_out_month_offset===0?'当月':p.pay_out_month_offset===1?'翌月':'翌々月';
-  const d = p.pay_out_day==='end'||!p.pay_out_day?'末日':p.pay_out_day+'日';
+// 「当月末日」「翌月15日」のような支払・入金サイクルの表示ラベル（3管理タブ共通）
+function payCycleLabel(offset, day) {
+  const m = offset===0?'当月':offset===1?'翌月':'翌々月';
+  const d = day==='end'||!day?'末日':day+'日';
   return m+d;
 }
+function partnerPayOutLabel(p) { return payCycleLabel(p.pay_out_month_offset, p.pay_out_day); }
 // この協力会社が仕事をくれる（請求先になる）場合の入金予定日ラベル
-function partnerReceivableLabel(p) {
-  const m = p.pay_month_offset===0?'当月':p.pay_month_offset===1?'翌月':'翌々月';
-  const d = p.pay_day==='end'||!p.pay_day?'末日':p.pay_day+'日';
-  return m+d;
+function partnerReceivableLabel(p) { return payCycleLabel(p.pay_month_offset, p.pay_day); }
+// ドライバーの支払日ラベル。協力会社所属なら協力会社の支払日設定を優先（明細書・支払予定と同じルール）
+function drvPayScheduleLabel(d) {
+  const partner = d.partner_id ? partnerCompanies.find(p=>p.id===d.partner_id) : null;
+  return partner ? partnerPayOutLabel(partner)+'(協)' : payCycleLabel(d.pay_month_offset, d.pay_day);
 }
 function renderCli(){
   const grid=document.getElementById('cliGrid');
@@ -4962,6 +4965,7 @@ function renderCli(){
         ${c.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${c.person}</div>`:''}
         ${c.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${c.tel}</div>`:'<div style="margin-bottom:5px"></div>'}
         <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件　締日: ${closingLbl}${c.fee_rate?`　手数料: ${c.fee_rate}%`:''}</div>
+        <div style="font-size:11.5px;color:var(--text2)">入金日: ${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
         <div style="font-size:13px;font-weight:600;color:var(--blue);margin-top:4px">${yen(tot_)}</div>
         ${c.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(c.note)}</div>`:''}
       </div>`;
@@ -4976,6 +4980,7 @@ function renderCli(){
         <div style="width:80px;flex-shrink:0;">ID</div>
         <div style="width:135px;flex-shrink:0;">取引先名</div>
         <div style="width:85px;flex-shrink:0;">締日</div>
+        <div style="width:110px;flex-shrink:0;">入金日</div>
         <div style="width:90px;flex-shrink:0;">手数料</div>
         <div style="width:100px;flex-shrink:0;">電話番号</div>
         <div style="width:65px;text-align:right;flex-shrink:0;">請求件数</div>
@@ -4994,6 +4999,7 @@ function renderCli(){
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${c.client_no ? 'ID: ' + c.client_no : 'ID: —'}</div>
           <div style="width:135px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${c.name}</div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingLbl}</div>
+          <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
           <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${c.fee_rate?`手数料:${c.fee_rate}%`:'—'}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${c.tel || '—'}</div>
           <div style="width:65px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
@@ -6060,7 +6066,8 @@ function renderDrv() {
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px">
           ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
         </div>
-        <div style="font-size:11.5px;color:var(--text2);margin-top:3px">請求明細書: ${cnt}件</div>
+        <div style="font-size:11.5px;color:var(--text2);margin-top:3px">支払日: ${drvPayScheduleLabel(d)}</div>
+        <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件</div>
       </div>`;
     }).join('');
 
@@ -6077,6 +6084,7 @@ function renderDrv() {
         <div style="flex:1;min-width:100px;">担当車番</div>
         <div style="width:100px;flex-shrink:0;">電話番号</div>
         <div style="width:170px;flex-shrink:0;">協力会社</div>
+        <div style="width:110px;flex-shrink:0;">支払日</div>
         <div style="width:70px;text-align:right;flex-shrink:0;">請求件数</div>
       </div>
       <div style="width:130px;flex-shrink:0;"></div>
@@ -6097,6 +6105,7 @@ function renderDrv() {
           <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
             ${d.company ? `<span style="padding:1px 6px;background:var(--bg2);border-radius:99px">${d.company}</span>` : ''}
           </div>
+          <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${drvPayScheduleLabel(d)}</div>
           <div style="width:70px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
         </div>
         <div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
