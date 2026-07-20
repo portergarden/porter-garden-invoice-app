@@ -2582,6 +2582,10 @@ try {
           <input type="text" id="pnPayDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
         </div>
       </div>
+      <div style="border-top:0.5px solid var(--border2);margin:12px 0 10px;padding-top:10px">
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">対応する取引先（同じ会社が発注元にもなる場合、取引先としても登録するとリンクでき、請求・入金予定・取引先分析がその取引先レコードでそのまま機能します）</div>
+        <div id="pnClientLinkArea"></div>
+      </div>
     </div>
     <div class="mtab-panel" data-tab="note">
       <div class="fld"><label>備考（任意）</label><textarea id="pnNote" placeholder="この協力会社に関するメモ" rows="4" style="width:100%;resize:vertical"></textarea></div>
@@ -4872,6 +4876,7 @@ function renderCli(){
       const cnt=recs.filter(r=>r.cli===c.id).length;
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
       const closingLbl=closingDayLabel(c.closing_day);
+      const linkedPartner=partnerCompanies.find(pc=>pc.client_id===c.id);
       return`<div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px"><div class="av cli">${ini}</div>${canE?`<div style="display:flex;gap:1px"><button class="ibtn" onclick="editCli(${c.id})">✎</button><button class="ibtn" onclick="delCli(${c.id})">🗑</button></div>`:''}</div>
         <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${c.name}</div>
@@ -4881,6 +4886,7 @@ function renderCli(){
         <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件　締日: ${closingLbl}${c.fee_rate?`　手数料: ${c.fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2)">入金日: ${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
         <div style="font-size:13px;font-weight:600;color:var(--blue);margin-top:4px">${yen(tot_)}</div>
+        ${linkedPartner?`<div style="font-size:11.5px;color:var(--blue);margin-top:2px;cursor:pointer" onclick="jumpToPartnerFromClient(${linkedPartner.id})">🔗 協力会社: ${escHtml(linkedPartner.name)}${linkedPartner.partner_no?`（ID:${escHtml(linkedPartner.partner_no)}）`:''}</div>`:''}
         ${c.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(c.note)}</div>`:''}
       </div>`;
     }).join('');
@@ -4907,11 +4913,12 @@ function renderCli(){
       const cnt=recs.filter(r=>r.cli===c.id).length;
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
       const closingLbl=closingDayLabel(c.closing_day);
+      const linkedPartner=partnerCompanies.find(pc=>pc.client_id===c.id);
       return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${c.client_no ? 'ID: ' + c.client_no : 'ID: —'}</div>
-          <div style="width:135px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${c.name}</div>
+          <div style="width:135px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${c.name}${linkedPartner?` <span title="協力会社: ${escHtml(linkedPartner.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToPartnerFromClient(${linkedPartner.id})">🔗</span>`:''}</div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingLbl}</div>
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
           <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${c.fee_rate?`手数料:${c.fee_rate}%`:'—'}</div>
@@ -5016,6 +5023,7 @@ function renderPartners(){
     grid.innerHTML = sorted.map(p => {
       const ini = (p.short||p.name||'?').slice(0,2);
       const suppliedDrvs = drvs.filter(d=>d.partner_id===p.id);
+      const linkedCli = p.client_id ? clients.find(c=>c.id===p.client_id) : null;
       return `<div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
           <div class="av cli">${ini}</div>
@@ -5032,6 +5040,7 @@ function renderPartners(){
         <div style="font-size:11.5px;color:var(--text2)">支払日: ${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`　支払手数料: ${p.pay_out_fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2)">入金日: ${partnerReceivableLabel(p)}${p.fee_rate?`　入金手数料: ${p.fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2);margin-top:2px">供給ドライバー: ${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
+        ${linkedCli?`<div style="font-size:11.5px;color:var(--blue);margin-top:2px;cursor:pointer" onclick="jumpToClientFromPartner(${linkedCli.id})">🔗 取引先: ${escHtml(linkedCli.name)}${linkedCli.client_no?`（ID:${escHtml(linkedCli.client_no)}）`:''}</div>`:''}
         ${p.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(p.note)}</div>`:''}
       </div>`;
     }).join('');
@@ -5054,11 +5063,12 @@ function renderPartners(){
     grid.innerHTML = headerRow + sorted.map(p => {
       const ini = (p.short||p.name||'?').slice(0,2);
       const suppliedDrvs = drvs.filter(d=>d.partner_id===p.id);
+      const linkedCli = p.client_id ? clients.find(c=>c.id===p.client_id) : null;
       return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:60px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${p.partner_no ? 'ID: '+escHtml(p.partner_no) : 'ID: —'}</div>
-          <div style="width:150px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}</div>
+          <div style="width:150px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})">🔗</span>`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
@@ -5083,6 +5093,7 @@ function openPartnerM(){
   document.getElementById('pnPayMonthOffset').value='1';
   document.getElementById('pnPayDay').value=dayInputDisplay('end');
   document.getElementById('mPartnerH').innerHTML='協力会社追加 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
+  renderPartnerClientLinkArea(null);
   document.getElementById('mPartner').classList.add('on');
 }
 function editPartner(id){
@@ -5106,6 +5117,7 @@ function editPartner(id){
   document.getElementById('pnPayMonthOffset').value=p.pay_month_offset??1;
   document.getElementById('pnPayDay').value=dayInputDisplay(p.pay_day);
   document.getElementById('mPartnerH').innerHTML='協力会社編集 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
+  renderPartnerClientLinkArea(id);
   document.getElementById('mPartner').classList.add('on');
 }
 async function savePartner(){
@@ -5163,6 +5175,14 @@ async function savePartner(){
           if (!leaseErr) leaseDrvs.forEach(d=>{ d.lease_company = data.name; });
         }
       }
+      // 取引先としてもリンク登録されている場合、そちらの会社名も追随させる（重複データが名前だけズレるのを防ぐ）
+      if (data.client_id && prevName && prevName !== data.name) {
+        const linkedCli = clients.find(c=>c.id===data.client_id);
+        if (linkedCli && linkedCli.name === prevName) {
+          const { error: cliSyncErr } = await sb.from('clients').update({ name: data.name }).eq('id', data.client_id);
+          if (!cliSyncErr) linkedCli.name = data.name;
+        }
+      }
       addLog('協力会社編集', name);
     } else {
       partnerCompanies.push(data);
@@ -5172,6 +5192,104 @@ async function savePartner(){
     showT('協力会社を保存しました');
   } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
   showLoad(false);
+}
+
+// 協力会社が発注元（取引先）も兼ねる場合の、取引先レコードとのリンク管理。
+// テーブルはあえて分けたまま（支払まわりの計算コードには一切触れない）、client_idで対応関係だけを持たせる。
+// リンクした取引先は、以後は普通の取引先として受注入力・請求書・入金予定・取引先分析にそのまま乗る
+function renderPartnerClientLinkArea(partnerId) {
+  const el = document.getElementById('pnClientLinkArea');
+  if (!el) return;
+  if (partnerId === null) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text2)">（保存後にリンクできます）</div>';
+    return;
+  }
+  const p = partnerCompanies.find(x=>x.id===partnerId);
+  if (!p) { el.innerHTML = ''; return; }
+  if (p.client_id) {
+    const c = clients.find(x=>x.id===p.client_id);
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg2);border-radius:var(--radius)">
+      <span style="font-size:11.5px">🔗 ${c?escHtml(c.name):'（取引先が見つかりません）'}${c?.client_no?`（ID:${escHtml(c.client_no)}）`:''}</span>
+      <button type="button" class="btn sml" style="margin-left:auto" onclick="jumpToClientFromPartner(${p.client_id})">開く</button>
+      <button type="button" class="btn sml" onclick="unlinkPartnerClient(${partnerId})">解除</button>
+    </div>`;
+  } else {
+    // 他の協力会社が既にリンク済みの取引先は候補から除く（1対1のリンクのため）
+    const linkedClientIds = new Set(partnerCompanies.map(pc=>pc.client_id).filter(Boolean));
+    const candidates = clients.filter(c => !linkedClientIds.has(c.id));
+    el.innerHTML = `
+      <button type="button" class="btn sml pri" onclick="createAndLinkClientFromPartner(${partnerId})">＋ 取引先として登録してリンク</button>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <select id="pnClientLinkSel" style="flex:1;padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">既存の取引先を選択…</option>
+          ${candidates.map(c=>`<option value="${c.id}">${escHtml(c.name)}${c.client_no?`（ID:${escHtml(c.client_no)}）`:''}</option>`).join('')}
+        </select>
+        <button type="button" class="btn sml" onclick="linkExistingClientToPartner(${partnerId})">リンク</button>
+      </div>`;
+  }
+}
+// 協力会社の情報（会社名・住所・電話番号など）をそのままコピーして取引先を新規作成し、リンクする
+async function createAndLinkClientFromPartner(partnerId) {
+  const p = partnerCompanies.find(x=>x.id===partnerId); if (!p) return;
+  if (!confirm(`「${p.name}」を取引先としても登録し、この協力会社とリンクしますか？\n（会社名・住所・電話番号などをそのままコピーします。番号は取引先側で別途採番されます）`)) return;
+  showLoad(true);
+  try {
+    const obj = {
+      name: p.name, short: p.short||null, person: p.person||null, tel: p.tel||null,
+      zip: p.zip||null, address: p.address||null, invoice_no: p.invoice_no||null, note: p.note||null,
+    };
+    const {data, error} = await sb.from('clients').insert(obj).select().single();
+    if (error) throw error;
+    clients.push(data);
+    const {error: linkErr} = await sb.from('partner_companies').update({client_id: data.id}).eq('id', partnerId);
+    if (linkErr) throw linkErr;
+    p.client_id = data.id;
+    addLog('協力会社→取引先 連携登録', `${p.name} → 取引先ID:${data.id}`);
+    renderPartnerClientLinkArea(partnerId); renderPartners(); renderCli();
+    showT('取引先として登録し、リンクしました');
+  } catch(e) { showT('登録エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+// 既にどちらも登録済みの会社（例: 自社）を、後からリンクだけする場合
+async function linkExistingClientToPartner(partnerId) {
+  const sel = document.getElementById('pnClientLinkSel');
+  const clientId = +sel?.value || 0;
+  if (!clientId) { alert('取引先を選択してください'); return; }
+  showLoad(true);
+  try {
+    const {error} = await sb.from('partner_companies').update({client_id: clientId}).eq('id', partnerId);
+    if (error) throw error;
+    const p = partnerCompanies.find(x=>x.id===partnerId);
+    if (p) p.client_id = clientId;
+    addLog('協力会社↔取引先 リンク', `partner:${partnerId} → client:${clientId}`);
+    renderPartnerClientLinkArea(partnerId); renderPartners(); renderCli();
+    showT('リンクしました');
+  } catch(e) { showT('リンクエラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+async function unlinkPartnerClient(partnerId) {
+  if (!confirm('取引先とのリンクを解除しますか？（取引先データ自体は削除されません）')) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('partner_companies').update({client_id: null}).eq('id', partnerId);
+    if (error) throw error;
+    const p = partnerCompanies.find(x=>x.id===partnerId);
+    if (p) p.client_id = null;
+    addLog('協力会社↔取引先 リンク解除', `partner:${partnerId}`);
+    renderPartnerClientLinkArea(partnerId); renderPartners(); renderCli();
+    showT('リンクを解除しました');
+  } catch(e) { showT('解除エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+function jumpToClientFromPartner(clientId) {
+  closeM('mPartner');
+  goPage(3, document.getElementById('nt3'));
+  editCli(clientId);
+}
+function jumpToPartnerFromClient(partnerId) {
+  closeM('mCli');
+  goPage(25, document.getElementById('nt25'));
+  editPartner(partnerId);
 }
 async function delPartner(id){
   const p = partnerCompanies.find(x=>x.id===id); if (!p) return;
@@ -14122,6 +14240,7 @@ CREATE TABLE IF NOT EXISTS partner_companies (
   pay_out_month_offset int DEFAULT 2, pay_out_day text DEFAULT 'end', pay_out_fee_rate numeric DEFAULT 0, -- 支払設定（ドライバー供給時）
   fee_rate numeric DEFAULT 0,
   pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end', -- 入金設定（仕事をくれる取引先時）
+  client_id integer REFERENCES clients(id) ON DELETE SET NULL UNIQUE, -- 同じ会社を取引先としても登録している場合の対応レコード（表示・相互リンク専用）
   note text, created_at timestamptz NOT NULL DEFAULT now()
 );
 
