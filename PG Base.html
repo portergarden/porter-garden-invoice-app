@@ -2546,6 +2546,10 @@ try {
         <div class="fld"><label>住所（任意）</label><input type="text" id="pnAddress"></div>
       </div>
       <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pnIsLease" style="width:auto"> 車両リース会社（ドライバーの車両リース代の支払先）として使う<br><span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:22px">ドライバー登録の「リース会社」プルダウンの候補に表示され、リース会社別集計から明細書を発行できます</span></label></div>
+      <div style="border-top:0.5px solid var(--border2);margin:12px 0 0;padding-top:10px">
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">支払先枠（個々のドライバー登録がなくても、この会社へ直接支払う受注を入力したい場合に作成します。受注入力のドライバー欄の候補に「御中」宛の支払先として表示されます）</div>
+        <div id="pnPayeeArea"></div>
+      </div>
     </div>
     <div class="mtab-panel" data-tab="payout">
       <div class="fld"><label>振込先銀行口座（任意）</label><input type="text" id="pnBank" placeholder="〇〇銀行 〇〇支店 普通 1234567"></div>
@@ -5094,6 +5098,7 @@ function openPartnerM(){
   document.getElementById('pnPayDay').value=dayInputDisplay('end');
   document.getElementById('mPartnerH').innerHTML='協力会社追加 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
   renderPartnerClientLinkArea(null);
+  renderPartnerPayeeArea(null);
   document.getElementById('mPartner').classList.add('on');
 }
 function editPartner(id){
@@ -5118,6 +5123,7 @@ function editPartner(id){
   document.getElementById('pnPayDay').value=dayInputDisplay(p.pay_day);
   document.getElementById('mPartnerH').innerHTML='協力会社編集 <button class="ibtn" onclick="closeM(\'mPartner\')">✕</button>';
   renderPartnerClientLinkArea(id);
+  renderPartnerPayeeArea(id);
   document.getElementById('mPartner').classList.add('on');
 }
 async function savePartner(){
@@ -5290,6 +5296,59 @@ function jumpToPartnerFromClient(partnerId) {
   closeM('mCli');
   goPage(25, document.getElementById('nt25'));
   editPartner(partnerId);
+}
+
+// 協力会社を「支払先」として直接使うための支払先枠（is_company=trueのドライバー行）の管理。
+// 個々のドライバー登録がない協力会社へ支払う受注を入力できるようにするための入り口で、
+// 作成すると受注入力のドライバー欄・支払集計・支払明細書（御中宛）にそのまま乗る
+function findPartnerPayeeDriver(partnerId) {
+  return drvs.find(d => d.partner_id === partnerId && d.is_company) || null;
+}
+function renderPartnerPayeeArea(partnerId) {
+  const el = document.getElementById('pnPayeeArea');
+  if (!el) return;
+  if (partnerId === null) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text2)">（保存後に作成できます）</div>';
+    return;
+  }
+  const payee = findPartnerPayeeDriver(partnerId);
+  if (payee) {
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg2);border-radius:var(--radius)">
+      <span style="font-size:11.5px">💴 支払先: ${escHtml(payee.name)}　御中${payee.supplier_id?`（ID:${escHtml(payee.supplier_id)}）`:''}</span>
+      <button type="button" class="btn sml" style="margin-left:auto" onclick="jumpToPayeeDriver(${payee.id})">開く</button>
+    </div>`;
+  } else {
+    el.innerHTML = `<button type="button" class="btn sml pri" onclick="createPayeeDriverFromPartner(${partnerId})">＋ この会社を支払先として登録</button>`;
+  }
+}
+async function createPayeeDriverFromPartner(partnerId) {
+  const p = partnerCompanies.find(x=>x.id===partnerId); if (!p) return;
+  if (!confirm(`「${p.name}」を支払先（御中宛）として登録しますか？\n受注入力のドライバー欄の候補に表示されるようになります。\n（振込先・登録番号・支払手数料率は、この協力会社の設定が自動で使われます）`)) return;
+  showLoad(true);
+  try {
+    const obj = {
+      name: p.name, company: p.name, partner_id: p.id, cars: [],
+      tel: p.tel || '', is_company: true,
+      // 事務手数料・車両リース代は個人ドライバー向けの控除のため、会社支払先では明示的に0にする
+      // （nullのままだと明細書側の既定値(-10000/-30000)が適用されてしまう）。
+      // fee_rate=0（未設定扱い）にすることで、drvPay()が協力会社側の支払手数料率へフォールバックする
+      fee_rate: 0, admin_fee: 0, vehicle_rental: 0,
+      bank: null, invoice_no: null, hide_statement: false,
+      line_link_code: genDriverLinkCode(),
+    };
+    const {data, error} = await sb.from('drivers').insert(obj).select().single();
+    if (error) throw error;
+    drvs.push(data);
+    addLog('協力会社支払先登録', `${p.name}（drv:${data.id}）`);
+    renderPartnerPayeeArea(partnerId); renderPartners(); renderDrv();
+    showT('支払先として登録しました。受注入力のドライバー欄から選択できます');
+  } catch(e) { showT('登録エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+function jumpToPayeeDriver(drvId) {
+  closeM('mPartner');
+  goPage(2, document.getElementById('nt2'));
+  editDrv(drvId);
 }
 async function delPartner(id){
   const p = partnerCompanies.find(x=>x.id===id); if (!p) return;
