@@ -1725,8 +1725,8 @@ try {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px">
         <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
-        <div class="fld"><label>ネコポス（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
-        <div class="fld"><label>チャーター（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
+        <div class="fld"><label>ポスト便（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
+        <div class="fld"><label>チャーター便（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
         <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
       </div>
 
@@ -8361,7 +8361,7 @@ function renderDailyList() {
             ${r.start_time?`<span>⏱ ${r.start_time}〜${r.end_time||'?'}</span>`:''}
             ${(r.start_location||r.end_location)?`<span>📍 ${escHtml(r.start_location)||'?'}→${escHtml(r.end_location)||'?'}</span>`:''}
             <span>🍺 前:${r.alc_before??'—'} 後:${r.alc_after??'—'} mg/L</span>
-            ${(r.qty_takkyubin||r.qty_nekopos||r.qty_charter)?`<span>📦 宅配便:${r.qty_takkyubin||0} ネコポス:${r.qty_nekopos||0} チャーター:${r.qty_charter||0}</span>`:''}
+            ${(r.qty_takkyubin||r.qty_nekopos||r.qty_charter)?`<span>📦 宅配便:${r.qty_takkyubin||0} ポスト便:${r.qty_nekopos||0} チャーター便:${r.qty_charter||0}</span>`:''}
             ${cli?`<span>🏢 ${escHtml(cli.name)}</span>`:''}
           </div>
           ${r.note?`<div style="font-size:11px;color:var(--text2);margin-top:3px">📝 ${escHtml(r.note)}</div>`:''}
@@ -8453,7 +8453,7 @@ function downloadDailyReportCsv(list, filenameLabel) {
     '休憩',
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器','体調(前)','体調(後)',
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
-    '宅配便','ネコポス','チャーター','その他','備考',
+    '宅配便','ポスト便','チャーター便','その他','備考',
     '事故あり','事故原因','再発防止策','ステータス'];
   const rows = list.map(r=>[
     r.date,r.car,r.driver_name,
@@ -8550,7 +8550,7 @@ function buildDailyReportHtml(r) {
 
     <div class="drp-section-title">④ 業務内容</div>
     <table class="drp-table">
-      <tr><th>取引先</th><td>${cli?escHtml(cli.name):'—'}</td><th>個数</th><td>宅配便${r.qty_takkyubin||0} ／ ネコポス${r.qty_nekopos||0} ／ チャーター${r.qty_charter||0} ／ その他${r.qty_other||0}</td></tr>
+      <tr><th>取引先</th><td>${cli?escHtml(cli.name):'—'}</td><th>個数</th><td>宅配便${r.qty_takkyubin||0} ／ ポスト便${r.qty_nekopos||0} ／ チャーター便${r.qty_charter||0} ／ その他${r.qty_other||0}</td></tr>
     </table>
 
     <div class="drp-section-title">⑤ 車両日常点検</div>
@@ -8887,7 +8887,7 @@ async function renderMonthlyReport() {
     <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
     <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
     <div class="kpi-card"><div class="kpi-label">宅配便計</div><div class="kpi-val">${totalTak.toLocaleString()}個</div></div>
-    <div class="kpi-card"><div class="kpi-label">ネコポス計</div><div class="kpi-val">${totalNeko.toLocaleString()}個</div></div>
+    <div class="kpi-card"><div class="kpi-label">ポスト便計</div><div class="kpi-val">${totalNeko.toLocaleString()}個</div></div>
     <div class="kpi-card ${alcAlerts?'':''}"><div class="kpi-label">🍺 アルコール超過</div><div class="kpi-val" style="color:${alcAlerts?'var(--red)':'var(--green)'}">${alcAlerts}件</div></div>
   `;
 
@@ -8956,7 +8956,7 @@ async function renderMonthlyReport() {
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
               </div>
               <div style="font-size:10px;color:var(--text2)">
-                稼働${drWorkDays}日 · ${drKm}km · 宅配便${drTak}個 · ネコポス${drNeko}個
+                稼働${drWorkDays}日 · ${drKm}km · 宅配便${drTak}個 · ポスト便${drNeko}個
               </div>
             </div>
           </div>
@@ -8988,7 +8988,7 @@ async function renderMonthlyReport() {
             <div class="kpi-card" style="padding:6px 8px">
               <div class="kpi-label">配送個数計</div>
               <div style="font-size:14px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
-              <div class="kpi-diff kpi-eq">宅${drTak} ネコ${drNeko} 他${drOtherQty}</div>
+              <div class="kpi-diff kpi-eq">宅${drTak} ポスト${drNeko} 他${drOtherQty}</div>
             </div>
           </div>
 
@@ -9005,8 +9005,8 @@ async function renderMonthlyReport() {
                   <th style="padding:3px 6px;text-align:left">日付</th>
                   <th style="padding:3px 6px;text-align:right">走行km</th>
                   <th style="padding:3px 6px;text-align:right">宅配便</th>
-                  <th style="padding:3px 6px;text-align:right">ネコポス</th>
-                  <th style="padding:3px 6px;text-align:right">チャーター</th>
+                  <th style="padding:3px 6px;text-align:right">ポスト便</th>
+                  <th style="padding:3px 6px;text-align:right">チャーター便</th>
                   <th style="padding:3px 6px;text-align:center">Alc前/後</th>
                   <th style="padding:3px 6px;text-align:center">体調</th>
                   <th style="padding:3px 6px;text-align:center">状態</th>
@@ -9082,7 +9082,7 @@ function jpHolidayName(dateStr) {
 // 月報（日報自動集計）を「1日〜月末までの日めくり表」としてドライバーごとに1ページずつまとめ、
 // 印刷用ウィンドウを開く。各ページは対象月の全日数分の行を持ち、日報が無い日は空欄行のまま
 // 印字する（休みとして扱わず、単に空欄で「未提出/非稼働」を表す）。1ドライバー分がA4縦1枚に
-// 収まるよう、列は既存の日別明細テーブルと同じ構成（走行距離・宅配便・ネコポス・チャーター・
+// 収まるよう、列は既存の日別明細テーブルと同じ構成（走行距離・宅配便・ポスト便・チャーター・
 // Alc前後・体調・状態）にとどめ、フォントを小さくして31行+ヘッダーが収まるようにしている
 async function printMonthlyReportA4() {
   const from = document.getElementById('mrFrom')?.value;
@@ -9167,10 +9167,10 @@ async function printMonthlyReportA4() {
             発行日: ${fmtLocalDate(new Date())}
           </div>
         </div>
-        <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ネコポス ${drNeko.toLocaleString()}　チャーター ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
+        <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ポスト便 ${drNeko.toLocaleString()}　チャーター便 ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
         <table class="mr-table">
           <thead><tr>
-            <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:11%">車番</th><th style="width:11%">稼働時間</th><th style="width:13%">稼働先</th><th style="width:8%">走行km</th><th style="width:8%">宅配便</th><th style="width:8%">ネコポス</th><th style="width:8%">チャーター</th><th style="width:11%">Alc前/後</th><th style="width:6%">体調</th><th style="width:8%">状態</th>
+            <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:11%">車番</th><th style="width:11%">稼働時間</th><th style="width:13%">稼働先</th><th style="width:8%">走行km</th><th style="width:8%">宅配便</th><th style="width:8%">ポスト便</th><th style="width:8%">チャーター便</th><th style="width:11%">Alc前/後</th><th style="width:6%">体調</th><th style="width:8%">状態</th>
           </tr></thead>
           <tbody>${dayRows.join('')}</tbody>
         </table>
@@ -9218,7 +9218,7 @@ function exportMonthlyCsv() {
   const month = mrFrom;
   const drReports_local = dailyReports.filter(r=>r.date&&r.date>=mrFrom&&r.date<=mrTo);
   const headers = ['ドライバー','ドライバーID','日付','走行距離(km)','乗務開始','乗務終了',
-    '宅配便','ネコポス','チャーター','その他','Alc前','Alc後','体調(前)','状態','備考'];
+    '宅配便','ポスト便','チャーター便','その他','Alc前','Alc後','体調(前)','状態','備考'];
   const rows = [];
   drvs.forEach(d => {
     const dCars = d.cars||[];
@@ -10175,7 +10175,7 @@ async function loadDriverDailyList() {
               ${inspFailed?'<span style="color:var(--amber-text);font-size:10px;margin-left:4px">⚠ 点検</span>':''}
             </div>
             <div style="font-size:10px;color:var(--text2);margin-top:2px">
-              走行${r.distance_km||0}km · 宅配便${r.qty_takkyubin||0} · ネコポス${r.qty_nekopos||0} · チャーター${r.qty_charter||0}
+              走行${r.distance_km||0}km · 宅配便${r.qty_takkyubin||0} · ポスト便${r.qty_nekopos||0} · チャーター便${r.qty_charter||0}
             </div>
             ${r.note?`<div style="font-size:10px;color:var(--text2)">${escHtml(r.note)}</div>`:''}
           </div>
@@ -10215,11 +10215,11 @@ async function renderDriverMonthly() {
         <div class="kpi-card"><div class="kpi-label">配送個数</div><div class="kpi-val">${(totalTak+totalNeko).toLocaleString()}個</div></div>
       </div>
       <div class="pnl-row"><span>宅配便</span><span>${totalTak.toLocaleString()}個</span></div>
-      <div class="pnl-row"><span>ネコポス</span><span>${totalNeko.toLocaleString()}個</span></div>
-      <div class="pnl-row"><span>チャーター</span><span>${totalCharter.toLocaleString()}件</span></div>
+      <div class="pnl-row"><span>ポスト便</span><span>${totalNeko.toLocaleString()}個</span></div>
+      <div class="pnl-row"><span>チャーター便</span><span>${totalCharter.toLocaleString()}件</span></div>
       <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:8px">
         <div style="font-size:10px;color:var(--text2);margin-bottom:4px;font-weight:500">日別明細</div>
-        ${reps.map(r=>`<div class="pnl-row sub"><span>${r.date}</span><span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ネコ${r.qty_nekopos||0}</span></div>`).join('')}
+        ${reps.map(r=>`<div class="pnl-row sub"><span>${r.date}</span><span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ポスト${r.qty_nekopos||0}</span></div>`).join('')}
       </div>`;
   } catch(e) { el.innerHTML = `<div style="color:var(--red);font-size:11px">${e.message}</div>`; }
 }
@@ -10313,10 +10313,10 @@ async function printDriverMonthlyReportA4() {
         発行日: ${fmtLocalDate(new Date())}
       </div>
     </div>
-    <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ネコポス ${drNeko.toLocaleString()}　チャーター ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
+    <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ポスト便 ${drNeko.toLocaleString()}　チャーター便 ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
     <table class="mr-table">
       <thead><tr>
-        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:11%">車番</th><th style="width:11%">稼働時間</th><th style="width:13%">稼働先</th><th style="width:8%">走行km</th><th style="width:8%">宅配便</th><th style="width:8%">ネコポス</th><th style="width:8%">チャーター</th><th style="width:11%">Alc前/後</th><th style="width:6%">体調</th><th style="width:8%">状態</th>
+        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:11%">車番</th><th style="width:11%">稼働時間</th><th style="width:13%">稼働先</th><th style="width:8%">走行km</th><th style="width:8%">宅配便</th><th style="width:8%">ポスト便</th><th style="width:8%">チャーター便</th><th style="width:11%">Alc前/後</th><th style="width:6%">体調</th><th style="width:8%">状態</th>
       </tr></thead>
       <tbody>${dayRows.join('')}</tbody>
     </table>
