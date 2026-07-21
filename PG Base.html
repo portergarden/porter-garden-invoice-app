@@ -4931,7 +4931,7 @@ function renderCli(){
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${c.client_no ? 'ID: ' + c.client_no : 'ID: —'}</div>
-          <div style="width:135px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${c.name}${linkedPartner?` <span title="協力会社: ${escHtml(linkedPartner.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToPartnerFromClient(${linkedPartner.id})">🔗</span>`:''}</div>
+          <div style="min-width:135px;font-weight:600;font-size:13.5px;flex-shrink:0;">${c.name}${linkedPartner?` <span title="協力会社: ${escHtml(linkedPartner.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToPartnerFromClient(${linkedPartner.id})">🔗</span>`:''}</div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingLbl}</div>
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
           <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${c.fee_rate?`手数料:${c.fee_rate}%`:'—'}</div>
@@ -5081,7 +5081,7 @@ function renderPartners(){
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:60px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${p.partner_no ? 'ID: '+escHtml(p.partner_no) : 'ID: —'}</div>
-          <div style="width:150px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})">🔗</span>`:''}</div>
+          <div style="min-width:150px;font-weight:600;font-size:13.5px;flex-shrink:0;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})">🔗</span>`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
@@ -6204,12 +6204,12 @@ function renderDrv() {
         <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
           <div class="av drv" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${d.supplier_id ? 'ID: ' + d.supplier_id : 'ID: —'}</div>
-          <div style="width:115px;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;">${d.name}</div>
+          <div style="min-width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;">${d.name}</div>
           <div style="flex:1;display:flex;flex-wrap:wrap;gap:3px;min-width:100px;">
             ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="margin-top:0">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
           </div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${d.tel || '—'}</div>
-          <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;width:170px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;min-width:170px;flex-shrink:0;">
             ${d.company ? `<span style="padding:1px 6px;background:var(--bg2);border-radius:99px">${d.company}</span>` : ''}
           </div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingDayLabel(d.closing_day)}</div>
