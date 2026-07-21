@@ -2665,10 +2665,12 @@ try {
       <select id="vLeaseCompany" style="width:100%" onchange="onVehicleLeaseSelChange()"></select>
     </div>
     <div class="fld"><label>日額リース料（円・任意）</label><input type="number" id="vDailyRate" placeholder="例: 1500"></div>
+    <div style="font-size:10.5px;color:var(--text2);margin:8px 0 4px">車検・保険はドライバーの書類提出（車検証・自賠責・任意保険）と自動で連動します。ここで直接修正した場合は、現在の使用ドライバーの提出書類側にも反映されます。</div>
     <div class="g2">
       <div class="fld"><label>車検満了日（任意）</label><input type="date" id="vShakenExpiry"></div>
-      <div class="fld"><label>保険満了日（任意）</label><input type="date" id="vInsuranceExpiry"></div>
+      <div class="fld"><label>自賠責保険満了日（任意）</label><input type="date" id="vJibaiExpiry"></div>
     </div>
+    <div class="fld"><label>任意保険満了日（任意）</label><input type="date" id="vNiniExpiry"></div>
     <div class="fld"><label>備考（任意）</label><textarea id="vNote" rows="3" style="width:100%;resize:vertical"></textarea></div>
     <div class="mfoot"><button class="btn" onclick="closeM('mVehicle')">キャンセル</button><button class="btn pri" onclick="saveVehicle()">保存</button></div>
   </div>
@@ -6308,8 +6310,8 @@ function renderVehicles() {
   if (kpiEl) {
     const active = vehicles.filter(v=>v.status!=='scrapped');
     const soonOrExpired = active.filter(v => {
-      const s1 = docStatusOf({expiry_date:v.shaken_expiry}), s2 = docStatusOf({expiry_date:v.insurance_expiry});
-      return ['expired','soon'].includes(s1.cls) || ['expired','soon'].includes(s2.cls);
+      const sts = [v.shaken_expiry, v.jibai_expiry, v.nini_expiry].map(d=>docStatusOf({expiry_date:d}));
+      return sts.some(s => ['expired','soon'].includes(s.cls));
     });
     kpiEl.innerHTML = `
       <div class="kpi-card"><div class="kpi-label">登録車両数</div><div class="kpi-val">${active.length}台</div></div>
@@ -6341,13 +6343,14 @@ function renderVehicles() {
   if (!filtered.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">該当する車両が見つかりません</div>`; return; }
   const canE = me && me.role !== 'viewer';
   const headerRow = `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 12px 6px;gap:12px;font-size:10.5px;color:var(--text2);font-weight:600">
-    <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
-      <div style="width:130px;flex-shrink:0;">車番</div>
-      <div style="width:110px;flex-shrink:0;">現在の使用者</div>
-      <div style="width:70px;flex-shrink:0;">種別</div>
-      <div style="width:140px;flex-shrink:0;">リース会社</div>
-      <div style="width:140px;flex-shrink:0;">車検</div>
-      <div style="width:140px;flex-shrink:0;">保険</div>
+    <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
+      <div style="width:125px;flex-shrink:0;">車番</div>
+      <div style="width:100px;flex-shrink:0;">現在の使用者</div>
+      <div style="width:60px;flex-shrink:0;">種別</div>
+      <div style="width:115px;flex-shrink:0;">リース会社</div>
+      <div style="width:110px;flex-shrink:0;">車検</div>
+      <div style="width:110px;flex-shrink:0;">自賠責</div>
+      <div style="width:110px;flex-shrink:0;">任意保険</div>
       <div style="flex:1;min-width:80px;">備考</div>
     </div>
     <div style="width:60px;flex-shrink:0;"></div>
@@ -6356,15 +6359,16 @@ function renderVehicles() {
     const drv = currentVehicleDriver(v.car);
     const scrapped = v.status === 'scrapped';
     return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
-      <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
-        <div style="width:130px;font-weight:600;font-size:13px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
-        <div style="width:110px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" title="クリックで乗務履歴を記録・確認">${drv?escHtml(drv.name):'未割当'}</div>
-        <div style="width:70px;font-size:11px;flex-shrink:0;color:var(--text2)">${vehicleTypeLabel(v)}</div>
-        <div style="width:140px;font-size:11.5px;flex-shrink:0;color:var(--text2);overflow-wrap:break-word;word-break:break-word;">${v.vehicle_type==='lease'?escHtml(v.lease_company||'（未設定）'):'—'}</div>
+      <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
+        <div style="width:125px;font-weight:600;font-size:13px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
+        <div style="width:100px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" title="クリックで乗務履歴を記録・確認">${drv?escHtml(drv.name):'未割当'}</div>
+        <div style="width:60px;font-size:11px;flex-shrink:0;color:var(--text2)">${vehicleTypeLabel(v)}</div>
+        <div style="width:115px;font-size:11px;flex-shrink:0;color:var(--text2);overflow-wrap:break-word;word-break:break-word;">${v.vehicle_type==='lease'?escHtml(v.lease_company||'（未設定）'):'—'}</div>
         ${!scrapped ? `
-        <div style="width:140px;font-size:11px;flex-shrink:0;">${v.shaken_expiry||'—'} ${docStatusPill({expiry_date:v.shaken_expiry})}</div>
-        <div style="width:140px;font-size:11px;flex-shrink:0;">${v.insurance_expiry||'—'} ${docStatusPill({expiry_date:v.insurance_expiry})}</div>
-        ` : `<div style="width:140px;font-size:11px;color:var(--text2);flex-shrink:0;">—</div><div style="width:140px;font-size:11px;color:var(--text2);flex-shrink:0;">—</div>`}
+        <div style="width:110px;font-size:11px;flex-shrink:0;">${v.shaken_expiry||'—'} ${docStatusPill({expiry_date:v.shaken_expiry})}</div>
+        <div style="width:110px;font-size:11px;flex-shrink:0;">${v.jibai_expiry||'—'} ${docStatusPill({expiry_date:v.jibai_expiry})}</div>
+        <div style="width:110px;font-size:11px;flex-shrink:0;">${v.nini_expiry||'—'} ${docStatusPill({expiry_date:v.nini_expiry})}</div>
+        ` : `<div style="width:110px;font-size:11px;color:var(--text2);flex-shrink:0;">—</div><div style="width:110px;font-size:11px;color:var(--text2);flex-shrink:0;">—</div><div style="width:110px;font-size:11px;color:var(--text2);flex-shrink:0;">—</div>`}
         <div style="flex:1;min-width:80px;font-size:11px;color:var(--text2)">${v.note?escHtml(v.note):''}</div>
       </div>
       ${canE ? `<div style="width:60px;display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" onclick="editVehicle(${v.id})">✎</button><button class="ibtn" onclick="deleteVehicle(${v.id})">🗑</button></div>` : '<div style="width:60px;flex-shrink:0;"></div>'}
@@ -6424,7 +6428,8 @@ function openVehicleM() {
   document.getElementById('vLeaseCompanyWrap').style.display = 'none';
   document.getElementById('vDailyRate').value = '';
   document.getElementById('vShakenExpiry').value = '';
-  document.getElementById('vInsuranceExpiry').value = '';
+  document.getElementById('vJibaiExpiry').value = '';
+  document.getElementById('vNiniExpiry').value = '';
   document.getElementById('vNote').value = '';
   document.getElementById('mVehicle').classList.add('on');
 }
@@ -6439,9 +6444,27 @@ function editVehicle(id) {
   document.getElementById('vLeaseCompanyWrap').style.display = v.vehicle_type==='lease' ? '' : 'none';
   document.getElementById('vDailyRate').value = v.daily_rate ?? '';
   document.getElementById('vShakenExpiry').value = v.shaken_expiry || '';
-  document.getElementById('vInsuranceExpiry').value = v.insurance_expiry || '';
+  document.getElementById('vJibaiExpiry').value = v.jibai_expiry || '';
+  document.getElementById('vNiniExpiry').value = v.nini_expiry || '';
   document.getElementById('vNote').value = v.note || '';
   document.getElementById('mVehicle').classList.add('on');
+}
+// 車両側の車検・保険期限が(手動で)変わったら、現在この車を使っているドライバーの提出書類（既に提出済みの分のみ）の
+// 期限表示も合わせて更新する。ファイルの再アップロードは行わず、期限日付のみを同期する
+async function syncDriverDocFromVehicleEdit(car, updates) {
+  const targetDrv = currentVehicleDriver(car) || drvs.find(d => (d.cars||[]).some(c => nm(c)===nm(car)));
+  if (!targetDrv) return;
+  const fieldMap = { shaken_expiry: 'shaken', jibai_expiry: 'jibai', nini_expiry: 'nini' };
+  for (const [vField, docType] of Object.entries(fieldMap)) {
+    if (!(vField in updates)) continue;
+    const existing = findDriverDoc(targetDrv.id, docType);
+    if (!existing || existing.expiry_date === updates[vField]) continue;
+    try {
+      const {error} = await sb.from('driver_documents').update({expiry_date: updates[vField]}).eq('drv_id', targetDrv.id).eq('doc_type', docType);
+      if (error) throw error;
+      existing.expiry_date = updates[vField];
+    } catch(e) { console.warn('syncDriverDocFromVehicleEdit:', e.message); }
+  }
 }
 async function saveVehicle() {
   const car = document.getElementById('vCar').value.trim();
@@ -6457,7 +6480,8 @@ async function saveVehicle() {
     lease_company: (vType === 'lease' && leaseCompanyVal && leaseCompanyVal !== '__new__') ? leaseCompanyVal : null,
     daily_rate: document.getElementById('vDailyRate').value === '' ? null : +document.getElementById('vDailyRate').value,
     shaken_expiry: document.getElementById('vShakenExpiry').value || null,
-    insurance_expiry: document.getElementById('vInsuranceExpiry').value || null,
+    jibai_expiry: document.getElementById('vJibaiExpiry').value || null,
+    nini_expiry: document.getElementById('vNiniExpiry').value || null,
     note: document.getElementById('vNote').value.trim(),
   };
   showLoad(true);
@@ -6468,6 +6492,7 @@ async function saveVehicle() {
       const idx = vehicles.findIndex(v=>v.id===eVehicleId);
       if (idx>=0) vehicles[idx] = data;
       addLog('車両編集', car);
+      await syncDriverDocFromVehicleEdit(car, { shaken_expiry: obj.shaken_expiry, jibai_expiry: obj.jibai_expiry, nini_expiry: obj.nini_expiry });
     } else {
       const {data, error} = await sb.from('vehicles').insert(obj).select().single();
       if (error) throw error;
@@ -10240,6 +10265,33 @@ function resizeImageToBlob(file, maxSize) {
 }
 
 // 1書類分の登録・更新（ファイルは任意。期限だけの更新も可能）
+// ドライバーが車検証・自賠責・任意保険を提出/更新したら、そのドライバーが現在使用している車両(vehicles)の
+// 対応する期限へ自動反映する。誰が乗っても本来同じ値になる車両側の情報なので、ドライバー申請を正として扱う。
+// 対象の車が車両管理に未登録なら、フル表記の車番で新規に自動登録する
+async function syncVehicleExpiryFromDriverDoc(drvId, docType, expiry) {
+  const fieldMap = { shaken: 'shaken_expiry', jibai: 'jibai_expiry', nini: 'nini_expiry' };
+  const field = fieldMap[docType];
+  if (!field) return; // license/anzenkanriは車両に紐づく情報ではないため対象外
+  const d = drvs.find(x => x.id === drvId);
+  const cars = (d?.cars || []).filter(c => c && !c.includes('----'));
+  if (!cars.length) return;
+  try {
+    const vehicle = vehicles.find(v => cars.some(c => nm(v.car) === nm(c)));
+    if (vehicle) {
+      if (vehicle[field] === expiry) return;
+      const {error} = await sb.from('vehicles').update({[field]: expiry}).eq('id', vehicle.id);
+      if (error) throw error;
+      vehicle[field] = expiry;
+    } else {
+      const full = cars.filter(isFullPlateNumber);
+      const car = full[0] || cars[0];
+      const {data, error} = await sb.from('vehicles').insert({ car, vehicle_type: 'own', [field]: expiry }).select().single();
+      if (error) throw error;
+      vehicles.push(data);
+    }
+    if (!document.getElementById('pg26')?.classList.contains('hide')) renderVehicles();
+  } catch(e) { console.warn('syncVehicleExpiryFromDriverDoc:', e.message); }
+}
 async function saveDriverDoc(drvId, docType) {
   const fileEl = document.getElementById(`dd_file_${drvId}_${docType}`);
   const expEl = document.getElementById(`dd_exp_${drvId}_${docType}`);
@@ -10268,6 +10320,7 @@ async function saveDriverDoc(drvId, docType) {
     driverDocs.push(data);
     if (fileEl) fileEl.value = '';
     addLog('書類登録', `drv:${drvId} ${docType}${expiry?` 期限:${expiry}`:''}`);
+    await syncVehicleExpiryFromDriverDoc(drvId, docType, expiry);
     showT('書類を保存しました');
     refreshDocViews(drvId);
   } catch(e) { showT('保存エラー: ' + e.message, 'ter'); }
@@ -14934,8 +14987,9 @@ CREATE TABLE IF NOT EXISTS vehicles (
   status text NOT NULL DEFAULT 'active', -- 'active' | 'scrapped'（廃車）
   vehicle_type text NOT NULL DEFAULT 'own', -- 'own'（持ち込み・自社所有） | 'lease'（リース会社から借用）
   lease_company text,      -- vehicle_type='lease'の場合の借用元会社名（協力会社管理のリース会社と同名で紐づけ）
-  shaken_expiry date,      -- 車検満了日
-  insurance_expiry date,   -- 保険満了日
+  shaken_expiry date,      -- 車検満了日（ドライバーの車検証提出と自動連動）
+  jibai_expiry date,       -- 自賠責保険満了日（ドライバーの自賠責保険提出と自動連動）
+  nini_expiry date,        -- 任意保険満了日（ドライバーの任意保険提出と自動連動）
   daily_rate int,          -- 代車として貸す場合の日額（乗務履歴の記録時にデフォルト値として使用）
   note text DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now()
@@ -15310,14 +15364,26 @@ CREATE POLICY "vehicle_assignments_update" ON vehicle_assignments FOR UPDATE TO 
 DROP POLICY IF EXISTS "vehicle_assignments_delete" ON vehicle_assignments;
 CREATE POLICY "vehicle_assignments_delete" ON vehicle_assignments FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
--- 車両マスタ: 社内のみ閲覧・編集可
+-- 車両マスタ: 社内は全件、ドライバーは自分の車番のみ閲覧・書類提出時の自動連動用に更新可
 ALTER TABLE vehicles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "vehicles_select" ON vehicles;
-CREATE POLICY "vehicles_select" ON vehicles FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "vehicles_select" ON vehicles FOR SELECT TO authenticated USING (
+  "current_role"() = ANY(ARRAY['admin','editor','viewer'])
+  OR car = ANY(SELECT unnest(cars) FROM drivers WHERE id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()))
+);
 DROP POLICY IF EXISTS "vehicles_insert" ON vehicles;
-CREATE POLICY "vehicles_insert" ON vehicles FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "vehicles_insert" ON vehicles FOR INSERT TO authenticated WITH CHECK (
+  "current_role"() = ANY(ARRAY['admin','editor'])
+  OR car = ANY(SELECT unnest(cars) FROM drivers WHERE id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()))
+);
 DROP POLICY IF EXISTS "vehicles_update" ON vehicles;
-CREATE POLICY "vehicles_update" ON vehicles FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "vehicles_update" ON vehicles FOR UPDATE TO authenticated USING (
+  "current_role"() = ANY(ARRAY['admin','editor'])
+  OR car = ANY(SELECT unnest(cars) FROM drivers WHERE id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()))
+) WITH CHECK (
+  "current_role"() = ANY(ARRAY['admin','editor'])
+  OR car = ANY(SELECT unnest(cars) FROM drivers WHERE id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()))
+);
 DROP POLICY IF EXISTS "vehicles_delete" ON vehicles;
 CREATE POLICY "vehicles_delete" ON vehicles FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
