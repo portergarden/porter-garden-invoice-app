@@ -6444,8 +6444,12 @@ function runAggPay() {
     gBizFee+=bizFee; gNetIncl+=netIncl; gAdminFee+=adminFee; gVehRental+=vehRental; gAdvHw+=advHwSum; gNonTax+=nonTaxSum; gOther+=otherTotal; gGross+=gross;
 
     const safeKey = String(drvId);
-    // 車番はドライバー登録の既定車両ではなく、実際にその明細で使われた車番を表示する（代車・車両交換・手動割当てを正しく反映するため）
-    const carsUsed = [...new Set(rows.map(r=>r.car).filter(Boolean))];
+    // 車番はドライバー登録の既定車両ではなく、実際にその明細で使われた車番を表示する（代車・車両交換・手動割当てを正しく反映するため）。
+    // 「メイン車番」は明細に登場した順ではなく、この期間で最も使用件数が多い車番とする
+    // （recsは新規登録が先頭に追加される順のため、登場順=直近入力順であって実際の主力車両とは限らないため）
+    const carCounts = {};
+    rows.forEach(r => { if (r.car) carCounts[r.car] = (carCounts[r.car]||0) + 1; });
+    const carsUsed = Object.keys(carCounts).sort((a,b) => carCounts[b]-carCounts[a]);
     const carShort = carsUsed.length ? (carsUsed.length===1 ? carsUsed[0] : `${carsUsed[0]} 他${carsUsed.length-1}台…`) : ((d.cars||[])[0]||'');
     const carFull = carsUsed.join('、');
     const carCellId = `payCarCell${safeKey}`;
