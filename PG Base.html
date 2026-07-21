@@ -1331,6 +1331,9 @@ try {
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span style="font-size:11.5px;color:var(--text2)">自社の代車・リース車など、貸し借りする車両と車検・保険期限をまとめて管理します</span>
         <input type="text" id="vehicleSearch" placeholder="🔍 車番で検索…" oninput="renderVehicles()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+        <select id="vehicleLeaseFilter" onchange="renderVehicles()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">種別・リース会社: すべて</option>
+        </select>
       </div>
       <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
     </div>
@@ -2650,8 +2653,18 @@ try {
           <option value="scrapped">廃車</option>
         </select>
       </div>
-      <div class="fld"><label>日額リース料（円・任意）</label><input type="number" id="vDailyRate" placeholder="例: 1500"></div>
+      <div class="fld"><label>種別</label>
+        <select id="vType" style="width:100%" onchange="onVehicleTypeChange()">
+          <option value="own">持ち込み・自社所有</option>
+          <option value="lease">リース</option>
+        </select>
+      </div>
     </div>
+    <div class="fld" id="vLeaseCompanyWrap" style="display:none">
+      <label>リース会社</label>
+      <select id="vLeaseCompany" style="width:100%" onchange="onVehicleLeaseSelChange()"></select>
+    </div>
+    <div class="fld"><label>日額リース料（円・任意）</label><input type="number" id="vDailyRate" placeholder="例: 1500"></div>
     <div class="g2">
       <div class="fld"><label>車検満了日（任意）</label><input type="date" id="vShakenExpiry"></div>
       <div class="fld"><label>保険満了日（任意）</label><input type="date" id="vInsuranceExpiry"></div>
@@ -6269,6 +6282,25 @@ function quickAddVehicle(car) {
   document.getElementById('vCar').value = car;
 }
 
+// リース会社フィルタの選択肢を、登録済み車両の内訳（持ち込み台数・リース会社ごとの台数）から再構築する
+function populateVehicleLeaseFilter() {
+  const sel = document.getElementById('vehicleLeaseFilter');
+  if (!sel) return;
+  const cur = sel.value;
+  const ownCount = vehicles.filter(v=>v.vehicle_type!=='lease').length;
+  const leaseGroups = {};
+  vehicles.filter(v=>v.vehicle_type==='lease').forEach(v=>{
+    const name = v.lease_company || '（リース会社未設定）';
+    leaseGroups[name] = (leaseGroups[name]||0)+1;
+  });
+  const leaseNames = Object.keys(leaseGroups).sort((a,b)=>nm(a).localeCompare(nm(b),'ja'));
+  sel.innerHTML = `<option value="">種別・リース会社: すべて（${vehicles.length}台）</option>`
+    + `<option value="own">持ち込み・自社所有（${ownCount}台）</option>`
+    + leaseNames.map(n=>`<option value="lease::${escHtml(n)}">${escHtml(n)}（${leaseGroups[n]}台）</option>`).join('');
+  sel.value = [...sel.options].some(o=>o.value===cur) ? cur : '';
+}
+function vehicleTypeLabel(v) { return v.vehicle_type==='lease' ? 'リース' : '持ち込み'; }
+
 function renderVehicles() {
   const listEl = document.getElementById('vehicleList');
   if (!listEl) return;
@@ -6285,6 +6317,7 @@ function renderVehicles() {
       <div class="kpi-card"><div class="kpi-label">廃車</div><div class="kpi-val">${vehicles.filter(v=>v.status==='scrapped').length}台</div></div>
     `;
   }
+  populateVehicleLeaseFilter();
   const missingArea = document.getElementById('vehicleMissingArea');
   if (missingArea) {
     const missing = getUnregisteredCarNumbers();
@@ -6298,35 +6331,97 @@ function renderVehicles() {
   }
   if (!vehicles.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">車両が登録されていません</div>`; return; }
   const q = nm(document.getElementById('vehicleSearch')?.value||'');
-  const filtered = q ? vehicles.filter(v=>nm(v.car).includes(q)) : vehicles;
-  if (q && !filtered.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">該当する車両が見つかりません</div>`; return; }
+  const leaseFilter = document.getElementById('vehicleLeaseFilter')?.value || '';
+  let filtered = q ? vehicles.filter(v=>nm(v.car).includes(q)) : vehicles;
+  if (leaseFilter === 'own') filtered = filtered.filter(v=>v.vehicle_type!=='lease');
+  else if (leaseFilter.startsWith('lease::')) {
+    const name = leaseFilter.slice(7);
+    filtered = filtered.filter(v=>v.vehicle_type==='lease' && (v.lease_company||'（リース会社未設定）')===name);
+  }
+  if (!filtered.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">該当する車両が見つかりません</div>`; return; }
   const canE = me && me.role !== 'viewer';
-  listEl.innerHTML = filtered.map(v => {
+  const headerRow = `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 12px 6px;gap:12px;font-size:10.5px;color:var(--text2);font-weight:600">
+    <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+      <div style="width:130px;flex-shrink:0;">車番</div>
+      <div style="width:110px;flex-shrink:0;">現在の使用者</div>
+      <div style="width:70px;flex-shrink:0;">種別</div>
+      <div style="width:140px;flex-shrink:0;">リース会社</div>
+      <div style="width:140px;flex-shrink:0;">車検</div>
+      <div style="width:140px;flex-shrink:0;">保険</div>
+      <div style="flex:1;min-width:80px;">備考</div>
+    </div>
+    <div style="width:60px;flex-shrink:0;"></div>
+  </div>`;
+  listEl.innerHTML = headerRow + filtered.map(v => {
     const drv = currentVehicleDriver(v.car);
     const scrapped = v.status === 'scrapped';
-    const shakenSt = docStatusOf({expiry_date:v.shaken_expiry});
-    const insSt = docStatusOf({expiry_date:v.insurance_expiry});
     return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
-      <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
-        <div style="width:150px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
-        <div style="width:150px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" title="クリックで乗務履歴を記録・確認">${drv?('現在: '+escHtml(drv.name)):'現在: 未割当'}</div>
+      <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
+        <div style="width:130px;font-weight:600;font-size:13px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
+        <div style="width:110px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" title="クリックで乗務履歴を記録・確認">${drv?escHtml(drv.name):'未割当'}</div>
+        <div style="width:70px;font-size:11px;flex-shrink:0;color:var(--text2)">${vehicleTypeLabel(v)}</div>
+        <div style="width:140px;font-size:11.5px;flex-shrink:0;color:var(--text2);overflow-wrap:break-word;word-break:break-word;">${v.vehicle_type==='lease'?escHtml(v.lease_company||'（未設定）'):'—'}</div>
         ${!scrapped ? `
-        <div style="width:150px;font-size:11.5px;flex-shrink:0;">車検: ${v.shaken_expiry||'—'} ${docStatusPill({expiry_date:v.shaken_expiry})}</div>
-        <div style="width:150px;font-size:11.5px;flex-shrink:0;">保険: ${v.insurance_expiry||'—'} ${docStatusPill({expiry_date:v.insurance_expiry})}</div>
-        ` : `<div style="width:306px;font-size:11.5px;color:var(--text2);flex-shrink:0;">廃車のため期限管理対象外</div>`}
-        <div style="flex:1;min-width:120px;font-size:11.5px;color:var(--text2)">${v.note?escHtml(v.note):''}</div>
+        <div style="width:140px;font-size:11px;flex-shrink:0;">${v.shaken_expiry||'—'} ${docStatusPill({expiry_date:v.shaken_expiry})}</div>
+        <div style="width:140px;font-size:11px;flex-shrink:0;">${v.insurance_expiry||'—'} ${docStatusPill({expiry_date:v.insurance_expiry})}</div>
+        ` : `<div style="width:140px;font-size:11px;color:var(--text2);flex-shrink:0;">—</div><div style="width:140px;font-size:11px;color:var(--text2);flex-shrink:0;">—</div>`}
+        <div style="flex:1;min-width:80px;font-size:11px;color:var(--text2)">${v.note?escHtml(v.note):''}</div>
       </div>
-      ${canE ? `<div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" onclick="editVehicle(${v.id})">✎</button><button class="ibtn" onclick="deleteVehicle(${v.id})">🗑</button></div>` : ''}
+      ${canE ? `<div style="width:60px;display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" onclick="editVehicle(${v.id})">✎</button><button class="ibtn" onclick="deleteVehicle(${v.id})">🗑</button></div>` : '<div style="width:60px;flex-shrink:0;"></div>'}
     </div>`;
   }).join('');
 }
 
+// 車両登録モーダルのリース会社プルダウン（協力会社管理でis_lease登録済みの会社＋既存車両で使われている会社名を候補にする）
+function populateVehicleLeaseSel(selected) {
+  const sel = document.getElementById('vLeaseCompany');
+  if (!sel) return;
+  const fromMaster = partnerCompanies.filter(p=>p.is_lease).map(p=>p.name);
+  const fromVehicles = vehicles.map(v=>v.lease_company).filter(Boolean);
+  const companies = [...new Set([...fromMaster, ...fromVehicles])].sort((a,b)=>nm(a).localeCompare(nm(b),'ja'));
+  if (selected && !companies.includes(selected)) companies.push(selected);
+  sel.innerHTML = '<option value="">（未設定）</option>'
+    + companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')
+    + '<option value="__new__">＋ 新しいリース会社を追加...</option>';
+  sel.value = selected || '';
+}
+// 種別（持ち込み/リース）切り替えでリース会社欄の表示を切り替える
+function onVehicleTypeChange() {
+  const isLease = document.getElementById('vType').value === 'lease';
+  document.getElementById('vLeaseCompanyWrap').style.display = isLease ? '' : 'none';
+}
+// リース会社プルダウンで「＋新規追加」を選んだ場合、協力会社にリース会社として登録する（ドライバー登録の同機能と同じ流れ）
+async function onVehicleLeaseSelChange() {
+  const sel = document.getElementById('vLeaseCompany');
+  if (!sel || sel.value !== '__new__') return;
+  const name = (prompt('新しいリース会社名を入力してください:')||'').trim();
+  if (!name) { sel.value = ''; return; }
+  try {
+    const existing = partnerCompanies.find(p=>nm(p.name)===nm(name));
+    if (existing) {
+      if (!existing.is_lease) {
+        const {error} = await sb.from('partner_companies').update({is_lease:true}).eq('id', existing.id);
+        if (error) throw error;
+        existing.is_lease = true;
+      }
+    } else {
+      const {data, error} = await sb.from('partner_companies').insert({name, is_lease:true, partner_no: nextIdFor(partnerCompanies,'partner_no')}).select().single();
+      if (error) throw error;
+      partnerCompanies.push(data);
+      addLog('協力会社追加', `${name}（リース会社）`);
+    }
+    populateVehicleLeaseSel(name);
+  } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
+}
 function openVehicleM() {
   eVehicleId = null;
   document.getElementById('mVehicleH').innerHTML = '車両追加 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
   document.getElementById('vCar').value = '';
   document.getElementById('vCarSuggestList').innerHTML = getUnregisteredCarNumbers().map(c=>`<option value="${escHtml(c)}">`).join('');
   document.getElementById('vStatus').value = 'active';
+  document.getElementById('vType').value = 'own';
+  populateVehicleLeaseSel('');
+  document.getElementById('vLeaseCompanyWrap').style.display = 'none';
   document.getElementById('vDailyRate').value = '';
   document.getElementById('vShakenExpiry').value = '';
   document.getElementById('vInsuranceExpiry').value = '';
@@ -6339,6 +6434,9 @@ function editVehicle(id) {
   document.getElementById('mVehicleH').innerHTML = '車両編集 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
   document.getElementById('vCar').value = v.car;
   document.getElementById('vStatus').value = v.status || 'active';
+  document.getElementById('vType').value = v.vehicle_type || 'own';
+  populateVehicleLeaseSel(v.lease_company || '');
+  document.getElementById('vLeaseCompanyWrap').style.display = v.vehicle_type==='lease' ? '' : 'none';
   document.getElementById('vDailyRate').value = v.daily_rate ?? '';
   document.getElementById('vShakenExpiry').value = v.shaken_expiry || '';
   document.getElementById('vInsuranceExpiry').value = v.insurance_expiry || '';
@@ -6350,9 +6448,13 @@ async function saveVehicle() {
   if (!car) { alert('車番は必須です'); return; }
   const dup = vehicles.find(v => nm(v.car)===nm(car) && v.id !== eVehicleId);
   if (dup) { alert(`車番「${car}」は既に登録されています`); return; }
+  const vType = document.getElementById('vType').value;
+  const leaseCompanyVal = document.getElementById('vLeaseCompany').value;
   const obj = {
     car,
     status: document.getElementById('vStatus').value,
+    vehicle_type: vType,
+    lease_company: (vType === 'lease' && leaseCompanyVal && leaseCompanyVal !== '__new__') ? leaseCompanyVal : null,
     daily_rate: document.getElementById('vDailyRate').value === '' ? null : +document.getElementById('vDailyRate').value,
     shaken_expiry: document.getElementById('vShakenExpiry').value || null,
     insurance_expiry: document.getElementById('vInsuranceExpiry').value || null,
@@ -14830,6 +14932,8 @@ CREATE TABLE IF NOT EXISTS vehicles (
   id bigserial PRIMARY KEY,
   car text NOT NULL UNIQUE,
   status text NOT NULL DEFAULT 'active', -- 'active' | 'scrapped'（廃車）
+  vehicle_type text NOT NULL DEFAULT 'own', -- 'own'（持ち込み・自社所有） | 'lease'（リース会社から借用）
+  lease_company text,      -- vehicle_type='lease'の場合の借用元会社名（協力会社管理のリース会社と同名で紐づけ）
   shaken_expiry date,      -- 車検満了日
   insurance_expiry date,   -- 保険満了日
   daily_rate int,          -- 代車として貸す場合の日額（乗務履歴の記録時にデフォルト値として使用）
