@@ -605,6 +605,7 @@ try {
     <div class="ntab" id="nt2" onclick="goPage(2,this)">👥 ドライバー管理</div>
     <div class="ntab" id="nt3" onclick="goPage(3,this)">🏢 取引先管理</div>
     <div class="ntab" id="nt25" onclick="goPage(25,this)">🤝 協力会社管理</div>
+    <div class="ntab" id="nt26" onclick="goPage(26,this)">🚙 車両管理</div>
     <div class="ntab" id="nt15" onclick="goPage(15,this)">💰 入金管理</div>
     <div class="ntab hide" id="nt4" onclick="goPage(4,this)">🕐 操作ログ</div>
     <div class="ntab hide" id="nt5" onclick="goPage(5,this)">🔐 ユーザー管理</div>
@@ -1324,6 +1325,17 @@ try {
     </div>
     <div id="partnerKpi" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
     <div class="cardgrid" id="partnerGrid"></div>
+  </div>
+  <div id="pg26" class="hide">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:11.5px;color:var(--text2)">自社の代車・リース車など、貸し借りする車両と車検・保険期限をまとめて管理します</span>
+        <input type="text" id="vehicleSearch" placeholder="🔍 車番で検索…" oninput="renderVehicles()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+      </div>
+      <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
+    </div>
+    <div id="vehicleKpi" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+    <div style="padding:10px 14px" id="vehicleList"></div>
   </div>
   <div id="pg4" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:0.5px solid var(--border)">
@@ -2625,6 +2637,29 @@ try {
   </div>
 </div>
 
+<!-- モーダル: 車両登録・編集（車両管理タブ） -->
+<div class="overlay" id="mVehicle">
+  <div class="modal" style="width:440px">
+    <div class="mh" id="mVehicleH">車両 追加・編集 <button class="ibtn" onclick="closeM('mVehicle')">✕</button></div>
+    <div class="fld"><label>車番</label><input type="text" id="vCar" placeholder="例: 仙台480れ141"></div>
+    <div class="g2">
+      <div class="fld"><label>状態</label>
+        <select id="vStatus" style="width:100%">
+          <option value="active">稼働中</option>
+          <option value="scrapped">廃車</option>
+        </select>
+      </div>
+      <div class="fld"><label>日額リース料（円・任意）</label><input type="number" id="vDailyRate" placeholder="例: 1500"></div>
+    </div>
+    <div class="g2">
+      <div class="fld"><label>車検満了日（任意）</label><input type="date" id="vShakenExpiry"></div>
+      <div class="fld"><label>保険満了日（任意）</label><input type="date" id="vInsuranceExpiry"></div>
+    </div>
+    <div class="fld"><label>備考（任意）</label><textarea id="vNote" rows="3" style="width:100%;resize:vertical"></textarea></div>
+    <div class="mfoot"><button class="btn" onclick="closeM('mVehicle')">キャンセル</button><button class="btn pri" onclick="saveVehicle()">保存</button></div>
+  </div>
+</div>
+
 <!-- モーダル: 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録） -->
 <div class="overlay" id="mVehicleHist">
   <div class="modal" style="width:520px">
@@ -2857,7 +2892,7 @@ async function applyLogin(data) {
     document.getElementById('tbBdg').innerHTML = `<span class="bdg ${rc}">${rn}</span>`;
     if (me.role==='admin') { document.getElementById('nt4').classList.remove('hide'); document.getElementById('nt5').classList.remove('hide'); }
     const canEd = me.role !== 'viewer';
-    ['bAdd','bAddD','bAddC','bAddPartner','bDrvInvite','bBulkChat'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
+    ['bAdd','bAddD','bAddC','bAddPartner','bAddVehicle','bDrvInvite','bBulkChat'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
   }
   startSess();
   await loadAll();
@@ -3010,7 +3045,7 @@ async function loadAll(){
   }catch(e){showT('データ読み込みエラー: '+e.message,'ter');}
   showLoad(false);
   // 個別読込（テーブル未作成でもloadAll全体を止めない）
-  await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments()]);
+  await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments(), loadVehicles()]);
 }
 async function loadLogs(){
   const la=document.getElementById('logArea');if(!la)return;
@@ -4134,7 +4169,7 @@ const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
   1:'analysis', 8:'analysis', 23:'analysis', 24:'analysis',
   10:'driver', 12:'driver', 14:'driver',
-  2:'admin', 3:'admin', 25:'admin', 15:'admin', 4:'admin', 5:'admin', 17:'admin',
+  2:'admin', 3:'admin', 25:'admin', 26:'admin', 15:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
 
 function switchNavGroup(group, skipPageSwitch) {
@@ -4153,7 +4188,7 @@ function switchNavGroup(group, skipPageSwitch) {
 let _skipHistoryPush = false;
 function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
-  for(let i=0; i<=25; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
+  for(let i=0; i<=26; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
   const target = document.getElementById('pg'+n);
   if(target) target.classList.remove('hide');
@@ -4168,6 +4203,7 @@ function goPage(n,el){
   if(n===2){renderDrv();if(!driverDocs.length)loadDriverDocs().then(()=>renderDrv());loadDriverChatUnread().then(()=>renderDrv());}
   if(n===3)renderCli();
   if(n===25)renderPartners();
+  if(n===26)renderVehicles();
   if(n===4)loadLogs();
   if(n===5)renderUsr();
   if(n===6){initAggPay();runAggPay();renderPayMets();}
@@ -6174,6 +6210,145 @@ function setDriverView(mode) {
   renderDrv();
 }
 
+/* ===== 車両管理（自社の代車・リース車の車検・保険期限・現在の使用者を一覧管理） ===== */
+let vehicles = [];
+let eVehicleId = null;
+
+async function loadVehicles() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('vehicles').select('*').order('car');
+    if (error) {
+      if (error.message.includes('does not exist')||error.message.includes('relation')) return;
+      throw error;
+    }
+    vehicles = data || [];
+  } catch(e) { console.warn('loadVehicles:', e.message); }
+}
+
+// この車番の「使用中」の乗務履歴（end_date未設定）からドライバーを引く
+function currentVehicleDriver(car) {
+  const open = vehicleAssignments.find(v => nm(v.car)===nm(car) && !v.end_date);
+  if (!open) return null;
+  return drvs.find(d => d.id === open.driver_id) || null;
+}
+
+function renderVehicles() {
+  const listEl = document.getElementById('vehicleList');
+  if (!listEl) return;
+  const kpiEl = document.getElementById('vehicleKpi');
+  if (kpiEl) {
+    const active = vehicles.filter(v=>v.status!=='scrapped');
+    const soonOrExpired = active.filter(v => {
+      const s1 = docStatusOf({expiry_date:v.shaken_expiry}), s2 = docStatusOf({expiry_date:v.insurance_expiry});
+      return ['expired','soon'].includes(s1.cls) || ['expired','soon'].includes(s2.cls);
+    });
+    kpiEl.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">登録車両数</div><div class="kpi-val">${active.length}台</div></div>
+      <div class="kpi-card"><div class="kpi-label">車検・保険 要確認</div><div class="kpi-val" style="color:${soonOrExpired.length?'var(--amber-text)':'inherit'}">${soonOrExpired.length}台</div></div>
+      <div class="kpi-card"><div class="kpi-label">廃車</div><div class="kpi-val">${vehicles.filter(v=>v.status==='scrapped').length}台</div></div>
+    `;
+  }
+  if (!vehicles.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">車両が登録されていません</div>`; return; }
+  const q = nm(document.getElementById('vehicleSearch')?.value||'');
+  const filtered = q ? vehicles.filter(v=>nm(v.car).includes(q)) : vehicles;
+  if (q && !filtered.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">該当する車両が見つかりません</div>`; return; }
+  const canE = me && me.role !== 'viewer';
+  listEl.innerHTML = filtered.map(v => {
+    const drv = currentVehicleDriver(v.car);
+    const scrapped = v.status === 'scrapped';
+    const shakenSt = docStatusOf({expiry_date:v.shaken_expiry});
+    const insSt = docStatusOf({expiry_date:v.insurance_expiry});
+    return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
+        <div style="width:150px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
+        <div style="width:150px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" title="クリックで乗務履歴を記録・確認">${drv?('現在: '+escHtml(drv.name)):'現在: 未割当'}</div>
+        ${!scrapped ? `
+        <div style="width:150px;font-size:11.5px;flex-shrink:0;">車検: ${v.shaken_expiry||'—'} ${docStatusPill({expiry_date:v.shaken_expiry})}</div>
+        <div style="width:150px;font-size:11.5px;flex-shrink:0;">保険: ${v.insurance_expiry||'—'} ${docStatusPill({expiry_date:v.insurance_expiry})}</div>
+        ` : `<div style="width:306px;font-size:11.5px;color:var(--text2);flex-shrink:0;">廃車のため期限管理対象外</div>`}
+        <div style="flex:1;min-width:120px;font-size:11.5px;color:var(--text2)">${v.note?escHtml(v.note):''}</div>
+      </div>
+      ${canE ? `<div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" onclick="editVehicle(${v.id})">✎</button><button class="ibtn" onclick="deleteVehicle(${v.id})">🗑</button></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openVehicleM() {
+  eVehicleId = null;
+  document.getElementById('mVehicleH').innerHTML = '車両追加 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
+  document.getElementById('vCar').value = '';
+  document.getElementById('vStatus').value = 'active';
+  document.getElementById('vDailyRate').value = '';
+  document.getElementById('vShakenExpiry').value = '';
+  document.getElementById('vInsuranceExpiry').value = '';
+  document.getElementById('vNote').value = '';
+  document.getElementById('mVehicle').classList.add('on');
+}
+function editVehicle(id) {
+  const v = vehicles.find(x=>x.id===id); if (!v) return;
+  eVehicleId = id;
+  document.getElementById('mVehicleH').innerHTML = '車両編集 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
+  document.getElementById('vCar').value = v.car;
+  document.getElementById('vStatus').value = v.status || 'active';
+  document.getElementById('vDailyRate').value = v.daily_rate ?? '';
+  document.getElementById('vShakenExpiry').value = v.shaken_expiry || '';
+  document.getElementById('vInsuranceExpiry').value = v.insurance_expiry || '';
+  document.getElementById('vNote').value = v.note || '';
+  document.getElementById('mVehicle').classList.add('on');
+}
+async function saveVehicle() {
+  const car = document.getElementById('vCar').value.trim();
+  if (!car) { alert('車番は必須です'); return; }
+  const dup = vehicles.find(v => nm(v.car)===nm(car) && v.id !== eVehicleId);
+  if (dup) { alert(`車番「${car}」は既に登録されています`); return; }
+  const obj = {
+    car,
+    status: document.getElementById('vStatus').value,
+    daily_rate: document.getElementById('vDailyRate').value === '' ? null : +document.getElementById('vDailyRate').value,
+    shaken_expiry: document.getElementById('vShakenExpiry').value || null,
+    insurance_expiry: document.getElementById('vInsuranceExpiry').value || null,
+    note: document.getElementById('vNote').value.trim(),
+  };
+  showLoad(true);
+  try {
+    if (eVehicleId != null) {
+      const {data, error} = await sb.from('vehicles').update(obj).eq('id', eVehicleId).select().single();
+      if (error) throw error;
+      const idx = vehicles.findIndex(v=>v.id===eVehicleId);
+      if (idx>=0) vehicles[idx] = data;
+      addLog('車両編集', car);
+    } else {
+      const {data, error} = await sb.from('vehicles').insert(obj).select().single();
+      if (error) throw error;
+      vehicles.push(data);
+      addLog('車両追加', car);
+    }
+    closeM('mVehicle');
+    renderVehicles();
+    showT('保存しました');
+  } catch(e) {
+    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+      showT('⚠ vehiclesテーブルが未作成です。セットアップページのSQLを確認してください','twa');
+    } else { showT('保存エラー: '+e.message, 'ter'); }
+  }
+  showLoad(false);
+}
+async function deleteVehicle(id) {
+  const v = vehicles.find(x=>x.id===id); if (!v) return;
+  if (!confirm(`車両「${v.car}」を削除しますか？（乗務履歴は残ります）`)) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('vehicles').delete().eq('id', id);
+    if (error) throw error;
+    vehicles = vehicles.filter(x=>x.id!==id);
+    addLog('車両削除', v.car);
+    renderVehicles();
+    showT('削除しました');
+  } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+
 /* ===== 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録） =====
    受注入力・請求明細の車番→ドライバー自動判定（drvs.cars）とは独立した履歴台帳。
    代車など自社車両を日額リースとして貸した場合、使用期間から金額を自動計算し
@@ -6199,7 +6374,9 @@ function openVehicleHistM(car) {
   document.getElementById('vhDrvId').value = '';
   document.getElementById('vhDrvText').value = '';
   document.getElementById('vhStart').value = fmtLocalDate(new Date());
-  document.getElementById('vhRate').value = '';
+  // 車両管理タブに日額リース料が登録済みならデフォルト値として入れておく（変更可）
+  const vMaster = vehicles.find(v => nm(v.car) === nm(car));
+  document.getElementById('vhRate').value = vMaster?.daily_rate ?? '';
   document.getElementById('vhNote').value = '';
   document.getElementById('vhDrvList').innerHTML = drvs.map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
   renderVehicleHist();
@@ -14600,6 +14777,18 @@ CREATE TABLE IF NOT EXISTS vehicle_assignments (
 );
 CREATE INDEX IF NOT EXISTS vehicle_assignments_car_idx ON vehicle_assignments (car);
 
+-- 車両マスタ（自社の代車・リース車の車検・保険期限・稼働状態を管理する「車両管理」タブ用）
+CREATE TABLE IF NOT EXISTS vehicles (
+  id bigserial PRIMARY KEY,
+  car text NOT NULL UNIQUE,
+  status text NOT NULL DEFAULT 'active', -- 'active' | 'scrapped'（廃車）
+  shaken_expiry date,      -- 車検満了日
+  insurance_expiry date,   -- 保険満了日
+  daily_rate int,          -- 代車として貸す場合の日額（乗務履歴の記録時にデフォルト値として使用）
+  note text DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- 通知送信履歴（LINE/メール通知の重複送信防止と送達確認用。書き込みはEdge Function(service role)のみ）
 CREATE TABLE IF NOT EXISTS notify_log (
   id bigserial PRIMARY KEY,
@@ -14968,6 +15157,17 @@ DROP POLICY IF EXISTS "vehicle_assignments_update" ON vehicle_assignments;
 CREATE POLICY "vehicle_assignments_update" ON vehicle_assignments FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "vehicle_assignments_delete" ON vehicle_assignments;
 CREATE POLICY "vehicle_assignments_delete" ON vehicle_assignments FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 車両マスタ: 社内のみ閲覧・編集可
+ALTER TABLE vehicles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "vehicles_select" ON vehicles;
+CREATE POLICY "vehicles_select" ON vehicles FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "vehicles_insert" ON vehicles;
+CREATE POLICY "vehicles_insert" ON vehicles FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "vehicles_update" ON vehicles;
+CREATE POLICY "vehicles_update" ON vehicles FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "vehicles_delete" ON vehicles;
+CREATE POLICY "vehicles_delete" ON vehicles FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
 -- 協力会社の添付書類: 社内のみ閲覧・編集可
 ALTER TABLE partner_company_docs ENABLE ROW LEVEL SECURITY;
