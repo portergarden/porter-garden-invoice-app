@@ -2362,7 +2362,11 @@ try {
     </div>
     <div class="g2">
       <div class="fld"><label>車番</label><input type="text" id="fCa" placeholder="例: 品川300あ1234" oninput="prvDrv()"></div>
-      <div class="fld"><label>ドライバー（同一車両を複数人で稼働する場合は手動選択）</label><select id="fDrvSel" onchange="prvDrv()"><option value="">自動（車番から判定）</option></select></div>
+      <div class="fld"><label>ドライバー（同一車両を複数人で稼働する場合は手動選択）</label>
+        <input type="hidden" id="fDrvSel">
+        <input type="text" id="fDrvSelText" list="fDrvSelList" placeholder="自動（車番から判定）／ドライバー名を入力して手動選択…" autocomplete="off" oninput="onFDrvSelTextInput()" style="width:100%">
+        <datalist id="fDrvSelList"></datalist>
+      </div>
     </div>
     <div class="fld" style="margin-top:-8px;margin-bottom:10px"><span id="fDpv" style="font-size:11px;color:var(--text2)">—</span></div>
     <div class="g2">
@@ -4400,9 +4404,26 @@ async function revertSt(id){
 }
 
 function openInvM(){eInvId=null;clrInvF();populateDrvSel();document.getElementById('mInv').classList.add('on');}
-// ドライバー手動選択欄の選択肢を最新のdrvsから再構築（値がまだあれば維持）
-function populateDrvSel(){const sel=document.getElementById('fDrvSel');const cur=sel.value;sel.innerHTML='<option value="">自動（車番から判定）</option>'+drvs.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');sel.value=cur;}
-function clrInvF(){['fD','fCa','fFa','fHw','fOt','fPayFa','fPayHw','fPayOt','fNo'].forEach(id=>document.getElementById(id).value='');document.getElementById('fTy').value='charter';document.getElementById('fTx').value='10';document.getElementById('fSt').value='0';document.getElementById('fCli').value='';document.getElementById('fDrvSel').value='';const el=document.getElementById('fDpv');el.textContent='—';el.style.color='var(--text2)';document.getElementById('mTotV').textContent='¥0';}
+// ドライバー手動選択欄（手入力検索用）の候補リストを最新のdrvsから再構築（値がまだあれば維持）
+function populateDrvSel(){
+  const dl=document.getElementById('fDrvSelList');
+  if(!dl)return;
+  dl.innerHTML=drvs.map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+}
+// ドライバー手入力検索欄: 候補と完全一致すればhidden項目(id)へ反映、一致しなければ自動判定に戻す
+function onFDrvSelTextInput(){
+  const val=document.getElementById('fDrvSelText').value.trim();
+  const match=drvs.find(d=>q0DrvOverrideLabel(d)===val)||drvs.find(d=>d.name===val);
+  document.getElementById('fDrvSel').value=match?match.id:'';
+  prvDrv();
+}
+// id指定でドライバー手動選択欄の表示を合わせる（編集読み込み時など）
+function setFDrvSelById(id){
+  const d=id?drvs.find(x=>String(x.id)===String(id)):null;
+  document.getElementById('fDrvSel').value=d?d.id:'';
+  document.getElementById('fDrvSelText').value=d?q0DrvOverrideLabel(d):'';
+}
+function clrInvF(){['fD','fCa','fFa','fHw','fOt','fPayFa','fPayHw','fPayOt','fNo'].forEach(id=>document.getElementById(id).value='');document.getElementById('fTy').value='charter';document.getElementById('fTx').value='10';document.getElementById('fSt').value='0';document.getElementById('fCli').value='';document.getElementById('fDrvSel').value='';document.getElementById('fDrvSelText').value='';const el=document.getElementById('fDpv');el.textContent='—';el.style.color='var(--text2)';document.getElementById('mTotV').textContent='¥0';}
 // 同じ車両を複数人で稼働することがあるため、fDrvSelで手動選択されていればそれを優先表示する
 function prvDrv(){
   const c=document.getElementById('fCa').value,el=document.getElementById('fDpv'),sel=document.getElementById('fDrvSel');
@@ -4411,7 +4432,7 @@ function prvDrv(){
   if(d){el.textContent='自動判定: '+d.name;el.style.color='var(--text2)';}else if(c.trim()){el.innerHTML='<span style="color:var(--red)">⚠ 未配車（車番未登録、または手動選択してください）</span>';}else{el.textContent='—';el.style.color='var(--text2)';}
 }
 function calcMT(){const f=+document.getElementById('fFa').value||0,h=+document.getElementById('fHw').value||0,o=+document.getElementById('fOt').value||0,t=+document.getElementById('fTx').value||0;document.getElementById('mTotV').textContent=yen(f+h+o+Math.round((f+h+o)*t/100));}
-function editInv(id){const r=recs.find(x=>x.id===id);if(!r)return;eInvId=id;populateDrvSel();document.getElementById('fD').value=r.date;document.getElementById('fCa').value=r.car;document.getElementById('fTy').value=r.type;document.getElementById('fFa').value=r.fare||0;document.getElementById('fHw').value=r.hw||0;document.getElementById('fOt').value=r.oth||0;document.getElementById('fPayFa').value=r.pay_fare||0;document.getElementById('fPayHw').value=r.pay_hw||0;document.getElementById('fPayOt').value=r.pay_oth||0;document.getElementById('fTx').value=(r.tax??10);document.getElementById('fSt').value=r.st||0;document.getElementById('fCli').value=r.cli||'';document.getElementById('fNo').value=r.note||'';document.getElementById('fDrvSel').value=r.drv_id||'';prvDrv();calcMT();document.getElementById('mInv').classList.add('on');}
+function editInv(id){const r=recs.find(x=>x.id===id);if(!r)return;eInvId=id;populateDrvSel();document.getElementById('fD').value=r.date;document.getElementById('fCa').value=r.car;document.getElementById('fTy').value=r.type;document.getElementById('fFa').value=r.fare||0;document.getElementById('fHw').value=r.hw||0;document.getElementById('fOt').value=r.oth||0;document.getElementById('fPayFa').value=r.pay_fare||0;document.getElementById('fPayHw').value=r.pay_hw||0;document.getElementById('fPayOt').value=r.pay_oth||0;document.getElementById('fTx').value=(r.tax??10);document.getElementById('fSt').value=r.st||0;document.getElementById('fCli').value=r.cli||'';document.getElementById('fNo').value=r.note||'';setFDrvSelById(r.drv_id);prvDrv();calcMT();document.getElementById('mInv').classList.add('on');}
 async function delInv(id){
   if(!confirm('削除しますか？'))return;
   try{const{error}=await sb.from('invoices').delete().eq('id',id);if(error)throw error;const r=recs.find(x=>x.id===id);addLog('削除',`${r?.car} ${r?.date}`);recs=recs.filter(r=>r.id!==id);if(r?.date){syncPaySchedule(r.date.slice(0,7));syncReceiptSchedule(r.date.slice(0,7));}renderInv();showT('削除しました');}
@@ -6425,14 +6446,16 @@ function runAggPay() {
     const safeKey = String(drvId);
     // 車番はドライバー登録の既定車両ではなく、実際にその明細で使われた車番を表示する（代車・車両交換・手動割当てを正しく反映するため）
     const carsUsed = [...new Set(rows.map(r=>r.car).filter(Boolean))];
-    const carDisplay = carsUsed.length ? (carsUsed.length===1 ? carsUsed[0] : `${carsUsed[0]} 他${carsUsed.length-1}台`) : ((d.cars||[])[0]||'');
+    const carShort = carsUsed.length ? (carsUsed.length===1 ? carsUsed[0] : `${carsUsed[0]} 他${carsUsed.length-1}台…`) : ((d.cars||[])[0]||'');
+    const carFull = carsUsed.join('、');
+    const carCellId = `payCarCell${safeKey}`;
     // 実行日：ドライバー（協力会社優先）の支払日設定を反映する（ドライバーごとに異なりうる）
     const sortedRowsForDate = rows.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
     const execLabel = computePayExecDateLabel(d, sortedRowsForDate[sortedRowsForDate.length-1]?.date || to);
     return `<tr style="border-bottom:0.5px solid var(--border)">
       <td style="padding:6px 8px"><input type="checkbox" class="aggPayChk" value="${d.id}"></td>
       <td style="padding:6px 8px;color:var(--text2)">${d.supplier_id||'—'}</td>
-      <td style="padding:6px 8px" title="${carsUsed.join('、')}">${carDisplay}</td>
+      <td id="${carCellId}" style="padding:6px 8px;${carsUsed.length>1?'cursor:pointer;color:var(--blue)':''}" data-short="${escHtml(carShort)}" data-full="${escHtml(carFull)}" data-state="short" ${carsUsed.length>1?`onclick="toggleCarCell('${carCellId}')" title="クリックで全件表示"`:''}>${carShort}</td>
       <td style="padding:6px 8px">${d.name}${d.company?`<div style="font-size:9.5px;color:var(--text2)">${d.company}</div>`:''}</td>
       <td style="padding:6px 8px;white-space:nowrap;color:var(--text2)">${execLabel}</td>
       <td style="padding:6px 8px;text-align:right">${cnt}</td>
@@ -6554,6 +6577,15 @@ function toggleAggPayAll(checked) {
   document.querySelectorAll('.aggPayChk').forEach(el=>el.checked=checked);
 }
 
+// 支払集計の車番セル: 「メイン車番 他N台…」⇔ 全車番（読点区切り）の表示をクリックで切り替える
+function toggleCarCell(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const showingFull = el.dataset.state === 'full';
+  el.textContent = showingFull ? el.dataset.short : el.dataset.full;
+  el.dataset.state = showingFull ? 'short' : 'full';
+}
+
 // 集計（ドライバー別）タブでチェックしたドライバー分だけをCSV出力する
 // （明細一覧タブのdownloadPayCsv()はpayRowsをそのまま使うため、集計タブのチェック状態を反映しない別関数として用意）
 function downloadAggPayCsv() {
@@ -6660,7 +6692,10 @@ function printLeaseStatement(company) {
   const itemRows = entries
     .sort((a,b)=> (parseInt(a.drv.supplier_id,10)||999999) - (parseInt(b.drv.supplier_id,10)||999999))
     .map((g,i) => {
-      const cars = (g.drv.cars||[]).join('、') || '—';
+      // cars配列にはフル表記の車番と数字のみの略式車番が両方入っていることがあるため、
+      // フル表記のみに絞って「同じ車を2台と誤表示」しないようにする
+      const fullCars = (g.drv.cars||[]).filter(isFullPlateNumber);
+      const cars = (fullCars.length ? fullCars : (g.drv.cars||[])).join('、') || '—';
       return { no:i+1, name:g.drv.name, cars, amt: Math.abs(g.drv.vehicle_rental ?? -30000) };
     });
   const total = itemRows.reduce((s,it)=>s+it.amt,0);
