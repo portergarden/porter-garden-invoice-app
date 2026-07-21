@@ -1,9 +1,2 @@
 [build]
   publish = "."
-
-# ルート（/）にアクセスしたら「PG Base.html」の内容をそのまま返す。
-# ファイル名に空白があるため、単純なリダイレクトだとURLが /PG%20Base.html になってしまうのを防ぐ（status=200はリライト扱いでURL欄は/のまま）
-[[redirects]]
-  from = "/"
-  to = "/PG%20Base.html"
-  status = 200
