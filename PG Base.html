@@ -1335,6 +1335,7 @@ try {
       <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
     </div>
     <div id="vehicleKpi" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+    <div id="vehicleMissingArea" style="padding:0 14px"></div>
     <div style="padding:10px 14px" id="vehicleList"></div>
   </div>
   <div id="pg4" class="hide">
@@ -2641,7 +2642,7 @@ try {
 <div class="overlay" id="mVehicle">
   <div class="modal" style="width:440px">
     <div class="mh" id="mVehicleH">車両 追加・編集 <button class="ibtn" onclick="closeM('mVehicle')">✕</button></div>
-    <div class="fld"><label>車番</label><input type="text" id="vCar" placeholder="例: 仙台480れ141"></div>
+    <div class="fld"><label>車番</label><input type="text" id="vCar" list="vCarSuggestList" placeholder="例: 仙台480れ141（ドライバー登録済みの車番は候補に出ます）"><datalist id="vCarSuggestList"></datalist></div>
     <div class="g2">
       <div class="fld"><label>状態</label>
         <select id="vStatus" style="width:100%">
@@ -6232,6 +6233,41 @@ function currentVehicleDriver(car) {
   if (!open) return null;
   return drvs.find(d => d.id === open.driver_id) || null;
 }
+// 全ドライバーの登録車番（フル表記優先。フル表記が無ければ略式車番、プレースホルダー「----」は除外）を重複なく集める
+function getAllRegisteredCarNumbers() {
+  const set = new Set();
+  drvs.forEach(d => {
+    const cars = (d.cars || []).filter(c => c && !c.includes('----'));
+    const full = cars.filter(isFullPlateNumber);
+    (full.length ? full : cars).forEach(c => set.add(c));
+  });
+  return [...set].sort();
+}
+// ドライバーには登録済みだが車両管理(vehicles)にまだ登録されていない車番。
+// 1台の車がフル表記・略式番号の両方でdrivers.carsに入っていることがあるため、
+// どちらか一方でもvehiclesに登録済みならその車は「登録済み」として扱う
+function getUnregisteredCarNumbers() {
+  const registered = new Set(vehicles.map(v => nm(v.car)));
+  const missing = new Set();
+  drvs.forEach(d => {
+    const cars = (d.cars || []).filter(c => c && !c.includes('----'));
+    if (!cars.length) return;
+    if (cars.some(c => registered.has(nm(c)))) return; // いずれかの表記で登録済み
+    const full = cars.filter(isFullPlateNumber);
+    missing.add(full[0] || cars[0]);
+  });
+  return [...missing].sort();
+}
+function toggleVehicleMissingList() {
+  const el = document.getElementById('vehicleMissingList');
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+// 警告一覧の車番をクリック→車両追加モーダルをその車番で開く（ドライバー管理で登録済みの車を車両管理へつなぐ導線）
+function quickAddVehicle(car) {
+  openVehicleM();
+  document.getElementById('vCar').value = car;
+}
 
 function renderVehicles() {
   const listEl = document.getElementById('vehicleList');
@@ -6248,6 +6284,17 @@ function renderVehicles() {
       <div class="kpi-card"><div class="kpi-label">車検・保険 要確認</div><div class="kpi-val" style="color:${soonOrExpired.length?'var(--amber-text)':'inherit'}">${soonOrExpired.length}台</div></div>
       <div class="kpi-card"><div class="kpi-label">廃車</div><div class="kpi-val">${vehicles.filter(v=>v.status==='scrapped').length}台</div></div>
     `;
+  }
+  const missingArea = document.getElementById('vehicleMissingArea');
+  if (missingArea) {
+    const missing = getUnregisteredCarNumbers();
+    missingArea.innerHTML = !missing.length ? '' : `
+      <div style="padding:8px 12px;margin-bottom:10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11.5px;color:var(--amber-text)">
+        <span style="cursor:pointer" onclick="toggleVehicleMissingList()">⚠ ドライバーには登録済みだが車両管理に未登録の車番が ${missing.length}件 あります（クリックで一覧表示）</span>
+        <div id="vehicleMissingList" style="display:none;flex-wrap:wrap;gap:4px;margin-top:8px">
+          ${missing.map(c=>`<span class="cpill" style="cursor:pointer" onclick="quickAddVehicle('${escHtml(c).replace(/'/g,"\\'")}')" title="クリックで車両管理に登録">🚙 ${escHtml(c)} ＋</span>`).join('')}
+        </div>
+      </div>`;
   }
   if (!vehicles.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">車両が登録されていません</div>`; return; }
   const q = nm(document.getElementById('vehicleSearch')?.value||'');
@@ -6278,6 +6325,7 @@ function openVehicleM() {
   eVehicleId = null;
   document.getElementById('mVehicleH').innerHTML = '車両追加 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
   document.getElementById('vCar').value = '';
+  document.getElementById('vCarSuggestList').innerHTML = getUnregisteredCarNumbers().map(c=>`<option value="${escHtml(c)}">`).join('');
   document.getElementById('vStatus').value = 'active';
   document.getElementById('vDailyRate').value = '';
   document.getElementById('vShakenExpiry').value = '';
