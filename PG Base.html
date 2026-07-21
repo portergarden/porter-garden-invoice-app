@@ -4927,11 +4927,11 @@ function renderCli(){
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
       const closingLbl=closingDayLabel(c.closing_day);
       const linkedPartner=partnerCompanies.find(pc=>pc.client_id===c.id);
-      return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
-        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+      return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${c.client_no ? 'ID: ' + c.client_no : 'ID: —'}</div>
-          <div style="min-width:135px;font-weight:600;font-size:13.5px;flex-shrink:0;">${c.name}${linkedPartner?` <span title="協力会社: ${escHtml(linkedPartner.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToPartnerFromClient(${linkedPartner.id})">🔗</span>`:''}</div>
+          <div style="width:135px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${c.name}${linkedPartner?` <span title="協力会社: ${escHtml(linkedPartner.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToPartnerFromClient(${linkedPartner.id})">🔗</span>`:''}</div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingLbl}</div>
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
           <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${c.fee_rate?`手数料:${c.fee_rate}%`:'—'}</div>
@@ -5005,6 +5005,23 @@ function setPartnerView(mode) {
   }
   renderPartners();
 }
+// はみ出た「…」表示のセルをクリックで全文表示⇔省略表示に切り替える（協力会社リストの供給ドライバー欄など）
+function toggleFullText(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const expanded = el.dataset.expanded === '1';
+  if (expanded) {
+    el.style.whiteSpace = 'nowrap';
+    el.style.overflow = 'hidden';
+    el.style.textOverflow = 'ellipsis';
+    el.dataset.expanded = '0';
+  } else {
+    el.style.whiteSpace = 'normal';
+    el.style.overflow = 'visible';
+    el.style.textOverflow = 'clip';
+    el.dataset.expanded = '1';
+  }
+}
 function renderPartners(){
   const grid = document.getElementById('partnerGrid');
   if (!grid) return;
@@ -5077,15 +5094,17 @@ function renderPartners(){
       const ini = (p.short||p.name||'?').slice(0,2);
       const suppliedDrvs = drvs.filter(d=>d.partner_id===p.id);
       const linkedCli = p.client_id ? clients.find(c=>c.id===p.client_id) : null;
-      return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
-        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+      const drvListFull = suppliedDrvs.map(d=>escHtml(d.name)).join('、');
+      const drvListId = `pnDrvList${p.id}`;
+      return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:60px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${p.partner_no ? 'ID: '+escHtml(p.partner_no) : 'ID: —'}</div>
-          <div style="min-width:150px;font-weight:600;font-size:13.5px;flex-shrink:0;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})">🔗</span>`:''}</div>
+          <div style="width:150px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})">🔗</span>`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
-          <div style="flex:1;min-width:0;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(suppliedDrvs.map(d=>d.name).join('、'))}">${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
+          <div id="${drvListId}" style="flex:1;min-width:0;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${suppliedDrvs.length?'cursor:pointer':''}" title="${suppliedDrvs.length?'クリックで全件表示':''}" ${suppliedDrvs.length?`onclick="toggleFullText('${drvListId}')"`:''}>${suppliedDrvs.length ? drvListFull : 'なし'}</div>
         </div>
         <div style="display:flex;gap:1px;flex-shrink:0;">
           <button class="ibtn" title="添付書類" onclick="openPartnerDocsM(${p.id})">📄</button>
@@ -6200,16 +6219,16 @@ function renderDrv() {
       const ini = (d.name || '').replace(/\s/g, '').slice(-2) || '?';
       const cnt = recs.filter(r => (d.cars || []).some(c => nm(c) === nm(r.car))).length;
 
-      return `<div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
-        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+      return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av drv" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${d.supplier_id ? 'ID: ' + d.supplier_id : 'ID: —'}</div>
-          <div style="min-width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;">${d.name}</div>
+          <div style="width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${d.name}</div>
           <div style="flex:1;display:flex;flex-wrap:wrap;gap:3px;min-width:100px;">
             ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="margin-top:0">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
           </div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${d.tel || '—'}</div>
-          <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;min-width:170px;flex-shrink:0;">
+          <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;width:170px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">
             ${d.company ? `<span style="padding:1px 6px;background:var(--bg2);border-radius:99px">${d.company}</span>` : ''}
           </div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingDayLabel(d.closing_day)}</div>
