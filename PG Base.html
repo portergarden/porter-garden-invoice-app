@@ -2447,6 +2447,7 @@ try {
               <option value="0">当月払い</option>
               <option value="1">翌月払い</option>
               <option value="2" selected>翌々月払い</option>
+              <option value="3">翌々翌月払い</option>
             </select>
           </div>
           <div class="fld"><label>支払日（任意）</label>
@@ -2505,6 +2506,7 @@ try {
               <option value="0">当月入金</option>
               <option value="1" selected>翌月入金</option>
               <option value="2">翌々月入金</option>
+              <option value="3">翌々翌月入金</option>
             </select>
           </div>
           <div class="fld"><label>入金日（任意）</label>
@@ -2563,6 +2565,7 @@ try {
               <option value="0">当月払い</option>
               <option value="1">翌月払い</option>
               <option value="2" selected>翌々月払い</option>
+              <option value="3">翌々翌月払い</option>
             </select>
           </div>
           <div class="fld"><label>支払日（任意）</label>
@@ -2580,6 +2583,7 @@ try {
             <option value="0">当月入金</option>
             <option value="1" selected>翌月入金</option>
             <option value="2">翌々月入金</option>
+            <option value="3">翌々翌月入金</option>
           </select>
         </div>
         <div class="fld"><label>入金日（任意）</label>
@@ -4832,11 +4836,16 @@ function dayInputDisplay(val) {
   if (!val) return '';
   return val==='end' ? '末日' : `${val}日`;
 }
+// 「当月」「翌月」「翌々月」「翌々翌月」…のような月ズレラベル（3管理タブ共通）
+function monthOffsetLabel(offset) {
+  const n = +offset || 0;
+  const labels = ['当月','翌月','翌々月','翌々翌月'];
+  return labels[n] !== undefined ? labels[n] : `${n}ヶ月後`;
+}
 // 「当月末日」「翌月15日」のような支払・入金サイクルの表示ラベル（3管理タブ共通）
 function payCycleLabel(offset, day) {
-  const m = offset===0?'当月':offset===1?'翌月':'翌々月';
   const d = day==='end'||!day?'末日':day+'日';
-  return m+d;
+  return monthOffsetLabel(offset)+d;
 }
 function partnerPayOutLabel(p) { return payCycleLabel(p.pay_out_month_offset, p.pay_out_day); }
 // この協力会社が仕事をくれる（請求先になる）場合の入金予定日ラベル
@@ -6507,7 +6516,7 @@ function updateKanAteInfo() {
     '✓ 協力会社として登録済み',
     [c.zip?`〒${c.zip}`:'', c.address||''].filter(Boolean).join(' '),
     [c.person?`ご担当: ${c.person}`:'', c.tel?`TEL ${c.tel}`:''].filter(Boolean).join('　'),
-    c.pay_out_day ? `支払日: ${c.pay_out_month_offset===0?'当月':c.pay_out_month_offset===1?'翌月':'翌々月'}${c.pay_out_day==='end'?'末日':c.pay_out_day+'日'}` : '',
+    c.pay_out_day ? `支払日: ${monthOffsetLabel(c.pay_out_month_offset)}${c.pay_out_day==='end'?'末日':c.pay_out_day+'日'}` : '',
   ].filter(Boolean).join('<br>') || '詳細情報なし';
 }
 function confirmKanAte() {
