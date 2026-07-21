@@ -2625,6 +2625,35 @@ try {
   </div>
 </div>
 
+<!-- モーダル: 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録） -->
+<div class="overlay" id="mVehicleHist">
+  <div class="modal" style="width:520px">
+    <div class="mh" id="mVehicleHistH">車両乗務履歴 <button class="ibtn" onclick="closeM('mVehicleHist')">✕</button></div>
+    <div style="padding:12px 14px;max-height:75vh;overflow-y:auto">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">この車番を過去〜現在誰が使用したかを記録します。受注入力・請求明細の自動判定（車番→ドライバー）には影響しません。車番とドライバーの紐付け自体は従来通りドライバー登録で管理してください。</div>
+      <div id="vhCurrentArea" style="margin-bottom:12px"></div>
+      <div style="border-top:0.5px solid var(--border2);padding-top:10px">
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">新しい乗務を記録</div>
+        <div class="fld"><label>ドライバー</label>
+          <input type="hidden" id="vhDrvId">
+          <input type="text" id="vhDrvText" list="vhDrvList" placeholder="ドライバー名を入力…（候補から選択）" autocomplete="off" oninput="onVhDrvTextInput()" style="width:100%">
+          <datalist id="vhDrvList"></datalist>
+        </div>
+        <div class="g2">
+          <div class="fld"><label>開始日</label><input type="date" id="vhStart" style="width:100%"></div>
+          <div class="fld"><label>日額リース料（円・任意。自社の代車など）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
+        </div>
+        <div class="fld"><label>備考（任意）</label><input type="text" id="vhNote" style="width:100%"></div>
+        <button class="btn pri sml" onclick="addVehicleAssignment()">＋ 記録する</button>
+      </div>
+      <div style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px">
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">履歴</div>
+        <div id="vhHistList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: 鑑の発行宛て選択（協力会社のプルダウン＋手入力検索） -->
 <div class="overlay" id="mKanAte">
   <div class="modal" style="width:440px;max-width:95vw">
@@ -2981,7 +3010,7 @@ async function loadAll(){
   }catch(e){showT('データ読み込みエラー: '+e.message,'ter');}
   showLoad(false);
   // 個別読込（テーブル未作成でもloadAll全体を止めない）
-  await Promise.all([loadSched(), loadTemplates(), loadMappings()]);
+  await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments()]);
 }
 async function loadLogs(){
   const la=document.getElementById('logArea');if(!la)return;
@@ -6145,6 +6174,152 @@ function setDriverView(mode) {
   renderDrv();
 }
 
+/* ===== 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録） =====
+   受注入力・請求明細の車番→ドライバー自動判定（drvs.cars）とは独立した履歴台帳。
+   代車など自社車両を日額リースとして貸した場合、使用期間から金額を自動計算し
+   ドライバーの「その他控除」への追加を提案できる。 */
+let vehicleAssignments = [];
+let vhCurrentCar = null;
+
+async function loadVehicleAssignments() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('vehicle_assignments').select('*').order('start_date', {ascending:false});
+    if (error) {
+      if (error.message.includes('does not exist')||error.message.includes('relation')) return;
+      throw error;
+    }
+    vehicleAssignments = data || [];
+  } catch(e) { console.warn('loadVehicleAssignments:', e.message); }
+}
+
+function openVehicleHistM(car) {
+  vhCurrentCar = car;
+  document.getElementById('mVehicleHistH').innerHTML = `車両乗務履歴: ${escHtml(car)} <button class="ibtn" onclick="closeM('mVehicleHist')">✕</button>`;
+  document.getElementById('vhDrvId').value = '';
+  document.getElementById('vhDrvText').value = '';
+  document.getElementById('vhStart').value = fmtLocalDate(new Date());
+  document.getElementById('vhRate').value = '';
+  document.getElementById('vhNote').value = '';
+  document.getElementById('vhDrvList').innerHTML = drvs.map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+  renderVehicleHist();
+  document.getElementById('mVehicleHist').classList.add('on');
+}
+function onVhDrvTextInput() {
+  const val = document.getElementById('vhDrvText').value.trim();
+  const match = drvs.find(d => q0DrvOverrideLabel(d) === val) || drvs.find(d => d.name === val);
+  document.getElementById('vhDrvId').value = match ? match.id : '';
+}
+function vhDaysAndAmount(v) {
+  if (!v.end_date || !v.daily_rate) return null;
+  const days = Math.round((new Date(v.end_date) - new Date(v.start_date)) / 86400000) + 1;
+  return { days, amt: days * v.daily_rate };
+}
+function renderVehicleHist() {
+  const list = vehicleAssignments.filter(v => nm(v.car) === nm(vhCurrentCar)).sort((a,b)=> (b.start_date||'').localeCompare(a.start_date||''));
+  const cur = list.find(v => !v.end_date);
+  const curArea = document.getElementById('vhCurrentArea');
+  if (cur) {
+    const d = drvs.find(x=>x.id===cur.driver_id);
+    curArea.innerHTML = `<div style="padding:8px 10px;background:var(--blue-bg);border-radius:var(--radius);font-size:12.5px">
+      <b>現在の使用者:</b> ${d?escHtml(d.name):'（削除済みドライバー）'}　開始: ${cur.start_date}${cur.daily_rate?`　日額: ${yen(cur.daily_rate)}`:''}
+      <button class="btn sml" style="margin-left:8px" onclick="endVehicleAssignment(${cur.id})">終了する</button>
+    </div>`;
+  } else {
+    curArea.innerHTML = `<div style="padding:8px 10px;background:var(--bg2);border-radius:var(--radius);font-size:12.5px;color:var(--text2)">現在の使用者は記録されていません</div>`;
+  }
+  const histEl = document.getElementById('vhHistList');
+  if (!list.length) { histEl.innerHTML = '<div style="font-size:11.5px;color:var(--text2)">履歴なし</div>'; return; }
+  histEl.innerHTML = list.map(v => {
+    const d = drvs.find(x=>x.id===v.driver_id);
+    const period = `${v.start_date}〜${v.end_date||'（使用中）'}`;
+    const calc = vhDaysAndAmount(v);
+    const amtLabel = calc ? `　${calc.days}日 × ${yen(v.daily_rate)} = ${yen(calc.amt)}` : '';
+    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:5px 0;border-bottom:0.5px solid var(--border);font-size:12px">
+      <div>${d?escHtml(d.name):'（削除済みドライバー）'}<div style="font-size:10.5px;color:var(--text2)">${period}${amtLabel}${v.note?`　${escHtml(v.note)}`:''}</div></div>
+      <button class="ibtn" onclick="deleteVehicleAssignment(${v.id})" title="削除">🗑</button>
+    </div>`;
+  }).join('');
+}
+async function addVehicleAssignment() {
+  const driverId = +document.getElementById('vhDrvId').value || null;
+  if (!driverId) { alert('候補からドライバーを選択してください'); return; }
+  const startDate = document.getElementById('vhStart').value;
+  if (!startDate) { alert('開始日を入力してください'); return; }
+  const rateVal = document.getElementById('vhRate').value;
+  const dailyRate = rateVal === '' ? null : +rateVal;
+  const note = document.getElementById('vhNote').value.trim();
+  showLoad(true);
+  try {
+    // 同じ車番で使用中(end_date未設定)の記録が既にあれば、新しい開始日の前日で自動的に終了させる（引き継ぎ）
+    const openOnes = vehicleAssignments.filter(v => nm(v.car)===nm(vhCurrentCar) && !v.end_date);
+    for (const o of openOnes) {
+      const prevEnd = fmtLocalDate(new Date(new Date(startDate).getTime() - 86400000));
+      const {error: uErr} = await sb.from('vehicle_assignments').update({end_date: prevEnd}).eq('id', o.id);
+      if (!uErr) o.end_date = prevEnd;
+    }
+    const {data, error} = await sb.from('vehicle_assignments').insert({car: vhCurrentCar, driver_id: driverId, start_date: startDate, daily_rate: dailyRate, note}).select().single();
+    if (error) throw error;
+    vehicleAssignments.push(data);
+    addLog('車両乗務履歴登録', `${vhCurrentCar} → ${drvs.find(d=>d.id===driverId)?.name||''}（${startDate}〜）`);
+    document.getElementById('vhDrvId').value=''; document.getElementById('vhDrvText').value='';
+    document.getElementById('vhRate').value=''; document.getElementById('vhNote').value='';
+    renderVehicleHist();
+    showT('記録しました');
+  } catch(e) {
+    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+      showT('⚠ vehicle_assignmentsテーブルが未作成です。セットアップページのSQLを確認してください','twa');
+    } else { showT('登録エラー: '+e.message, 'ter'); }
+  }
+  showLoad(false);
+}
+async function endVehicleAssignment(id) {
+  const v = vehicleAssignments.find(x=>x.id===id);
+  if (!v) return;
+  const endDate = prompt('終了日を入力してください（例: 2026-07-20）', fmtLocalDate(new Date()));
+  if (!endDate) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('vehicle_assignments').update({end_date: endDate}).eq('id', id);
+    if (error) throw error;
+    v.end_date = endDate;
+    const d = drvs.find(x=>x.id===v.driver_id);
+    addLog('車両乗務履歴終了', `${v.car} ${d?.name||''} 〜${endDate}`);
+    renderVehicleHist();
+    // 日額リースが設定されていれば、期間から金額を計算し「その他控除」への追加を提案する
+    const calc = vhDaysAndAmount(v);
+    if (calc && d) {
+      if (confirm(`${d.name}さんの期間中リース代: ${calc.days}日 × ${yen(v.daily_rate)} = ${yen(calc.amt)}\nこの金額を「その他控除」に追加しますか？（次回以降の支払明細に反映されます）`)) {
+        await addLeaseDeductionToDriver(d.id, v.car, v.start_date, endDate, calc.amt);
+      }
+    }
+    showT('終了しました');
+  } catch(e) { showT('更新エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+async function addLeaseDeductionToDriver(driverId, car, startDate, endDate, amt) {
+  const d = drvs.find(x=>x.id===driverId);
+  if (!d) return;
+  const deductions = [...(d.other_deductions||[]), { name: `${car} リース代（${startDate}〜${endDate}）`, amount: -Math.abs(amt) }];
+  try {
+    const {error} = await sb.from('drivers').update({other_deductions: deductions}).eq('id', driverId);
+    if (error) throw error;
+    d.other_deductions = deductions;
+    renderDrv();
+    showT('その他控除に追加しました');
+  } catch(e) { showT('反映エラー: '+e.message, 'ter'); }
+}
+async function deleteVehicleAssignment(id) {
+  if (!confirm('この履歴を削除しますか？')) return;
+  try {
+    const {error} = await sb.from('vehicle_assignments').delete().eq('id', id);
+    if (error) throw error;
+    vehicleAssignments = vehicleAssignments.filter(v=>v.id!==id);
+    renderVehicleHist();
+    showT('削除しました');
+  } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
+}
+
 function renderDrv() {
   const grid = document.getElementById('drvGrid');
   const da = document.getElementById('dAlert');
@@ -6210,7 +6385,7 @@ function renderDrv() {
         ${d.supplier_id ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">仕入先ID: ${d.supplier_id}</div>` : ''}
         ${d.tel ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${d.tel}</div>` : '<div style="margin-bottom:5px"></div>'}
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px">
-          ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
+          ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="cursor:pointer" title="クリックで乗務履歴を記録・確認" onclick="event.stopPropagation();openVehicleHistM('${escHtml(c).replace(/'/g,"\\'")}')">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
         </div>
         <div style="font-size:11.5px;color:var(--text2);margin-top:3px">締日: ${closingDayLabel(d.closing_day)}　支払日: ${drvPayScheduleLabel(d)}</div>
         <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件</div>
@@ -6246,7 +6421,7 @@ function renderDrv() {
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${d.supplier_id ? 'ID: ' + d.supplier_id : 'ID: —'}</div>
           <div style="width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${d.name}</div>
           <div style="flex:1;display:flex;flex-wrap:wrap;gap:3px;min-width:100px;">
-            ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="margin-top:0">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
+            ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="margin-top:0;cursor:pointer" title="クリックで乗務履歴を記録・確認" onclick="event.stopPropagation();openVehicleHistM('${escHtml(c).replace(/'/g,"\\'")}')">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
           </div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${d.tel || '—'}</div>
           <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;width:170px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">
@@ -14412,6 +14587,19 @@ CREATE TABLE IF NOT EXISTS drivers (
   line_link_code text   -- ドライバーがLINE公式アカウントに送信する連携コード
 );
 
+-- 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録。drivers.carsの自動判定とは独立した台帳）
+CREATE TABLE IF NOT EXISTS vehicle_assignments (
+  id bigserial PRIMARY KEY,
+  car text NOT NULL,
+  driver_id bigint REFERENCES drivers(id) ON DELETE SET NULL,
+  start_date date NOT NULL,
+  end_date date,          -- 未設定=現在も使用中
+  daily_rate int,         -- 自社の代車などを日額リースとして貸す場合の単価（任意）
+  note text DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS vehicle_assignments_car_idx ON vehicle_assignments (car);
+
 -- 通知送信履歴（LINE/メール通知の重複送信防止と送達確認用。書き込みはEdge Function(service role)のみ）
 CREATE TABLE IF NOT EXISTS notify_log (
   id bigserial PRIMARY KEY,
@@ -14769,6 +14957,17 @@ DROP POLICY IF EXISTS "partner_companies_update" ON partner_companies;
 CREATE POLICY "partner_companies_update" ON partner_companies FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "partner_companies_delete" ON partner_companies;
 CREATE POLICY "partner_companies_delete" ON partner_companies FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- 車両乗務履歴: 社内のみ閲覧・編集可（ドライバー本人には見せない内部管理台帳）
+ALTER TABLE vehicle_assignments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "vehicle_assignments_select" ON vehicle_assignments;
+CREATE POLICY "vehicle_assignments_select" ON vehicle_assignments FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "vehicle_assignments_insert" ON vehicle_assignments;
+CREATE POLICY "vehicle_assignments_insert" ON vehicle_assignments FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "vehicle_assignments_update" ON vehicle_assignments;
+CREATE POLICY "vehicle_assignments_update" ON vehicle_assignments FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "vehicle_assignments_delete" ON vehicle_assignments;
+CREATE POLICY "vehicle_assignments_delete" ON vehicle_assignments FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
 -- 協力会社の添付書類: 社内のみ閲覧・編集可
 ALTER TABLE partner_company_docs ENABLE ROW LEVEL SECURITY;
