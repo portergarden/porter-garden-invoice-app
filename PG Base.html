@@ -727,9 +727,9 @@ try {
         <div class="qr">
           <div class="ql">乗務ドライバー</div>
           <div class="qv">
-            <select id="q0DrvOverride" style="width:280px" onchange="updateQ0DrvHint()">
-              <option value="">自動（車番から判定）</option>
-            </select>
+            <input type="hidden" id="q0DrvOverride">
+            <input type="text" id="q0DrvOverrideText" list="q0DrvOverrideList" placeholder="自動（車番から判定）／ドライバー名を入力して手動選択…" autocomplete="off" oninput="onQ0DrvOverrideTextInput()" style="width:280px">
+            <datalist id="q0DrvOverrideList"></datalist>
             <span id="q0DrvHint" style="font-size:11px;color:var(--text2)">—</span>
           </div>
         </div>
@@ -12461,13 +12461,28 @@ function onQ0CarChange() {
   calcQ0Total();
 }
 
-// 乗務ドライバー手動選択欄の選択肢を最新のdrvsから再構築（値がまだあれば維持）
+// 乗務ドライバー手動選択欄（手入力検索用）の候補リストを最新のdrvsから再構築
+// ドライバー数が多く同姓同名もあり得るため、仕入先IDを付記して候補を一意に判別できるようにする
+function q0DrvOverrideLabel(d) {
+  return `${d.name}${d.supplier_id ? `（ID:${d.supplier_id}）` : ''}`;
+}
 function populateQ0DrvSel() {
-  const sel = document.getElementById('q0DrvOverride');
-  if (!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">自動（車番から判定）</option>' + drvs.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
-  sel.value = cur;
+  const dl = document.getElementById('q0DrvOverrideList');
+  if (!dl) return;
+  dl.innerHTML = drvs.map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+}
+// 乗務ドライバーの手入力検索欄: 候補と完全一致すればhidden項目(id)へ反映、一致しなければ自動判定に戻す
+function onQ0DrvOverrideTextInput() {
+  const val = document.getElementById('q0DrvOverrideText').value.trim();
+  const match = drvs.find(d => q0DrvOverrideLabel(d) === val) || drvs.find(d => d.name === val);
+  document.getElementById('q0DrvOverride').value = match ? match.id : '';
+  updateQ0DrvHint();
+}
+// テンプレート適用・編集読み込み時に、id指定で乗務ドライバー欄の表示を合わせる
+function setQ0DrvOverrideById(id) {
+  const d = id ? drvs.find(x => String(x.id) === String(id)) : null;
+  document.getElementById('q0DrvOverride').value = d ? d.id : '';
+  document.getElementById('q0DrvOverrideText').value = d ? q0DrvOverrideLabel(d) : '';
 }
 // 同じ車両を複数人で稼働することがあるため、q0DrvOverrideで手動選択されていればそれを優先表示する
 function updateQ0DrvHint() {
@@ -12573,7 +12588,7 @@ function openEditInvoice(id) {
   setQ0CliById(r.cli);
   setQ0CarByCode(r.car);
   populateQ0DrvSel();
-  document.getElementById('q0DrvOverride').value = r.drv_id || '';
+  setQ0DrvOverrideById(r.drv_id);
   updateQ0DrvHint();
   document.getElementById('q0Type').value = r.type || 'regular';
   document.getElementById('q0D').value = r.date || '';
