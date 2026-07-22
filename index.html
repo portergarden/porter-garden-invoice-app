@@ -600,6 +600,7 @@ try {
     <div class="ntab" id="nt10" onclick="goPage(10,this)">📱 日報管理</div>
     <div class="ntab" id="nt12" onclick="goPage(12,this)">📊 月報</div>
     <div class="ntab" id="nt14" onclick="goPage(14,this)">📢 掲示板</div>
+    <div class="ntab" id="nt27" onclick="goPage(27,this)">💬 チャット</div>
   </nav>
   <nav class="nav hide" id="nav-admin">
     <div class="ntab" id="nt2" onclick="goPage(2,this)">👥 ドライバー管理</div>
@@ -1855,6 +1856,25 @@ try {
   </div>
   <div id="boardList" style="overflow-y:auto;max-height:calc(100vh - 120px);padding:8px 14px">
     <div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">読み込み中...</div>
+  </div>
+</div>
+
+<!-- ===== pg27: チャット（ドライバーとの個別チャットを専用タブで一覧・返信できるようにする） ===== -->
+<div id="pg27" class="hide">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border)">
+    <span style="font-size:13px;font-weight:500">💬 チャット</span>
+    <input type="text" id="chatTabSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderChatTabDrvList()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+  </div>
+  <div style="display:flex;height:calc(100vh - 100px)">
+    <div id="chatTabDrvList" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <div id="chatTabHeader" style="padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:13px;font-weight:500;color:var(--text2)">左の一覧からドライバーを選択してください</div>
+      <div id="chatTabMsgList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px"></div>
+      <div id="chatTabInputArea" style="display:none;padding:10px 14px;border-top:0.5px solid var(--border);gap:6px;display:flex">
+        <textarea id="chatTabInput" placeholder="メッセージを入力…" rows="2" style="flex:1;resize:none;font-size:12px;padding:6px 8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatTabMessage();}"></textarea>
+        <button class="btn pri" onclick="sendChatTabMessage()">送信</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -4220,7 +4240,7 @@ const stCls=s=>({3:'s3',4:'s4'}[s]||'');
 const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
   1:'analysis', 8:'analysis', 23:'analysis', 24:'analysis',
-  10:'driver', 12:'driver', 14:'driver',
+  10:'driver', 12:'driver', 14:'driver', 27:'driver',
   2:'admin', 3:'admin', 25:'admin', 26:'admin', 15:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
 
@@ -4240,7 +4260,7 @@ function switchNavGroup(group, skipPageSwitch) {
 let _skipHistoryPush = false;
 function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
-  for(let i=0; i<=26; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
+  for(let i=0; i<=27; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
   const target = document.getElementById('pg'+n);
   if(target) target.classList.remove('hide');
@@ -4266,6 +4286,7 @@ function goPage(n,el){
   if(n===11){initClose();}
   if(n===12){initMonthlyReport();renderMonthlyReport();}
   if(n===14){loadBoard(true);}
+  if(n===27){initChatTab();}
   if(n===15){initPaymentIn();}
   if(n===17){renderSetupPage();}
   if(n===18){switchEntryTab();}
@@ -10697,6 +10718,116 @@ async function sendDrvChatMessage() {
     // LINE/メール通知（1時間に1回まで: refに時間バケットを含めdedupeさせ、連投で通知が溢れないようにする）
     const hourBucket = new Date().toISOString().slice(0,13);
     notifyDrivers([eChatDrvId], 'chat', `chat-${eChatDrvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
+  } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
+}
+
+/* ===== チャット専用タブ（掲示板の右隣）=====
+   モーダル版(openDrvChatM等)と同じdriver_messagesテーブル・既読管理を使い、
+   一覧（左）と選択中スレッド（右）を1画面に並べて素早く返信できるようにする */
+let chatTabDrvId = null; // 現在選択中のドライバーID
+let chatTabMessages = []; // 選択中スレッドのメッセージキャッシュ
+let chatTabLastMsgByDrv = {}; // drv_id -> 直近メッセージ（一覧のプレビュー・並び替え用）
+async function initChatTab() {
+  await loadDriverChatUnread();
+  try {
+    const { data, error } = await sb.from('driver_messages').select('drv_id, body, created_at, sender_role').order('created_at', {ascending:false}).limit(500);
+    if (!error) {
+      chatTabLastMsgByDrv = {};
+      (data||[]).forEach(m => { if (!chatTabLastMsgByDrv[m.drv_id]) chatTabLastMsgByDrv[m.drv_id] = m; });
+    }
+  } catch(e) { console.warn('initChatTab:', e.message); }
+  renderChatTabDrvList();
+}
+function renderChatTabDrvList() {
+  const el = document.getElementById('chatTabDrvList');
+  if (!el) return;
+  const q = nm(document.getElementById('chatTabSearch')?.value || '');
+  let list = q ? drvs.filter(d => nm(d.name).includes(q)) : drvs.slice();
+  list.sort((a,b) => {
+    const au = driverChatUnreadIds.has(a.id) ? 1 : 0, bu = driverChatUnreadIds.has(b.id) ? 1 : 0;
+    if (au !== bu) return bu - au; // 未読を先頭に
+    const at = chatTabLastMsgByDrv[a.id]?.created_at || '', bt = chatTabLastMsgByDrv[b.id]?.created_at || '';
+    return bt.localeCompare(at); // メッセージが新しい順
+  });
+  if (!list.length) { el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:12px">該当するドライバーがいません</div>'; return; }
+  el.innerHTML = list.map(d => {
+    const unread = driverChatUnreadIds.has(d.id);
+    const last = chatTabLastMsgByDrv[d.id];
+    const active = d.id === chatTabDrvId;
+    return `<div onclick="openChatTabDrv(${d.id})" style="padding:9px 12px;cursor:pointer;border-bottom:0.5px solid var(--border);${active?'background:var(--blue-bg)':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+        <span style="font-weight:${unread?'700':'500'};font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.name)}</span>
+        ${unread?'<span class="nav-warn-dot" style="position:relative;flex-shrink:0"></span>':''}
+      </div>
+      ${last?`<div style="font-size:10.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${last.sender_role==='admin'?'自分: ':''}${escHtml(last.body)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+async function openChatTabDrv(drvId) {
+  const d = drvs.find(x => x.id === drvId);
+  if (!d) return;
+  chatTabDrvId = drvId;
+  document.getElementById('chatTabHeader').textContent = `💬 ${d.name}`;
+  document.getElementById('chatTabInputArea').style.display = 'flex';
+  document.getElementById('chatTabMsgList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
+  renderChatTabDrvList();
+  await loadChatTabMessages(drvId);
+  await markDrvChatRead(drvId, 'driver');
+  driverChatUnreadIds.delete(drvId);
+  renderChatTabDrvList();
+  if (!document.getElementById('pg2')?.classList.contains('hide')) renderDrv();
+  subscribeDrvChatRealtime(drvId, async (msg) => {
+    if (chatTabMessages.some(m => m.id === msg.id)) return;
+    chatTabMessages.push(msg);
+    renderChatTabMessages();
+    chatTabLastMsgByDrv[drvId] = msg;
+    if (msg.sender_role === 'driver') {
+      await markDrvChatRead(drvId, 'driver');
+      driverChatUnreadIds.delete(drvId);
+      renderChatTabDrvList();
+      if (!document.getElementById('pg2')?.classList.contains('hide')) renderDrv();
+    }
+  });
+}
+async function loadChatTabMessages(drvId) {
+  try {
+    const { data, error } = await sb.from('driver_messages').select('*').eq('drv_id', drvId).order('created_at', {ascending:true});
+    if (error) throw error;
+    chatTabMessages = data || [];
+    renderChatTabMessages();
+  } catch(e) {
+    const el = document.getElementById('chatTabMsgList');
+    if (el) el.innerHTML = `<div style="color:var(--red);font-size:11px;padding:12px">${e.message}</div>`;
+  }
+}
+function renderChatTabMessages() {
+  const el = document.getElementById('chatTabMsgList');
+  if (!el) return;
+  if (!chatTabMessages.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">まだメッセージがありません</div>'; return; }
+  el.innerHTML = chatTabMessages.map(m => {
+    const mine = m.sender_role === 'admin';
+    const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:70%">
+      <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(mine?'管理者':'ドライバー'))} ・ ${dt}</div>
+      <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${escHtml(m.body)}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+async function sendChatTabMessage() {
+  const input = document.getElementById('chatTabInput');
+  const body = input.value.trim();
+  if (!body || !chatTabDrvId) return;
+  try {
+    const { data, error } = await sb.from('driver_messages').insert({drv_id: chatTabDrvId, sender_role:'admin', sender_name: me?.name||'', body}).select().single();
+    if (error) throw error;
+    chatTabMessages.push(data);
+    renderChatTabMessages();
+    chatTabLastMsgByDrv[chatTabDrvId] = data;
+    renderChatTabDrvList();
+    input.value = '';
+    const hourBucket = new Date().toISOString().slice(0,13);
+    notifyDrivers([chatTabDrvId], 'chat', `chat-${chatTabDrvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
 }
 
