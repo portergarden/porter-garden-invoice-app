@@ -596,6 +596,8 @@ try {
     <div class="ntab" id="nt1" onclick="goPage(1,this)">📊 全体分析</div>
     <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先分析</div>
     <div class="ntab" id="nt24" onclick="goPage(24,this)">🚚 ドライバー分析</div>
+    <div class="ntab" id="nt28" onclick="goPage(28,this)">🗓 予定管理</div>
+    <div class="ntab" id="nt29" onclick="goPage(29,this)">✅ タスク管理</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 カレンダー</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
@@ -1264,6 +1266,44 @@ try {
       </div>
     </div>
     <div id="anaDrvArea" class="dashgrid"></div>
+  </div>
+  <!-- ===== pg28: 従業員予定管理 ===== -->
+  <div id="pg28" class="hide">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px;font-weight:500">🗓 予定管理</span>
+        <button class="btn sml" onclick="staffSchedPrev()">◀</button>
+        <span id="staffSchedTitle" style="font-size:13px;font-weight:500;min-width:80px;text-align:center"></span>
+        <button class="btn sml" onclick="staffSchedNext()">▶</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:10px;color:var(--text2)">担当者:</span>
+        <select id="staffSchedUserSel" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderStaffSchedCal()">
+          <option value="">全員</option>
+        </select>
+        <button class="btn sml grn" onclick="openStaffSchedM()">＋ 予定を追加</button>
+      </div>
+    </div>
+    <div class="cal-wrap"><div id="staffSchedGrid"></div></div>
+  </div>
+  <!-- ===== pg29: タスク管理 ===== -->
+  <div id="pg29" class="hide">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px;font-weight:500">✅ タスク管理</span>
+        <select id="taskStatusFilter" onchange="renderTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">すべて</option>
+          <option value="todo">未着手</option>
+          <option value="doing">進行中</option>
+          <option value="done">完了</option>
+        </select>
+        <select id="taskAssigneeFilter" onchange="renderTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">全担当者</option>
+        </select>
+      </div>
+      <button class="btn sml grn" onclick="openTaskM()">＋ タスク追加</button>
+    </div>
+    <div id="taskListArea" style="padding:10px 14px"></div>
   </div>
   <div id="pg2" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px;">
@@ -2406,6 +2446,56 @@ try {
     <div class="fld"><label>対象月</label><input type="month" id="rscMonth"></div>
     <div class="fld"><label>備考</label><input type="text" id="rscNote" placeholder="任意"></div>
     <div class="mfoot"><button class="btn" onclick="closeM('mReceiptSched')">キャンセル</button><button class="btn pri" onclick="saveReceiptSched()">追加</button></div>
+  </div>
+</div>
+
+<!-- モーダル: 従業員予定 -->
+<div class="overlay" id="mStaffSched">
+  <div class="modal">
+    <div class="mh" id="mStaffSchedH">予定 追加 <button class="ibtn" onclick="closeM('mStaffSched')">✕</button></div>
+    <div class="fld"><label>担当者</label><select id="ssUser" style="width:100%"><option value="">選択</option></select></div>
+    <div class="fld"><label>タイトル</label><input type="text" id="ssTitle" placeholder="例: 〇〇様 打ち合わせ"></div>
+    <div class="fld"><label>日付</label><input type="date" id="ssDate"></div>
+    <div class="g2">
+      <div class="fld"><label>開始時刻</label><input type="time" id="ssStart"></div>
+      <div class="fld"><label>終了時刻</label><input type="time" id="ssEnd"></div>
+    </div>
+    <div class="fld"><label>備考</label><textarea id="ssNote" rows="2" placeholder="任意"></textarea></div>
+    <div class="mfoot">
+      <button class="btn" id="ssDelBtn" style="display:none;color:var(--red-text)" onclick="deleteStaffSched()">削除</button>
+      <button class="btn" onclick="closeM('mStaffSched')">キャンセル</button>
+      <button class="btn pri" onclick="saveStaffSched()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: タスク -->
+<div class="overlay" id="mTask">
+  <div class="modal">
+    <div class="mh" id="mTaskH">タスク 追加 <button class="ibtn" onclick="closeM('mTask')">✕</button></div>
+    <div class="fld"><label>タイトル</label><input type="text" id="tkTitle" placeholder="例: 〇〇の見積作成"></div>
+    <div class="g2">
+      <div class="fld"><label>担当者</label><select id="tkAssignee" style="width:100%"><option value="">未割当</option></select></div>
+      <div class="fld"><label>期限</label><input type="date" id="tkDue"></div>
+    </div>
+    <div class="g2">
+      <div class="fld"><label>優先度</label><select id="tkPriority">
+        <option value="low">低</option>
+        <option value="normal" selected>中</option>
+        <option value="high">高</option>
+      </select></div>
+      <div class="fld"><label>状態</label><select id="tkStatus">
+        <option value="todo">未着手</option>
+        <option value="doing">進行中</option>
+        <option value="done">完了</option>
+      </select></div>
+    </div>
+    <div class="fld"><label>メモ</label><textarea id="tkNote" rows="2" placeholder="任意"></textarea></div>
+    <div class="mfoot">
+      <button class="btn" id="tkDelBtn" style="display:none;color:var(--red-text)" onclick="deleteTask()">削除</button>
+      <button class="btn" onclick="closeM('mTask')">キャンセル</button>
+      <button class="btn pri" onclick="saveTask()">保存</button>
+    </div>
   </div>
 </div>
 
@@ -4241,7 +4331,7 @@ const stCls=s=>({3:'s3',4:'s4'}[s]||'');
 // ページ番号 → 所属グループの対応表
 const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
-  1:'analysis', 8:'analysis', 23:'analysis', 24:'analysis',
+  1:'analysis', 8:'analysis', 23:'analysis', 24:'analysis', 28:'analysis', 29:'analysis',
   10:'driver', 12:'driver', 14:'driver', 27:'driver',
   2:'admin', 3:'admin', 25:'admin', 26:'admin', 15:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
@@ -4262,7 +4352,7 @@ function switchNavGroup(group, skipPageSwitch) {
 let _skipHistoryPush = false;
 function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
-  for(let i=0; i<=27; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
+  for(let i=0; i<=29; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
   const target = document.getElementById('pg'+n);
   if(target) target.classList.remove('hide');
@@ -4282,6 +4372,8 @@ function goPage(n,el){
   if(n===5)renderUsr();
   if(n===6){initAggPay();runAggPay();renderPayMets();}
   if(n===8){initCal();renderCal();}
+  if(n===28){initStaffSched();loadStaffSchedules().then(()=>renderStaffSchedCal());}
+  if(n===29){initTasks();loadTasks().then(()=>renderTasks());}
   if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
   if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
   if(n===10){_setDailyListMonth();initMob();}
@@ -8498,6 +8590,306 @@ function renderCal() {
   html += '</div>';
 
   document.getElementById('calGrid').innerHTML = html;
+}
+
+/* ===== 従業員予定管理 ===== */
+let staffSchedules = [];
+let staffSchedYear = new Date().getFullYear();
+let staffSchedMonth = new Date().getMonth();
+let eStaffSchedId = null;
+
+function staffMembers() { return users.filter(u => u.role !== 'driver'); }
+
+async function loadStaffSchedules() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('staff_schedules').select('*').order('date');
+    if (error) { if (error.message.includes('does not exist')||error.message.includes('relation')) return; throw error; }
+    staffSchedules = data || [];
+  } catch(e) { console.warn('loadStaffSchedules:', e.message); }
+}
+
+function initStaffSched() {
+  const sel = document.getElementById('staffSchedUserSel');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">全員</option>' + staffMembers().map(u=>`<option value="${u.id}" ${u.id==cur?'selected':''}>${escHtml(u.name)}</option>`).join('');
+}
+
+function staffSchedPrev() { staffSchedMonth--; if(staffSchedMonth<0){staffSchedMonth=11;staffSchedYear--;} renderStaffSchedCal(); }
+function staffSchedNext() { staffSchedMonth++; if(staffSchedMonth>11){staffSchedMonth=0;staffSchedYear++;} renderStaffSchedCal(); }
+
+function renderStaffSchedCal() {
+  const title = document.getElementById('staffSchedTitle');
+  if (title) title.textContent = `${staffSchedYear}年${staffSchedMonth+1}月`;
+
+  const userId = document.getElementById('staffSchedUserSel')?.value || '';
+  let items = staffSchedules;
+  if (userId) items = items.filter(s=>String(s.user_id)===String(userId));
+
+  const dayMap = {};
+  items.forEach(s => {
+    if (!s.date) return;
+    const d = new Date(s.date);
+    if (d.getFullYear()===staffSchedYear && d.getMonth()===staffSchedMonth) {
+      (dayMap[s.date] = dayMap[s.date] || []).push(s);
+    }
+  });
+
+  const firstDay = new Date(staffSchedYear, staffSchedMonth, 1);
+  const lastDay = new Date(staffSchedYear, staffSchedMonth+1, 0);
+  const todayStr = fmtLocalDate(new Date());
+  const startDow = firstDay.getDay();
+
+  let html = '<div class="cal-grid">';
+  ['日','月','火','水','木','金','土'].forEach(d => { html += `<div class="cal-head">${d}</div>`; });
+  for (let i=0; i<startDow; i++) html += '<div class="cal-day other"></div>';
+
+  for (let day=1; day<=lastDay.getDate(); day++) {
+    const dateStr = `${staffSchedYear}-${String(staffSchedMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const dayItems = dayMap[dateStr] || [];
+    const isToday = dateStr === todayStr;
+    let cls = 'cal-day';
+    if (isToday) cls += ' today';
+    else if (dayItems.length) cls += ' has-work';
+    html += `<div class="${cls}" style="cursor:pointer" onclick="openStaffSchedM(null,'${dateStr}')">
+      <div class="cal-dn">${day}</div>
+      ${dayItems.map(s=>{
+        const u = users.find(x=>x.id===s.user_id);
+        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:9px;background:var(--blue-bg);color:var(--blue-text);border-radius:3px;padding:1px 3px;margin:1px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.start_time?escHtml(s.start_time)+' ':''}${escHtml(s.title)}${u?'（'+escHtml(u.name)+'）':''}</div>`;
+      }).join('')}
+    </div>`;
+  }
+  const endDow = lastDay.getDay();
+  for (let i=endDow+1; i<7; i++) html += '<div class="cal-day other"></div>';
+  html += '</div>';
+  document.getElementById('staffSchedGrid').innerHTML = html;
+}
+
+function openStaffSchedM(id, presetDate) {
+  const sel = document.getElementById('ssUser');
+  sel.innerHTML = '<option value="">選択</option>' + staffMembers().map(u=>`<option value="${u.id}">${escHtml(u.name)}</option>`).join('');
+  eStaffSchedId = id || null;
+  const delBtn = document.getElementById('ssDelBtn');
+  if (id) {
+    const s = staffSchedules.find(x=>x.id===id);
+    if (!s) return;
+    document.getElementById('mStaffSchedH').innerHTML = '予定 編集 <button class="ibtn" onclick="closeM(\'mStaffSched\')">✕</button>';
+    sel.value = s.user_id || '';
+    document.getElementById('ssTitle').value = s.title || '';
+    document.getElementById('ssDate').value = s.date || '';
+    document.getElementById('ssStart').value = s.start_time || '';
+    document.getElementById('ssEnd').value = s.end_time || '';
+    document.getElementById('ssNote').value = s.note || '';
+    delBtn.style.display = '';
+  } else {
+    document.getElementById('mStaffSchedH').innerHTML = '予定 追加 <button class="ibtn" onclick="closeM(\'mStaffSched\')">✕</button>';
+    sel.value = document.getElementById('staffSchedUserSel')?.value || '';
+    document.getElementById('ssTitle').value = '';
+    document.getElementById('ssDate').value = presetDate || fmtLocalDate(new Date());
+    document.getElementById('ssStart').value = '';
+    document.getElementById('ssEnd').value = '';
+    document.getElementById('ssNote').value = '';
+    delBtn.style.display = 'none';
+  }
+  document.getElementById('mStaffSched').classList.add('on');
+}
+
+async function saveStaffSched() {
+  const title = document.getElementById('ssTitle').value.trim();
+  const date = document.getElementById('ssDate').value;
+  if (!title || !date) { alert('タイトルと日付は必須です'); return; }
+  const row = {
+    user_id: document.getElementById('ssUser').value || null,
+    title, date,
+    start_time: document.getElementById('ssStart').value || null,
+    end_time: document.getElementById('ssEnd').value || null,
+    note: document.getElementById('ssNote').value.trim() || null,
+  };
+  showLoad(true);
+  try {
+    if (eStaffSchedId) {
+      const {data,error} = await sb.from('staff_schedules').update(row).eq('id',eStaffSchedId).select().single();
+      if (error) throw error;
+      const idx = staffSchedules.findIndex(s=>s.id===eStaffSchedId);
+      if (idx>=0) staffSchedules[idx] = data;
+      showT('予定を更新しました');
+    } else {
+      row.created_by = me?.name || null;
+      const {data,error} = await sb.from('staff_schedules').insert(row).select().single();
+      if (error) throw error;
+      staffSchedules.push(data);
+      showT('予定を追加しました');
+    }
+    closeM('mStaffSched');
+    renderStaffSchedCal();
+  } catch(e) { showT('エラー: '+e.message,'ter'); }
+  showLoad(false);
+}
+
+async function deleteStaffSched() {
+  if (!eStaffSchedId) return;
+  if (!confirm('この予定を削除しますか？')) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('staff_schedules').delete().eq('id',eStaffSchedId);
+    if (error) throw error;
+    staffSchedules = staffSchedules.filter(s=>s.id!==eStaffSchedId);
+    closeM('mStaffSched');
+    renderStaffSchedCal();
+    showT('予定を削除しました');
+  } catch(e) { showT('エラー: '+e.message,'ter'); }
+  showLoad(false);
+}
+
+/* ===== タスク管理 ===== */
+let tasks = [];
+let eTaskId = null;
+
+async function loadTasks() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('tasks').select('*').order('due_date',{ascending:true, nullsFirst:false});
+    if (error) { if (error.message.includes('does not exist')||error.message.includes('relation')) return; throw error; }
+    tasks = data || [];
+  } catch(e) { console.warn('loadTasks:', e.message); }
+}
+
+function initTasks() {
+  const sel = document.getElementById('taskAssigneeFilter');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">全担当者</option>' + staffMembers().map(u=>`<option value="${u.id}" ${u.id==cur?'selected':''}>${escHtml(u.name)}</option>`).join('');
+  }
+}
+
+const TASK_STATUS_LABEL = {todo:'未着手', doing:'進行中', done:'完了'};
+const TASK_STATUS_COLOR = {todo:['--gray-bg','--gray-text'], doing:['--blue-bg','--blue-text'], done:['--green-bg','--green-text']};
+const TASK_PRIORITY_LABEL = {low:'低', normal:'中', high:'高'};
+
+function renderTasks() {
+  const area = document.getElementById('taskListArea');
+  if (!area) return;
+  const statusF = document.getElementById('taskStatusFilter')?.value || '';
+  const assigneeF = document.getElementById('taskAssigneeFilter')?.value || '';
+  let rows = tasks;
+  if (statusF) rows = rows.filter(t=>(t.status||'todo')===statusF);
+  if (assigneeF) rows = rows.filter(t=>String(t.assignee_user_id)===String(assigneeF));
+  const todayStr = fmtLocalDate(new Date());
+  rows = [...rows].sort((a,b)=>{
+    const oa = a.status==='done'?1:0, ob = b.status==='done'?1:0;
+    if (oa!==ob) return oa-ob;
+    return (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99');
+  });
+  if (!rows.length) { area.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:10px 0">タスクがありません</div>'; return; }
+  area.innerHTML = rows.map(t=>{
+    const u = users.find(x=>x.id===t.assignee_user_id);
+    const overdue = t.due_date && t.due_date < todayStr && t.status!=='done';
+    const sc = TASK_STATUS_COLOR[t.status] || TASK_STATUS_COLOR.todo;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:0.5px solid var(--border)">
+      <input type="checkbox" ${t.status==='done'?'checked':''} onchange="toggleTaskDone(${t.id},this.checked)" style="width:15px;height:15px">
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="openTaskM(${t.id})">
+        <div style="font-weight:500;color:var(--text);${t.status==='done'?'text-decoration:line-through;color:var(--text2)':''}">${escHtml(t.title)}</div>
+        <div style="font-size:10px;color:var(--text2);display:flex;gap:8px;margin-top:2px;flex-wrap:wrap">
+          ${u?`<span>👤 ${escHtml(u.name)}</span>`:''}
+          ${t.due_date?`<span style="${overdue?'color:var(--red-text);font-weight:600':''}">📅 ${t.due_date}${overdue?'（期限超過）':''}</span>`:''}
+          <span class="bdg" style="background:var(${sc[0]});color:var(${sc[1]})">${TASK_STATUS_LABEL[t.status]||'未着手'}</span>
+          <span>優先度: ${TASK_PRIORITY_LABEL[t.priority]||'中'}</span>
+        </div>
+      </div>
+      <button class="ibtn" onclick="openTaskM(${t.id})" title="編集">✎</button>
+    </div>`;
+  }).join('');
+}
+
+function openTaskM(id) {
+  const sel = document.getElementById('tkAssignee');
+  sel.innerHTML = '<option value="">未割当</option>' + staffMembers().map(u=>`<option value="${u.id}">${escHtml(u.name)}</option>`).join('');
+  eTaskId = id || null;
+  const delBtn = document.getElementById('tkDelBtn');
+  if (id) {
+    const t = tasks.find(x=>x.id===id);
+    if (!t) return;
+    document.getElementById('mTaskH').innerHTML = 'タスク 編集 <button class="ibtn" onclick="closeM(\'mTask\')">✕</button>';
+    document.getElementById('tkTitle').value = t.title || '';
+    sel.value = t.assignee_user_id || '';
+    document.getElementById('tkDue').value = t.due_date || '';
+    document.getElementById('tkPriority').value = t.priority || 'normal';
+    document.getElementById('tkStatus').value = t.status || 'todo';
+    document.getElementById('tkNote').value = t.note || '';
+    delBtn.style.display = '';
+  } else {
+    document.getElementById('mTaskH').innerHTML = 'タスク 追加 <button class="ibtn" onclick="closeM(\'mTask\')">✕</button>';
+    document.getElementById('tkTitle').value = '';
+    sel.value = document.getElementById('taskAssigneeFilter')?.value || '';
+    document.getElementById('tkDue').value = '';
+    document.getElementById('tkPriority').value = 'normal';
+    document.getElementById('tkStatus').value = 'todo';
+    document.getElementById('tkNote').value = '';
+    delBtn.style.display = 'none';
+  }
+  document.getElementById('mTask').classList.add('on');
+}
+
+async function saveTask() {
+  const title = document.getElementById('tkTitle').value.trim();
+  if (!title) { alert('タイトルは必須です'); return; }
+  const status = document.getElementById('tkStatus').value;
+  const row = {
+    title,
+    assignee_user_id: document.getElementById('tkAssignee').value || null,
+    due_date: document.getElementById('tkDue').value || null,
+    priority: document.getElementById('tkPriority').value,
+    status,
+    note: document.getElementById('tkNote').value.trim() || null,
+    completed_at: status==='done' ? new Date().toISOString() : null,
+  };
+  showLoad(true);
+  try {
+    if (eTaskId) {
+      const {data,error} = await sb.from('tasks').update(row).eq('id',eTaskId).select().single();
+      if (error) throw error;
+      const idx = tasks.findIndex(t=>t.id===eTaskId);
+      if (idx>=0) tasks[idx] = data;
+      showT('タスクを更新しました');
+    } else {
+      row.created_by = me?.name || null;
+      const {data,error} = await sb.from('tasks').insert(row).select().single();
+      if (error) throw error;
+      tasks.push(data);
+      showT('タスクを追加しました');
+    }
+    closeM('mTask');
+    renderTasks();
+  } catch(e) { showT('エラー: '+e.message,'ter'); }
+  showLoad(false);
+}
+
+async function toggleTaskDone(id, done) {
+  const t = tasks.find(x=>x.id===id);
+  if (!t) return;
+  try {
+    const {data,error} = await sb.from('tasks').update({status: done?'done':'todo', completed_at: done ? new Date().toISOString() : null}).eq('id',id).select().single();
+    if (error) throw error;
+    const idx = tasks.findIndex(x=>x.id===id);
+    if (idx>=0) tasks[idx] = data;
+    renderTasks();
+  } catch(e) { showT('エラー: '+e.message,'ter'); }
+}
+
+async function deleteTask() {
+  if (!eTaskId) return;
+  if (!confirm('このタスクを削除しますか？')) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('tasks').delete().eq('id',eTaskId);
+    if (error) throw error;
+    tasks = tasks.filter(t=>t.id!==eTaskId);
+    closeM('mTask');
+    renderTasks();
+    showT('タスクを削除しました');
+  } catch(e) { showT('エラー: '+e.message,'ter'); }
+  showLoad(false);
 }
 
 /* ===== ④ 支払スケジュール ===== */
@@ -15361,6 +15753,43 @@ CREATE TABLE IF NOT EXISTS users (
   driver_id int REFERENCES drivers(id),
   must_change_password boolean NOT NULL DEFAULT false
 );
+
+-- 従業員予定管理（管理・編集・閲覧ユーザーのスケジュール登録）
+CREATE TABLE IF NOT EXISTS staff_schedules (
+  id bigserial PRIMARY KEY,
+  user_id text REFERENCES users(id),
+  title text NOT NULL,
+  date date NOT NULL,
+  start_time text,
+  end_time text,
+  note text,
+  created_by text,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE staff_schedules ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "staff_schedules_select" ON staff_schedules FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "staff_schedules_insert" ON staff_schedules FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "staff_schedules_update" ON staff_schedules FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "staff_schedules_delete" ON staff_schedules FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+
+-- タスク管理
+CREATE TABLE IF NOT EXISTS tasks (
+  id bigserial PRIMARY KEY,
+  title text NOT NULL,
+  assignee_user_id text REFERENCES users(id),
+  due_date date,
+  status text NOT NULL DEFAULT 'todo',    -- 'todo' | 'doing' | 'done'
+  priority text NOT NULL DEFAULT 'normal', -- 'low' | 'normal' | 'high'
+  note text,
+  created_by text,
+  created_at timestamptz DEFAULT now(),
+  completed_at timestamptz
+);
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "tasks_select" ON tasks FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "tasks_insert" ON tasks FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "tasks_update" ON tasks FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "tasks_delete" ON tasks FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 
 -- 請求書・受注データ
 CREATE TABLE IF NOT EXISTS invoices (
