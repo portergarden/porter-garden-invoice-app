@@ -651,7 +651,8 @@ try {
       <input type="date" id="sd2" onchange="renderInv()">
       <select id="stf" onchange="renderInv()"><option value="">全種別</option><option value="regular">定期集配</option><option value="charter">チャーター</option><option value="other">その他</option><option value="un">未配車のみ</option></select>
       <select id="scli" onchange="renderInv()"><option value="">全取引先</option></select>
-      <select id="ssf" onchange="renderInv()"><option value="">全ステータス</option><option value="0">未確認</option><option value="1">確認済</option><option value="3">請求済</option><option value="4">入金済</option></select>
+      <select id="sClosing" onchange="renderInv()"><option value="">全締日</option></select>
+      <select id="ssf" onchange="renderInv()"><option value="">全ステータス</option><option value="3">請求済</option><option value="4">入金済</option></select>
       <button class="btn" onclick="clrF()">✕ クリア</button>
       <div class="txtog"><button id="bSortDesc" onclick="setSort('desc')">新しい順 ↓</button><button id="bSortAsc" class="on" onclick="setSort('asc')">古い順 ↑</button></div>
       <div style="flex:1"></div>
@@ -1253,6 +1254,9 @@ try {
         <span style="font-size:10px;color:var(--text2)">対象年:</span>
         <select id="anaDrvYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDrvAnalysis()"></select>
         <button class="btn sml" id="anaDrvYearCsvBtn" onclick="exportYearCsv()" title="選択中の年のドライバー別月次実績をCSV出力します" style="display:none">⬇ 年報CSV</button>
+        <span style="font-size:10px;color:var(--text2);margin-left:8px">単月:</span>
+        <input type="month" id="anaDrvMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDrvAnalysis()">
+        <button class="btn sml" onclick="document.getElementById('anaDrvMonth').value='';renderDrvAnalysis()" title="単月グラフを解除">✕</button>
         <button class="btn sml" onclick="openEntityCompareM('driver')">📊 個別比較レポート</button>
       </div>
     </div>
@@ -4291,18 +4295,32 @@ function rebuildCliFilter(){
   if(fm)fm.innerHTML='<option value="">未設定</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 }
 /* ===== INVOICE LIST ===== */
+// 締日フィルタの選択肢を、登録済み取引先の締日（重複なし）から再構築する
+function populateClosingFilter() {
+  const sel = document.getElementById('sClosing');
+  if (!sel) return;
+  const cur = sel.value;
+  const days = [...new Set(clients.map(c => c.closing_day ?? 'end'))]
+    .sort((a,b) => (a==='end'?32:+a) - (b==='end'?32:+b));
+  sel.innerHTML = '<option value="">全締日</option>' + days.map(d => `<option value="${d}">${closingDayLabel(d)}締め</option>`).join('');
+  sel.value = [...sel.options].some(o=>o.value===cur) ? cur : '';
+}
 function filt(){
+  populateClosingFilter();
   const q=nm(document.getElementById('sq').value||'');
   const d1=document.getElementById('sd1').value,d2=document.getElementById('sd2').value;
   const tf=document.getElementById('stf').value,sf=document.getElementById('ssf').value,cf=document.getElementById('scli').value;
+  const closingF=document.getElementById('sClosing')?.value||'';
   const filtered=recs.filter(r=>{
-    if(q){const c=lkC(r.cli);if(!nm(r.car).includes(q)&&!(c&&nm(c.name).includes(q)))return false;}
+    const c=lkC(r.cli);
+    if(q){if(!nm(r.car).includes(q)&&!(c&&nm(c.name).includes(q)))return false;}
     if(d1&&r.date<d1)return false;if(d2&&r.date>d2)return false;
     if(tf==='un'&&recDrv(r))return false;
     if(tf==='charter'&&r.type!=='charter')return false;if(tf==='regular'&&r.type!=='regular')return false;
     if(tf==='other'&&(r.type==='charter'||r.type==='regular'))return false;
     if(sf!==''&&String(r.st)!==sf)return false;
     if(cf!==''&&String(r.cli||'')!==cf)return false;
+    if(closingF!==''&&String(c?.closing_day??'end')!==closingF)return false;
     return true;
   });
   // 日付ソート
@@ -4442,7 +4460,7 @@ function renderPayMets(){
   document.getElementById('tSubP').textContent=yen(tS);
   document.getElementById('tTaxP').textContent=yen(tT);
 }
-function clrF(){['sq','sd1','sd2'].forEach(id=>document.getElementById(id).value='');['stf','ssf','scli'].forEach(id=>document.getElementById(id).value='');renderInv();}
+function clrF(){['sq','sd1','sd2'].forEach(id=>document.getElementById(id).value='');['stf','ssf','scli','sClosing'].forEach(id=>document.getElementById(id).value='');renderInv();}
 function toggleSel(id,v){if(v)selIds.add(id);else selIds.delete(id);renderInv();}
 function toggleAll(v){filt().forEach(r=>v?selIds.add(r.id):selIds.delete(r.id));renderInv();}
 
@@ -4716,6 +4734,24 @@ function renderDrvAnalysis(){
   const csvBtn=document.getElementById('anaDrvYearCsvBtn');
   if(csvBtn)csvBtn.style.display=anaYear?'':'none';
   if(anaYear)aa.insertAdjacentHTML('beforeend', buildDrvYearAnalysisHtml(anaYear));
+  const anaMonth=document.getElementById('anaDrvMonth')?.value||'';
+  if(anaMonth)aa.insertAdjacentHTML('beforeend', buildDrvMonthBarHtml(anaMonth));
+}
+// 単月（YYYY-MM）だけを対象にしたドライバー別売上の棒グラフ。年間・全期間の一覧とは別に、
+// 特定の月だけを素早く見比べたい場合に使う
+function buildDrvMonthBarHtml(month){
+  const monthRecs=recs.filter(r=>r.date&&r.date.startsWith(month));
+  const byDrv={};
+  monthRecs.forEach(r=>{const d=recDrv(r);const k=d?d.name:'未配車';if(!byDrv[k])byDrv[k]={s:0,cnt:0,un:!d};byDrv[k].s+=totR(r,taxMode);byDrv[k].cnt++;});
+  const ent=Object.entries(byDrv).sort((a,b)=>b[1].s-a[1].s);
+  const maxD=ent[0]?ent[0][1].s:1;
+  if(!ent.length){
+    return `<div class="cwrap" style="grid-column:1/-1"><div class="ctitle">📊 ${month} 単月 ドライバー別売上</div><div style="color:var(--text2);font-size:12px;padding:10px 0">この月のデータがありません</div></div>`;
+  }
+  return `<div class="cwrap" style="grid-column:1/-1">
+    <div class="ctitle">📊 ${month} 単月 ドライバー別売上</div>
+    ${ent.map(([name,d])=>{const p=Math.round(d.s/maxD*100);return`<div class="brow"><div class="blbl" title="${name}">${name}</div><div class="btrack"><div class="bfill" style="width:${p}%;background:${d.un?'#F09595':'#3B82F6'}"></div></div><div class="bval">${yen(d.s)} <span style="color:var(--text2)">${d.cnt}件</span></div></div>`;}).join('')}
+  </div>`;
 }
 
 /* ===== DRIVERS ===== */
