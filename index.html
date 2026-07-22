@@ -10346,6 +10346,7 @@ async function saveDriverDoc(drvId, docType) {
   try {
     let filePath = existing?.file_path || '';
     let sizeMsg = '';
+    let sizeFields = {};
     if (file) {
       const origSize = file.size;
       const blob = await resizeImageToBlob(file, 1600);
@@ -10357,8 +10358,9 @@ async function saveDriverDoc(drvId, docType) {
         sb.storage.from('driver-docs').remove([existing.file_path]).catch?.(()=>{});
       }
       sizeMsg = `（${fmtBytes(origSize)} → ${fmtBytes(blob.size)}）`;
+      sizeFields = { orig_size_bytes: origSize, compressed_size_bytes: blob.size };
     }
-    const row = { drv_id: drvId, doc_type: docType, file_path: filePath, expiry_date: expiry, uploaded_by: me?.name || '' , updated_at: new Date().toISOString() };
+    const row = { drv_id: drvId, doc_type: docType, file_path: filePath, expiry_date: expiry, uploaded_by: me?.name || '' , updated_at: new Date().toISOString(), ...sizeFields };
     const {data, error} = await sb.from('driver_documents').upsert(row, { onConflict: 'drv_id,doc_type' }).select().single();
     if (error) throw error;
     driverDocs = driverDocs.filter(d => !(d.drv_id===drvId && d.doc_type===docType));
@@ -10423,6 +10425,7 @@ function docRowHtml(drvId, t, canDelete) {
       ${docStatusPill(doc)}
       ${doc?.expiry_date ? `<span style="font-size:11px;color:var(--text2)">${t.expLabel}: ${doc.expiry_date}</span>` : ''}
       ${doc ? `<span style="font-size:10px;color:var(--text3)">更新: ${(doc.updated_at||'').slice(0,10)}${doc.uploaded_by?` (${doc.uploaded_by})`:''}</span>` : ''}
+      ${doc?.compressed_size_bytes ? `<span style="font-size:10px;color:var(--text3)" title="アップロード時に自動で軽量化されたファイルサイズ">📎 ${fmtBytes(doc.orig_size_bytes||doc.compressed_size_bytes)} → ${fmtBytes(doc.compressed_size_bytes)}</span>` : ''}
       <div style="flex:1"></div>
       ${doc?.file_path ? `<button class="btn sml" onclick="viewDriverDoc(${drvId},'${t.key}')">🔍 表示</button>` : ''}
       ${doc && canDelete ? `<button class="ibtn" style="color:#e05b5b" onclick="deleteDriverDoc(${drvId},'${t.key}')">🗑</button>` : ''}
@@ -15236,6 +15239,8 @@ CREATE TABLE IF NOT EXISTS driver_documents (
   id bigserial PRIMARY KEY, drv_id int NOT NULL REFERENCES drivers(id),
   doc_type text NOT NULL, file_path text NOT NULL,
   expiry_date date, note text DEFAULT '', uploaded_by text DEFAULT '',
+  orig_size_bytes bigint,        -- 圧縮前のファイルサイズ（提出書類一覧に表示）
+  compressed_size_bytes bigint,  -- 圧縮後のファイルサイズ（提出書類一覧に表示）
   created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
 );
 
