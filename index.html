@@ -199,6 +199,8 @@ let parsedPayCsv = [];
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a0708418cb7b96fc563eacae0fbf77674/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -11195,6 +11197,7 @@ async function loadDriverStatements() {
       </div>
       ${s.read_at ? '' : '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--red-bg);color:var(--red-text)">未読</span>'}
       <button class="btn sml pri" onclick="openDriverStatement(${s.id},'${s.file_path}',${s.read_at?'true':'false'})">📄 開く</button>
+      <button class="btn sml" onclick="downloadDriverStatement(${s.id},'${s.file_path}','${escHtml(s.title||s.month+'分支払明細書').replace(/'/g,"\\'")}',${s.read_at?'true':'false'})">⬇ ダウンロード</button>
       ${!s.acknowledged_at ? `<button class="btn sml" onclick="acknowledgeStatement(${s.id})">✓ 受領確認する</button>` : ''}
     </div>`;
     }).join('');
@@ -11228,6 +11231,52 @@ async function openDriverStatement(id, path, isRead) {
       loadDriverStatements();
     }
   } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
+}
+
+// 明細書HTML文字列を非表示iframeにレンダリングし、.doc単位（印刷CSSでA4 1ページ分に相当）で
+// 1ページずつ画像化してPDFに追い込み、ファイルとしてダウンロードする（表示専用の「開く」とは別の導線）
+async function exportHtmlToPdf(html, filename) {
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:1200px;border:0';
+  document.body.appendChild(iframe);
+  try {
+    await new Promise((resolve) => { iframe.onload = resolve; iframe.srcdoc = html; });
+    await new Promise(r => setTimeout(r, 300)); // 画像・フォント等の描画待ち
+    const doc = iframe.contentDocument;
+    const pages = doc.querySelectorAll('.doc');
+    const targets = pages.length ? Array.from(pages) : [doc.body];
+    const { jsPDF } = jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    for (let i = 0; i < targets.length; i++) {
+      const canvas = await html2canvas(targets[i], { scale: 2, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgH = Math.min(pageH, canvas.height * pageW / canvas.width);
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageW, imgH);
+    }
+    pdf.save(`${filename}.pdf`);
+  } finally {
+    document.body.removeChild(iframe);
+  }
+}
+// ドライバーポータル: 支払明細書をPDFファイルとしてダウンロードする（印刷ボタンとは別導線。既読は「開く」と同様に付ける）
+async function downloadDriverStatement(id, path, title, isRead) {
+  showLoad(true);
+  try {
+    const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
+    if (error) throw error;
+    const res = await fetch(data.signedUrl);
+    if (!res.ok) throw new Error('ファイルの取得に失敗しました（' + res.status + '）');
+    const html = await res.text();
+    await exportHtmlToPdf(html, title || '支払明細書');
+    if (!isRead) {
+      await sb.from('driver_statements').update({read_at: new Date().toISOString()}).eq('id', id);
+      loadDriverStatements();
+    }
+  } catch(e) { showT('ダウンロードエラー: ' + e.message, 'ter'); }
+  showLoad(false);
 }
 
 async function loadDriverDailyList() {
