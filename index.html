@@ -637,8 +637,6 @@ try {
       <div class="ti"><div class="tl">税抜合計</div><div class="tv" id="tSub">¥—</div></div>
       <div class="ti"><div class="tl">消費税</div><div class="tv" id="tTax">¥—</div></div>
       <div class="vd"></div>
-      <div class="ti"><div class="tl">未確認</div><div class="tv" style="color:#854F0B" id="tPend">—件</div></div>
-      <div class="vd"></div>
       <div class="txtog"><button id="bInc" class="on" onclick="setTax('inc')">税込</button><button id="bExc" onclick="setTax('exc')">税別</button></div>
       <div style="flex:1"></div>
       <button class="btn sml" onclick="jumpToEntryTab()">📝 受注入力 ↗</button>
@@ -1392,8 +1390,6 @@ try {
       <div class="vd"></div>
       <div class="ti"><div class="tl">税抜合計</div><div class="tv" id="tSubP">¥—</div></div>
       <div class="ti"><div class="tl">消費税</div><div class="tv" id="tTaxP">¥—</div></div>
-      <div class="vd"></div>
-      <div class="ti"><div class="tl">未確認</div><div class="tv" style="color:#854F0B" id="tPendP">—件</div></div>
       <div class="vd"></div>
       <div class="txtog"><button id="bIncP" class="on" onclick="setTax('inc')">税込</button><button id="bExcP" onclick="setTax('exc')">税別</button></div>
       <div style="flex:1"></div>
@@ -3120,6 +3116,15 @@ const typeShort=t=>(TYPE_META[t]||TYPE_META.other).short;
 const typeBadge=t=>(TYPE_META[t]||TYPE_META.other).badge;
 const nm=s=>(s||'').replace(/\s/g,'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
 const lkD=car=>{const n=nm(car);return drvs.find(d=>(d.cars||[]).some(c=>nm(c)===n))||null;};
+// 略式車番（数字のみ）を、紐づくドライバーのフル表記車番に変換する（表示・集計の見た目をフル表記に統一するため）。
+// フル表記自体やフル表記が見つからない車（代車など）はそのまま返す
+const canonicalCar=car=>{
+  if(!car || !/^\d+$/.test(nm(car))) return car;
+  const d=lkD(car);
+  if(!d) return car;
+  const full=(d.cars||[]).find(c=>isFullPlateNumber(c));
+  return full||car;
+};
 const lkC=id=>clients.find(c=>c.id===id)||null;
 // 同じ車両を複数人で稼働することがあるため、レコードにdrv_id（手動選択）があればそれを優先し、なければ車番から自動判定する
 const recDrv=r=>(r.drv_id!=null && drvs.find(d=>d.id===r.drv_id)) || lkD(r.car);
@@ -3241,10 +3246,7 @@ const AGG_DETAIL_COLS = [
   {key:'deliveryDone', label:'配送済', default:false, get:r=>r.delivery_done?'済':''},
   {key:'driverNote', label:'Dr連絡', default:false, get:r=>r.driver_note||''},
   {key:'invPayDate', label:'支払日', default:false, get:r=>r.invoice_payment_date||''},
-  {key:'status', label:'ステータス', default:true, get:r=>{
-    const canEd = me && me.role !== 'viewer';
-    return `<span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>${canEd&&r.st<1?`<button class="ibtn" title="確認済にする" onclick="advSt(${r.id},1)">✓</button>`:''}${canEd&&r.st>0?`<button class="ibtn" title="取り消す" onclick="revertSt(${r.id})">↩</button>`:''}`;
-  }},
+  {key:'status', label:'ステータス', default:true, get:r=>stLbl(r.st)?`<span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>`:''},
   {key:'note', label:'備考', default:false, get:r=>r.note||''},
 ];
 
@@ -4189,9 +4191,10 @@ function renderAggDetailFull() {
 }
 
 const closingDayLabel=d=>!d||d==='end'?'末日':`${d}日`;
-// 承認済(旧st=2)は廃止し確認済に一本化。既存データにst=2が残っていても同じ表示にする（後方互換のため値自体は変更しない）
-const stLbl=s=>['未確認','確認済','確認済'][s]||'—';
-const stCls=s=>['s0','s1','s1'][s]||'s0';
+// 「確認」ステップは廃止済み。st=0/1/2（未確認・確認済・旧承認済）は表示上区別せず空欄とし、
+// 実際に業務上意味のある請求済(3)・入金済(4)のみバッジ表示する
+const stLbl=s=>({3:'請求済',4:'入金済'}[s]||'');
+const stCls=s=>({3:'s3',4:'s4'}[s]||'');
 
 /* ===== NAV ===== */
 // ページ番号 → 所属グループの対応表
@@ -4373,7 +4376,6 @@ function renderInv(){
   }
   const rows=filt();
   updateInvMetCards();
-  document.getElementById('tPend').textContent=recs.filter(r=>r.st===0).length+'件';
   const isF=rows.length!==recs.length;
   document.getElementById('totLbl').textContent=isF?'請求合計（絞り込み中）':'請求合計（全件）';
   const tF=rows.reduce((a,r)=>a+(r.fare||0),0);
@@ -4402,13 +4404,13 @@ function renderInv(){
     return`<tr${chk?' style="background:var(--blue-bg)"':''}>
       <td><input type="checkbox" class="chk"${chk?' checked':''} onchange="toggleSel(${r.id},this.checked)"></td>
       <td>${r.date}</td>
-      <td style="font-weight:500;max-width:96px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.car)}</td>
+      <td style="font-weight:500;max-width:96px;overflow:hidden;text-overflow:ellipsis">${escHtml(canonicalCar(r.car))}</td>
       <td style="max-width:76px;overflow:hidden;text-overflow:ellipsis">${d?escHtml(d.name):`<span class="bdg un">未配車</span>`}</td>
       <td style="max-width:78px;overflow:hidden;text-overflow:ellipsis">${c?`<span style="font-size:11px">${escHtml(c.short||c.name)}</span>`:'<span class="dim">—</span>'}</td>
       <td><span class="bdg ${typeBadge(r.type)}">${typeShort(r.type)}</span></td>
       ${nz(r.fare)}${nz(fb.hw)}${nz(fb.oth)}
       <td class="r" style="font-weight:500">${yen(tot_)}<div style="font-size:9px;color:var(--text2)">${r.tax===0?'非課税':r.tax+'%'}</div></td>
-      <td><span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>${canEd&&r.st<1?`<button class="ibtn" title="確認済にする" onclick="advSt(${r.id},1)">✓</button>`:''}${canEd&&r.st>0?`<button class="ibtn" title="取り消す" onclick="revertSt(${r.id})">↩</button>`:''}</td>
+      <td>${stLbl(r.st)?`<span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>`:''}</td>
       <td class="dim" style="max-width:54px;overflow:hidden;text-overflow:ellipsis">${escHtml(r.note)}</td>
       <td style="white-space:nowrap">${canEd?`<button class="ibtn" onclick="editInv(${r.id})">✎</button><button class="ibtn" onclick="delInv(${r.id})">🗑</button>`:''}</td>
     </tr>`;
@@ -4427,7 +4429,6 @@ function setTax(m){taxMode=m;document.getElementById('bInc').classList.toggle('o
 function renderPayMets(){
   if(!document.getElementById('mTotP'))return;
   updatePayMetCards();
-  document.getElementById('tPendP').textContent=recs.filter(r=>r.st===0).length+'件';
   const tF=recs.reduce((a,r)=>a+fareBySide(r,'payment'),0);
   const bAll=recs.reduce((a,r)=>{const b=feeBreakdown(r,'payment');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other};},{hw:0,oth:0,other:0});
   const tS=tF+recs.reduce((a,r)=>a+hwRawBySide(r,'payment')+othRawBySide(r,'payment'),0);
@@ -4472,30 +4473,6 @@ async function delSel(){
     renderInv();showT('削除しました');
   }catch(e){showT('削除エラー: '+e.message,'ter');}
   showLoad(false);
-}
-async function advSt(id,st){
-  try{
-    const{error}=await sb.from('invoices').update({st}).eq('id',id);
-    if(error)throw error;
-    const r=recs.find(x=>x.id===id);if(r){const old=r.st;r.st=st;addLog('ステータス変更',`${r.car}: ${stLbl(old)}→${stLbl(st)}`);}
-    renderInv();
-    if (!document.getElementById('pg20')?.classList.contains('hide')) renderAggDetailFull();
-    showT(`${stLbl(st)}に変更しました`);
-  }catch(e){showT('更新エラー: '+e.message,'ter');}
-}
-// 確認済は取り消して未確認に戻せる（承認済は廃止・確認済に統一。旧st=2データが残っていても1段ずつ戻す）
-async function revertSt(id){
-  const r=recs.find(x=>x.id===id);
-  if(!r||r.st<=0)return;
-  const newSt=r.st-1;
-  try{
-    const{error}=await sb.from('invoices').update({st:newSt}).eq('id',id);
-    if(error)throw error;
-    const old=r.st;r.st=newSt;addLog('ステータス取消',`${r.car}: ${stLbl(old)}→${stLbl(newSt)}`);
-    renderInv();
-    if (!document.getElementById('pg20')?.classList.contains('hide')) renderAggDetailFull();
-    showT(`${stLbl(newSt)}に戻しました`);
-  }catch(e){showT('更新エラー: '+e.message,'ter');}
 }
 
 function openInvM(){eInvId=null;clrInvF();populateDrvSel();document.getElementById('mInv').classList.add('on');}
@@ -4571,7 +4548,7 @@ function renderDash(){
   const byM={};dashRecs.forEach(r=>{const m=r.date.slice(0,7);if(!byM[m])byM[m]={s:0,cnt:0};byM[m].s+=totR(r,taxMode);byM[m].cnt++;});
   const months=Object.keys(byM).sort(),maxM=Math.max(1,...months.map(m=>byM[m].s));
   const ch=dashRecs.filter(r=>r.type==='charter').length,re=dashRecs.filter(r=>r.type==='regular').length,ot=dashRecs.length-ch-re,tot_=dashRecs.length||1;
-  const sCnt=[0,1,2].map(s=>dashRecs.filter(r=>r.st===s).length);
+  const invoicedCnt=dashRecs.filter(r=>r.st===3).length, paidCnt=dashRecs.filter(r=>r.st===4).length;
   const totAmt=dashRecs.reduce((a,r)=>a+sub(r),0),totTax=dashRecs.reduce((a,r)=>a+rtax(r),0);
   // 内訳・ステータスの中身（全期間時は単独で全幅表示、年選択時は月次推移と横並びにするため半幅でbuildYearReportHtmlに渡す）
   const statusInner = `
@@ -4582,9 +4559,9 @@ function renderDash(){
         <div class="pirow"><div class="dot" style="background:var(--blue)"></div>チャーター・スポット便<span style="margin-left:auto;font-weight:500">${ch}件 (${Math.round(ch/tot_*100)}%)</span></div>
         <div class="pirow"><div class="dot" style="background:#EF9F27"></div>その他<span style="margin-left:auto;font-weight:500">${ot}件 (${Math.round(ot/tot_*100)}%)</span></div>
       </div>
-      <div><div style="font-size:10px;color:var(--text2);margin-bottom:3px">確認ステータス</div>
-        <div class="pirow"><div class="dot" style="background:#888"></div>未確認<span style="margin-left:auto;font-weight:500">${sCnt[0]}件</span></div>
-        <div class="pirow"><div class="dot" style="background:var(--green)"></div>確認済<span style="margin-left:auto;font-weight:500">${sCnt[1]+sCnt[2]}件</span></div>
+      <div><div style="font-size:10px;color:var(--text2);margin-bottom:3px">請求・入金ステータス</div>
+        <div class="pirow"><div class="dot" style="background:#1D4ED8"></div>請求済<span style="margin-left:auto;font-weight:500">${invoicedCnt}件</span></div>
+        <div class="pirow"><div class="dot" style="background:var(--green)"></div>入金済<span style="margin-left:auto;font-weight:500">${paidCnt}件</span></div>
       </div>`;
   // 年を選択している場合は、下部の年間サマリー（buildYearReportHtml）に同じ内容がより詳しく出るため、
   // 月別売上は全期間表示のときだけ出す（重複表示防止）。取引先別・ドライバー別の内訳は分析タブ側にのみ表示する。
@@ -4611,9 +4588,6 @@ function renderDash(){
 //   このパネルと重複するため廃止しここに統合した）
 async function renderDashWarnings(){
   const items=[]; // {sev:'red'|'amber', icon, text, btn, go, nt}
-
-  const pend=recs.filter(r=>r.st===0).length;
-  if(pend)items.push({sev:'amber',icon:'🧾',text:`未確認の請求明細: ${pend}件`,btn:'請求明細一覧へ',go:0,nt:'nt0'});
 
   const unC=recs.filter(r=>!recDrv(r)).length;
   if(unC)items.push({sev:'amber',icon:'🚚',text:`未配車の車番: ${unC}件`,btn:'請求明細一覧へ',go:0,nt:'nt0'});
@@ -6992,7 +6966,7 @@ function runAggPay() {
     // 「メイン車番」は明細に登場した順ではなく、この期間で最も使用件数が多い車番とする
     // （recsは新規登録が先頭に追加される順のため、登場順=直近入力順であって実際の主力車両とは限らないため）
     const carCounts = {};
-    rows.forEach(r => { if (r.car) carCounts[r.car] = (carCounts[r.car]||0) + 1; });
+    rows.forEach(r => { if (r.car) { const c = canonicalCar(r.car); carCounts[c] = (carCounts[c]||0) + 1; } });
     const carsUsed = Object.keys(carCounts).sort((a,b) => carCounts[b]-carCounts[a]);
     const carShort = carsUsed.length ? (carsUsed.length===1 ? carsUsed[0] : `${carsUsed[0]} 他${carsUsed.length-1}台…`) : ((d.cars||[])[0]||'');
     const carFull = carsUsed.join('、');
@@ -8357,7 +8331,7 @@ function renderKpiCards() {
   const thisAmt=sumM(thisM),lastAmt=sumM(lastM),thisCnt=cntM(thisM),lastCnt=cntM(lastM);
   const diffAmt=thisAmt-lastAmt,diffCnt=thisCnt-lastCnt;
   const diffPct=lastAmt>0?Math.round(diffAmt/lastAmt*100):0;
-  const pending=recs.filter(r=>r.st===0).length,confirmed=recs.filter(r=>r.st>=1).length;
+  const invoiced=recs.filter(r=>r.st===3).length,paid=recs.filter(r=>r.st===4).length;
   const kpiDiff=(v,pct)=>{
     if(v===0)return`<span class="kpi-eq">— 前月比同額</span>`;
     const cls=v>0?'kpi-up':'kpi-dn',arrow=v>0?'▲':'▼';
@@ -8366,8 +8340,8 @@ function renderKpiCards() {
   const kpiHtml = `<div class="kpi-grid" style="grid-column:1/-1">
     <div class="kpi-card"><div class="kpi-label">今月売上</div><div class="kpi-val">${yen(thisAmt)}</div><div class="kpi-diff">${kpiDiff(diffAmt,Math.abs(diffPct))}</div></div>
     <div class="kpi-card"><div class="kpi-label">今月件数</div><div class="kpi-val">${thisCnt}件</div><div class="kpi-diff">${diffCnt===0?'<span class="kpi-eq">— 前月同数</span>':`<span class="${diffCnt>0?'kpi-up':'kpi-dn'}">${diffCnt>0?'▲':'▼'} ${Math.abs(diffCnt)}件</span>`}</div></div>
-    <div class="kpi-card"><div class="kpi-label">未確認</div><div class="kpi-val" style="color:${pending?'var(--red)':'var(--green)'}">${pending}件</div><div class="kpi-diff"><span class="kpi-eq">要確認</span></div></div>
-    <div class="kpi-card"><div class="kpi-label">確認済</div><div class="kpi-val">${confirmed}件</div><div class="kpi-diff"><span class="kpi-eq">全${recs.length}件中</span></div></div>
+    <div class="kpi-card"><div class="kpi-label">請求済</div><div class="kpi-val">${invoiced}件</div><div class="kpi-diff"><span class="kpi-eq">全${recs.length}件中</span></div></div>
+    <div class="kpi-card"><div class="kpi-label">入金済</div><div class="kpi-val">${paid}件</div><div class="kpi-diff"><span class="kpi-eq">全${recs.length}件中</span></div></div>
   </div>`;
   if (warnBox) warnBox.insertAdjacentHTML('afterend', kpiHtml);
   else da.insertAdjacentHTML('afterbegin', kpiHtml);
@@ -9414,14 +9388,10 @@ function runClosePreview() {
   const month = `${from}〜${to}`;
 
   const monthRecs = recs.filter(r => r.date && r.date >= from && r.date <= to);
-  const pending = monthRecs.filter(r=>r.st===0).length;
-  const confirmed = monthRecs.filter(r=>r.st>=1).length;
   const unmatched = monthRecs.filter(r=>!recDrv(r)).length;
 
   const checks = [
     { ok: monthRecs.length > 0, label: `対象レコード: ${monthRecs.length}件` },
-    { ok: pending === 0, label: `未確認: ${pending}件${pending?'　⚠ 締め前に確認を推奨':' ✓'}` },
-    { ok: confirmed > 0, label: `確認済: ${confirmed}件` },
     { ok: unmatched === 0, label: `未照合車番: ${unmatched}件${unmatched?'　⚠ ドライバー未登録車あり':' ✓'}` },
   ];
 
@@ -9456,7 +9426,6 @@ function renderCloseTable(month, monthRecs) {
       <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">件数</th>
       <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">売上合計</th>
       <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">手取り概算</th>
-      <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">ステータス</th>
     </tr></thead><tbody>`;
   Object.entries(byDrv).forEach(([name, {recs:dRecs, drv}]) => {
     const gross = dRecs.reduce((a,r)=>a+totR(r,'inc'),0);
@@ -9473,13 +9442,11 @@ function renderCloseTable(month, monthRecs) {
       const otherTotal = (drv.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0);
       takeHome = gross + bizFeeWithTax + adminFee + vehicleRental + otherTotal;
     }
-    const pend = dRecs.filter(r=>r.st===0).length;
     html += `<tr>
       <td style="padding:5px 8px;border-bottom:0.5px solid var(--border)">${name}</td>
       <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">${dRecs.length}件</td>
       <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border)">${yen(gross)}</td>
       <td style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);font-weight:600">${drv ? yen(takeHome) : '—'}</td>
-      <td style="padding:5px 8px;border-bottom:0.5px solid var(--border)">${pend?`<span style="color:var(--red-text);font-size:10px">未確認${pend}件</span>`:'<span style="color:var(--green-text);font-size:10px">✓</span>'}</td>
     </tr>`;
   });
   html += '</tbody></table>';
