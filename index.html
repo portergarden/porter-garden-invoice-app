@@ -1966,6 +1966,21 @@ try {
       </div>
     </div>
 
+    <!-- Supabase使用量 -->
+    <div class="close-section">
+      <h3>⑤ Supabase 使用量</h3>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <span style="font-size:11.5px;color:var(--text2)">契約プラン:</span>
+        <select id="supabasePlanSel" onchange="onSupabasePlanChange()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="free">Free（無料）</option>
+          <option value="pro">Pro以上（有料）</option>
+        </select>
+        <button class="btn sml" onclick="loadSupabaseUsage()">🔄 使用量を更新</button>
+        <span style="font-size:10px;color:var(--text2)">※上限値はプラン選択に応じた目安です。実際の課金プランはSupabase側で確認してください</span>
+      </div>
+      <div id="supabaseUsageArea" style="font-size:12px;color:var(--text2)">「使用量を更新」を押すと最新の使用量を取得します</div>
+    </div>
+
   </div>
 </div>
 </div>
@@ -15291,7 +15306,8 @@ CREATE TABLE IF NOT EXISTS company_settings (
   id int PRIMARY KEY DEFAULT 1, reg_no text, name text,
   zip text, address text, tel text, bank text,
   updated_at timestamptz DEFAULT now(), stamp_image text,
-  line_add_url text  -- LINE公式アカウントの友だち追加URL（ドライバーポータルの連携案内に表示）
+  line_add_url text,  -- LINE公式アカウントの友だち追加URL（ドライバーポータルの連携案内に表示）
+  supabase_plan text NOT NULL DEFAULT 'free' -- セットアップページのSupabase使用量表示で基準にするプラン（'free'|'pro'）
 );
 
 -- ドライバー提出書類（免許証・車検証等）
@@ -15338,6 +15354,25 @@ $function$;
 REVOKE EXECUTE ON FUNCTION public.list_client_names() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.list_client_names() FROM public;
 GRANT EXECUTE ON FUNCTION public.list_client_names() TO authenticated;
+
+-- セットアップページのSupabase使用量表示用（DB容量・ストレージ容量・認証ユーザー数）。管理者/編集者のみ実行可
+CREATE OR REPLACE FUNCTION public.get_supabase_usage()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE
+  result jsonb;
+BEGIN
+  IF public."current_role"() NOT IN ('admin','editor') THEN
+    RAISE EXCEPTION 'permission denied';
+  END IF;
+  SELECT jsonb_build_object(
+    'db_size_bytes', pg_database_size(current_database()),
+    'storage_bytes', (SELECT COALESCE(SUM((o.metadata->>'size')::bigint),0) FROM storage.objects o),
+    'auth_users', (SELECT COUNT(*) FROM auth.users)
+  ) INTO result;
+  RETURN result;
+END;
+$function$;
+GRANT EXECUTE ON FUNCTION public.get_supabase_usage() TO authenticated;
 
 -- 初回パスワード変更完了フラグをドライバー本人が消すための専用RPC
 -- （usersテーブルのUPDATEポリシーはadmin専用のため、本人の直接UPDATEは0行で静かに失敗する）
@@ -15833,8 +15868,70 @@ async function loadCompanySettings() {
       pendingStampDataUrl = undefined;
       renderCompanyStampPreview(data.stamp_image||'');
       applyBrandName(data.name);
+      const planSel = document.getElementById('supabasePlanSel');
+      if (planSel) planSel.value = data.supabase_plan || 'free';
     }
   } catch(e) {}
+}
+
+// Supabaseの各プランごとの上限（目安）。実際の課金プラン変更を自動検知することはできないため、
+// 管理者がここでプランを選ぶと、その上限を基準に使用率を表示する（プラン変更時はこの選択を変えるだけでよい）
+const SUPABASE_PLAN_LIMITS = {
+  free: { db: 500*1024*1024, storage: 1*1024*1024*1024, authUsers: 50000, label: 'Free' },
+  pro:  { db: 8*1024*1024*1024, storage: 100*1024*1024*1024, authUsers: 100000, label: 'Pro以上' },
+};
+async function onSupabasePlanChange() {
+  const plan = document.getElementById('supabasePlanSel').value;
+  try {
+    const { error } = await sb.from('company_settings').upsert({ id: 1, supabase_plan: plan });
+    if (error) throw error;
+    companySettings.supabase_plan = plan;
+    showT('プラン設定を保存しました');
+    renderSupabaseUsage(_lastSupabaseUsage);
+  } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
+}
+let _lastSupabaseUsage = null;
+async function loadSupabaseUsage() {
+  const area = document.getElementById('supabaseUsageArea');
+  if (!area || !sb) return;
+  area.innerHTML = '取得中...';
+  try {
+    const { data, error } = await sb.rpc('get_supabase_usage');
+    if (error) throw error;
+    _lastSupabaseUsage = data;
+    renderSupabaseUsage(data);
+  } catch(e) {
+    if (e.message && (e.message.includes('does not exist') || e.message.includes('Could not find'))) {
+      area.innerHTML = '⚠ get_supabase_usage関数が未作成です。セットアップページのSQLを確認してください';
+    } else {
+      area.innerHTML = '取得エラー: ' + escHtml(e.message);
+    }
+  }
+}
+function renderSupabaseUsage(usage) {
+  const area = document.getElementById('supabaseUsageArea');
+  if (!area || !usage) return;
+  const plan = document.getElementById('supabasePlanSel')?.value || 'free';
+  const limits = SUPABASE_PLAN_LIMITS[plan] || SUPABASE_PLAN_LIMITS.free;
+  const rows = [
+    { label: 'データベース容量', used: usage.db_size_bytes, limit: limits.db },
+    { label: 'ファイルストレージ', used: usage.storage_bytes, limit: limits.storage },
+    { label: '認証ユーザー数', used: usage.auth_users, limit: limits.authUsers, isCount: true },
+  ];
+  area.innerHTML = rows.map(r => {
+    const pct = Math.min(100, Math.round(r.used / r.limit * 100));
+    const barColor = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--amber-text)' : 'var(--green)';
+    const usedLabel = r.isCount ? `${r.used}人` : fmtBytes(r.used);
+    const limitLabel = r.isCount ? `${r.limit}人` : fmtBytes(r.limit);
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:2px">
+        <span>${r.label}</span><span>${usedLabel} / ${limitLabel}（${pct}%）</span>
+      </div>
+      <div style="background:var(--bg2);border-radius:4px;height:8px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${barColor}"></div>
+      </div>
+    </div>`;
+  }).join('') + `<div style="font-size:10px;color:var(--text3);margin-top:4px">${limits.label}プラン基準（選択中）</div>`;
 }
 
 // アップロード画像は帳票に載せるだけの用途のためキャンバスで縮小し、Supabaseへ保存するデータ量を抑える
