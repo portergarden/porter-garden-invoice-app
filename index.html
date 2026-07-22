@@ -575,7 +575,7 @@ try {
   </div>
   <!-- グループナビ（上段） -->
   <nav class="nav-group">
-    <div class="gtab" id="gt-analysis" onclick="switchNavGroup('analysis')">📊 ダッシュボード</div>
+    <div class="gtab" id="gt-analysis" onclick="switchNavGroup('analysis')">📊 分析</div>
     <div class="gtab on" id="gt-biz" onclick="switchNavGroup('biz')">📦 業務処理</div>
     <div class="gtab" id="gt-driver" onclick="switchNavGroup('driver')">🚗 ドライバー</div>
     <div class="gtab" id="gt-admin" onclick="switchNavGroup('admin')">⚙ 管理</div>
@@ -591,7 +591,7 @@ try {
     <div class="ntab" id="nt11" onclick="goPage(11,this)">🔒 月次締め</div>
   </nav>
   <nav class="nav hide" id="nav-analysis">
-    <div class="ntab" id="nt1" onclick="goPage(1,this)">📊 ダッシュボード</div>
+    <div class="ntab" id="nt1" onclick="goPage(1,this)">📊 全体分析</div>
     <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先分析</div>
     <div class="ntab" id="nt24" onclick="goPage(24,this)">🚚 ドライバー分析</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 カレンダー</div>
@@ -1229,7 +1229,7 @@ try {
 
   <div id="pg1" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
-      <span style="font-size:13px;font-weight:500">📊 ダッシュボード</span>
+      <span style="font-size:13px;font-weight:500">📊 全体分析</span>
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:10px;color:var(--text2)">対象年:</span>
         <select id="dashYear" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDash()"></select>
@@ -1265,6 +1265,11 @@ try {
      <div style="display:flex;align-items:center;gap:12px;">
         <span style="font-size:11px;color:var(--text2)">車番とドライバーを紐づけて登録します</span>
         <input type="text" id="drvSearch" placeholder="🔍 ドライバー名・協力会社・車番で検索…" oninput="renderDrv()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:220px">
+        <select id="drvStatusFilter" onchange="renderDrv()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="active" selected>稼働中のみ</option>
+          <option value="terminated">解約済みのみ</option>
+          <option value="">すべて表示</option>
+        </select>
        <div style="display:inline-flex;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg2);margin-left:12px;align-items:stretch;">
           <button id="bViewCard" style="border:none;padding:6px 14px;cursor:pointer;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;" onclick="setDriverView('card')" title="四角表示">
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:2px;width:12px;height:12px;">
@@ -2420,7 +2425,15 @@ try {
       <button type="button" class="mtab-btn" data-tab="note" onclick="switchModalTab('mDrv','note')">備考</button>
     </div>
     <div class="mtab-panel on" data-tab="basic">
-      <div class="fld"><label>ドライバーID</label><input type="text" id="dSup" placeholder="自動採番"></div>
+      <div class="g2">
+        <div class="fld"><label>ドライバーID</label><input type="text" id="dSup" placeholder="自動採番"></div>
+        <div class="fld"><label>状態</label>
+          <select id="dStatus" style="width:100%">
+            <option value="active">稼働中</option>
+            <option value="terminated">解約済み</option>
+          </select>
+        </div>
+      </div>
       <div class="fld"><label>ドライバー名</label><input type="text" id="dN" placeholder="氏名"></div>
       <div class="fld"><label>協力会社（任意。自社所属の場合は空欄）</label><select id="dPartnerSel" onchange="onDrvPartnerSelChange()"><option value="">（未設定・自社所属）</option></select></div>
       <div class="fld">
@@ -3021,6 +3034,7 @@ async function login(){
   showLoad(false);
 }
 async function logout(exp=false){
+  if (!exp && !confirm('ログアウトしますか？')) return;
   stopSess();
   unsubscribeDrvChatRealtime();
   document.body.classList.remove('drv-lock');
@@ -4799,7 +4813,7 @@ async function onLeaseCompanySelChange(){
     populateLeaseCompanyList(name);
   } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
-function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
 function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');const v=inp.value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
@@ -4824,7 +4838,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.partner_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.partner_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -4868,6 +4882,7 @@ async function saveDrv(){
     bank:document.getElementById('dBank').value.trim()||null,
     note:document.getElementById('dNote').value.trim()||null,
     supplier_id:supId||null,
+    status:document.getElementById('dStatus').value||'active',
     fee_rate:(+document.getElementById('dFeeRate').value||0)/100,
     admin_fee:+document.getElementById('dAdminFee').value||0,
     vehicle_rental:+document.getElementById('dVehRental').value||0,
@@ -6706,9 +6721,11 @@ function renderDrv() {
   }
 
   const q = nm(document.getElementById('drvSearch')?.value || '');
-  const filteredDrvs = q ? drvs.filter(d => nm(d.name).includes(q) || nm(d.company||'').includes(q) || (d.cars||[]).some(c=>nm(c).includes(q))) : drvs;
+  const statusFilter = document.getElementById('drvStatusFilter')?.value ?? 'active';
+  let filteredDrvs = q ? drvs.filter(d => nm(d.name).includes(q) || nm(d.company||'').includes(q) || (d.cars||[]).some(c=>nm(c).includes(q))) : drvs;
+  if (statusFilter) filteredDrvs = filteredDrvs.filter(d => (d.status||'active') === statusFilter);
 
-  if (q && !filteredDrvs.length) {
+  if (!filteredDrvs.length) {
     grid.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">該当するドライバーが見つかりません</div>`;
     return;
   }
@@ -6733,7 +6750,7 @@ function renderDrv() {
           <div class="av drv">${ini}</div>
           <div style="display:flex;gap:1px"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
         </div>
-        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${d.name}${d.company?` <span style="font-size:10.5px;font-weight:500;color:var(--text2);padding:1px 5px;background:var(--bg2);border-radius:99px">${d.company}</span>`:''}</div>
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${d.name}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">解約済み</span>':''}${d.company?` <span style="font-size:10.5px;font-weight:500;color:var(--text2);padding:1px 5px;background:var(--bg2);border-radius:99px">${d.company}</span>`:''}</div>
         ${d.supplier_id ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">仕入先ID: ${d.supplier_id}</div>` : ''}
         ${d.tel ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${d.tel}</div>` : '<div style="margin-bottom:5px"></div>'}
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px">
@@ -6771,7 +6788,7 @@ function renderDrv() {
         <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av drv" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${d.supplier_id ? 'ID: ' + d.supplier_id : 'ID: —'}</div>
-          <div style="width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${d.name}</div>
+          <div style="width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${d.name}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">解約</span>':''}</div>
           <div style="flex:1;display:flex;flex-wrap:wrap;gap:3px;min-width:100px;">
             ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="margin-top:0;cursor:pointer" title="クリックで乗務履歴を記録・確認" onclick="event.stopPropagation();openVehicleHistM('${escHtml(c).replace(/'/g,"\\'")}')">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
           </div>
@@ -10202,12 +10219,14 @@ function goDrvPage(n, el) {
 }
 
 /* ===== ドライバー提出書類（免許証・車検証・自賠責・任意保険） ===== */
+// hasStart: 保険開始日欄を表示 / hasNumber・numberRequired: 番号欄を表示・必須化 / hasAttendDate: 受講日欄を表示 / noExpiry: 期限欄を表示せず提出済み/未提出のみで判定
 const DRIVER_DOC_TYPES = [
   { key:'license',    label:'運転免許証',       expLabel:'有効期限' },
   { key:'shaken',     label:'車検証',           expLabel:'車検満了日' },
-  { key:'jibai',      label:'自賠責保険',       expLabel:'保険期間満了日' },
-  { key:'nini',       label:'任意保険',         expLabel:'保険期間満了日' },
-  { key:'anzenkanri', label:'安全管理者証明書', expLabel:'有効期限' },
+  { key:'jibai',      label:'自賠責保険',       expLabel:'保険期間満了日', hasStart:true, startLabel:'保険開始日' },
+  { key:'nini',       label:'任意保険',         expLabel:'保険期間満了日', hasStart:true, startLabel:'保険開始日' },
+  { key:'anzenkanri', label:'安全管理者証明書', expLabel:'有効期限（任意）', hasNumber:true, numberLabel:'安全運転管理者番号', numberRequired:true, hasAttendDate:true, attendLabel:'受講日' },
+  { key:'invoice',    label:'インボイス登録',   expLabel:'登録日（任意）', hasNumber:true, numberLabel:'インボイス登録番号', numberRequired:true, noExpiry:true },
 ];
 const DOC_WARN_DAYS = 30; // 期限の何日前から「期限間近」扱いにするか
 let driverDocs = []; // driver_documents全件キャッシュ
@@ -10245,8 +10264,8 @@ function docStatusPill(doc) {
 const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 function fmtBytes(n) { return n >= 1024*1024 ? (n/1024/1024).toFixed(1)+'MB' : Math.round(n/1024)+'KB'; }
 
-// 画像ファイルを縮小してBlob化（写真の容量を抑える）
-function compressImageFileToBlob(file, maxSize) {
+// 画像ファイル1枚を縮小してcanvas化
+function imageFileToCanvas(file, maxSize) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -10259,20 +10278,19 @@ function compressImageFileToBlob(file, maxSize) {
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        canvas.toBlob(b => b ? resolve(b) : reject(new Error('画像変換に失敗しました')), 'image/jpeg', 0.85);
+        resolve(canvas);
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
 }
-// PDFの各ページ（最大3ページ）を画像化し、縦に並べて1枚のJPEGにまとめて軽量化する
-// （元がスキャン画像埋め込みの未圧縮PDFだと数MB〜になりがちなため、再ラスタライズして圧縮し直す）
-async function compressPdfToJpegBlob(file, maxSize) {
+// PDFの各ページ（最大3ページ）をcanvas化する
+async function pdfFileToCanvases(file, maxSize, maxPages) {
   const ab = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
-  const pageCount = Math.min(pdf.numPages, 3);
-  const pageCanvases = [];
+  const pageCount = Math.min(pdf.numPages, maxPages);
+  const canvases = [];
   for (let i = 1; i <= pageCount; i++) {
     const page = await pdf.getPage(i);
     const baseVp = page.getViewport({ scale: 1 });
@@ -10281,28 +10299,42 @@ async function compressPdfToJpegBlob(file, maxSize) {
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-    pageCanvases.push(canvas);
+    canvases.push(canvas);
   }
-  const totalW = Math.max(...pageCanvases.map(c => c.width));
-  const totalH = pageCanvases.reduce((s, c) => s + c.height, 0);
+  return canvases;
+}
+// 複数枚のcanvasを縦に並べて1枚のJPEGにまとめる（裏表など複数ページを1ファイルに統合するため）
+function stackCanvasesToJpegBlob(canvases) {
+  const totalW = Math.max(...canvases.map(c => c.width));
+  const totalH = canvases.reduce((s, c) => s + c.height, 0);
   const combined = document.createElement('canvas');
   combined.width = totalW; combined.height = totalH;
   const ctx = combined.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, totalW, totalH);
   let y = 0;
-  pageCanvases.forEach(c => { ctx.drawImage(c, 0, y); y += c.height; });
+  canvases.forEach(c => { ctx.drawImage(c, 0, y); y += c.height; });
   return new Promise((resolve, reject) => {
-    combined.toBlob(b => b ? resolve(b) : reject(new Error('PDF変換に失敗しました')), 'image/jpeg', 0.85);
+    combined.toBlob(b => b ? resolve(b) : reject(new Error('画像変換に失敗しました')), 'image/jpeg', 0.85);
   });
 }
-// 画像・PDFいずれも軽量化したJPEG Blobにして返す（PDFはページを画像化して再圧縮）。
+// 画像・PDF・複数ファイル（裏表など）いずれも軽量化した1枚のJPEG Blobにまとめて返す。
+// PDFはページを画像化し、複数ファイル選択時はすべてのページ・画像を縦に結合する。
 // 圧縮してもUPLOAD_MAX_BYTESを超える場合はエラーにする
-async function resizeImageToBlob(file, maxSize) {
-  const blob = file.type === 'application/pdf'
-    ? await compressPdfToJpegBlob(file, maxSize)
-    : await compressImageFileToBlob(file, maxSize);
+async function resizeImageToBlob(fileOrFiles, maxSize) {
+  const files = (fileOrFiles instanceof FileList || Array.isArray(fileOrFiles)) ? Array.from(fileOrFiles) : [fileOrFiles];
+  const maxTotalPages = 6; // 複数ファイル×PDF複数ページの合計枚数の上限（暴走・巨大化防止）
+  let canvases = [];
+  for (const file of files) {
+    if (file.type === 'application/pdf') {
+      canvases.push(...(await pdfFileToCanvases(file, maxSize, 3)));
+    } else {
+      canvases.push(await imageFileToCanvas(file, maxSize));
+    }
+    if (canvases.length >= maxTotalPages) { canvases = canvases.slice(0, maxTotalPages); break; }
+  }
+  const blob = await stackCanvasesToJpegBlob(canvases);
   if (blob.size > UPLOAD_MAX_BYTES) {
-    throw new Error(`圧縮後も${fmtBytes(blob.size)}あり、上限の10MBを超えています。ページ数を減らすか、解像度の低いファイルで再度お試しください`);
+    throw new Error(`圧縮後も${fmtBytes(blob.size)}あり、上限の10MBを超えています。ファイル数やページ数を減らすか、解像度の低いファイルで再度お試しください`);
   }
   return blob;
 }
@@ -10336,20 +10368,29 @@ async function syncVehicleExpiryFromDriverDoc(drvId, docType, expiry) {
   } catch(e) { console.warn('syncVehicleExpiryFromDriverDoc:', e.message); }
 }
 async function saveDriverDoc(drvId, docType) {
+  const t = DRIVER_DOC_TYPES.find(x => x.key === docType);
   const fileEl = document.getElementById(`dd_file_${drvId}_${docType}`);
   const expEl = document.getElementById(`dd_exp_${drvId}_${docType}`);
-  const file = fileEl?.files?.[0];
+  const numEl = document.getElementById(`dd_num_${drvId}_${docType}`);
+  const startEl = document.getElementById(`dd_start_${drvId}_${docType}`);
+  const attendEl = document.getElementById(`dd_attend_${drvId}_${docType}`);
+  const files = fileEl?.files;
   const expiry = expEl?.value || null;
+  const docNumber = numEl?.value.trim() || null;
+  const startDate = startEl?.value || null;
+  const attendDate = attendEl?.value || null;
   const existing = findDriverDoc(drvId, docType);
-  if (!file && !existing) { showT('写真ファイルを選択してください', 'twa'); return; }
+  if (!files?.length && !existing) { showT('写真ファイルを選択してください', 'twa'); return; }
+  // インボイス登録番号・安全運転管理者番号など、番号必須の書類は未入力のまま保存できないようにする
+  if (t?.numberRequired && !docNumber) { showT(`${t.numberLabel}を入力してください`, 'twa'); return; }
   showLoad(true);
   try {
     let filePath = existing?.file_path || '';
     let sizeMsg = '';
     let sizeFields = {};
-    if (file) {
-      const origSize = file.size;
-      const blob = await resizeImageToBlob(file, 1600);
+    if (files?.length) {
+      const origSize = Array.from(files).reduce((s,f)=>s+f.size, 0);
+      const blob = await resizeImageToBlob(files, 1600);
       filePath = `drv${drvId}/${docType}_${Date.now()}.jpg`;
       const {error: upErr} = await sb.storage.from('driver-docs').upload(filePath, blob, { contentType: 'image/jpeg' });
       if (upErr) throw upErr;
@@ -10360,7 +10401,7 @@ async function saveDriverDoc(drvId, docType) {
       sizeMsg = `（${fmtBytes(origSize)} → ${fmtBytes(blob.size)}）`;
       sizeFields = { orig_size_bytes: origSize, compressed_size_bytes: blob.size };
     }
-    const row = { drv_id: drvId, doc_type: docType, file_path: filePath, expiry_date: expiry, uploaded_by: me?.name || '' , updated_at: new Date().toISOString(), ...sizeFields };
+    const row = { drv_id: drvId, doc_type: docType, file_path: filePath, expiry_date: expiry, doc_number: docNumber, start_date: startDate, attend_date: attendDate, uploaded_by: me?.name || '' , updated_at: new Date().toISOString(), ...sizeFields };
     const {data, error} = await sb.from('driver_documents').upsert(row, { onConflict: 'drv_id,doc_type' }).select().single();
     if (error) throw error;
     driverDocs = driverDocs.filter(d => !(d.drv_id===drvId && d.doc_type===docType));
@@ -10419,11 +10460,17 @@ function refreshDocViews(drvId) {
 // 書類1件分の編集行（ポータル・管理モーダル共通）
 function docRowHtml(drvId, t, canDelete) {
   const doc = findDriverDoc(drvId, t.key);
+  const statusPill = t.noExpiry
+    ? (doc ? `<span class="bdg" style="background:var(--green-bg);color:var(--green-text)">提出済み</span>` : `<span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">未提出</span>`)
+    : docStatusPill(doc);
   return `<div style="border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
       <span style="font-weight:600;font-size:13px">${t.label}</span>
-      ${docStatusPill(doc)}
-      ${doc?.expiry_date ? `<span style="font-size:11px;color:var(--text2)">${t.expLabel}: ${doc.expiry_date}</span>` : ''}
+      ${statusPill}
+      ${!t.noExpiry && doc?.expiry_date ? `<span style="font-size:11px;color:var(--text2)">${t.expLabel}: ${doc.expiry_date}</span>` : ''}
+      ${t.hasStart && doc?.start_date ? `<span style="font-size:11px;color:var(--text2)">${t.startLabel}: ${doc.start_date}</span>` : ''}
+      ${t.hasAttendDate && doc?.attend_date ? `<span style="font-size:11px;color:var(--text2)">${t.attendLabel}: ${doc.attend_date}</span>` : ''}
+      ${t.hasNumber && doc?.doc_number ? `<span style="font-size:11px;color:var(--text2)">${t.numberLabel}: ${escHtml(doc.doc_number)}</span>` : ''}
       ${doc ? `<span style="font-size:10px;color:var(--text3)">更新: ${(doc.updated_at||'').slice(0,10)}${doc.uploaded_by?` (${doc.uploaded_by})`:''}</span>` : ''}
       ${doc?.compressed_size_bytes ? `<span style="font-size:10px;color:var(--text3)" title="アップロード時に自動で軽量化されたファイルサイズ">📎 ${fmtBytes(doc.orig_size_bytes||doc.compressed_size_bytes)} → ${fmtBytes(doc.compressed_size_bytes)}</span>` : ''}
       <div style="flex:1"></div>
@@ -10431,12 +10478,21 @@ function docRowHtml(drvId, t, canDelete) {
       ${doc && canDelete ? `<button class="ibtn" style="color:#e05b5b" onclick="deleteDriverDoc(${drvId},'${t.key}')">🗑</button>` : ''}
     </div>
     <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
-      <div class="fld" style="margin-bottom:0;flex:1;min-width:180px"><label>写真（カメラ撮影可・PDF可）</label>
-        <input type="file" id="dd_file_${drvId}_${t.key}" accept="image/*,application/pdf" style="width:100%;font-size:12px">
+      <div class="fld" style="margin-bottom:0;flex:1;min-width:180px"><label>写真（カメラ撮影可・PDF可・裏表など複数枚可）</label>
+        <input type="file" id="dd_file_${drvId}_${t.key}" accept="image/*,application/pdf" multiple style="width:100%;font-size:12px">
       </div>
-      <div class="fld" style="margin-bottom:0"><label>${t.expLabel}</label>
+      ${t.hasNumber ? `<div class="fld" style="margin-bottom:0"><label>${t.numberLabel}${t.numberRequired?' ※必須':'（任意）'}</label>
+        <input type="text" id="dd_num_${drvId}_${t.key}" value="${escHtml(doc?.doc_number||'')}" style="width:160px">
+      </div>` : ''}
+      ${!t.noExpiry ? `<div class="fld" style="margin-bottom:0"><label>${t.expLabel}</label>
         <input type="date" id="dd_exp_${drvId}_${t.key}" value="${doc?.expiry_date||''}">
-      </div>
+      </div>` : ''}
+      ${t.hasStart ? `<div class="fld" style="margin-bottom:0"><label>${t.startLabel}</label>
+        <input type="date" id="dd_start_${drvId}_${t.key}" value="${doc?.start_date||''}">
+      </div>` : ''}
+      ${t.hasAttendDate ? `<div class="fld" style="margin-bottom:0"><label>${t.attendLabel}</label>
+        <input type="date" id="dd_attend_${drvId}_${t.key}" value="${doc?.attend_date||''}">
+      </div>` : ''}
       <button class="btn pri sml" onclick="saveDriverDoc(${drvId},'${t.key}')">💾 保存</button>
     </div>
   </div>`;
@@ -15012,7 +15068,8 @@ CREATE TABLE IF NOT EXISTS drivers (
   is_company boolean NOT NULL DEFAULT false,
   email text,           -- LINE未連携時の通知先メールアドレス
   line_user_id text,    -- LINE通知の宛先（webhook経由で連携コード照合時に自動設定）
-  line_link_code text   -- ドライバーがLINE公式アカウントに送信する連携コード
+  line_link_code text,  -- ドライバーがLINE公式アカウントに送信する連携コード
+  status text NOT NULL DEFAULT 'active' -- 'active'（稼働中） | 'terminated'（解約済み）
 );
 
 -- 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録。drivers.carsの自動判定とは独立した台帳）
@@ -15241,6 +15298,9 @@ CREATE TABLE IF NOT EXISTS driver_documents (
   expiry_date date, note text DEFAULT '', uploaded_by text DEFAULT '',
   orig_size_bytes bigint,        -- 圧縮前のファイルサイズ（提出書類一覧に表示）
   compressed_size_bytes bigint,  -- 圧縮後のファイルサイズ（提出書類一覧に表示）
+  doc_number text,   -- インボイス登録番号・安全運転管理者番号など
+  start_date date,   -- 自賠責・任意保険の開始日
+  attend_date date,  -- 安全管理者講習の受講日
   created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
 );
 
