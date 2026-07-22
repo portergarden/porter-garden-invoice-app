@@ -4352,6 +4352,7 @@ function switchNavGroup(group, skipPageSwitch) {
 let _skipHistoryPush = false;
 function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
+  if (n!==27) unsubscribeChatTabRealtime();
   for(let i=0; i<=29; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
   const target = document.getElementById('pg'+n);
@@ -11029,6 +11030,38 @@ function unsubscribeDrvChatRealtime() {
   if (drvChatRealtimeChannel) { sb?.removeChannel(drvChatRealtimeChannel); drvChatRealtimeChannel = null; }
 }
 
+// チャット専用タブ用: 開いている間は全ドライバー分のdriver_messages挿入を購読し、
+// 選択中スレッドだけでなく一覧の未読バッジ・プレビュー・並び順もリアルタイムに更新する
+let chatTabRealtimeChannel = null;
+function subscribeChatTabRealtime() {
+  unsubscribeChatTabRealtime();
+  if (!sb?.channel) return;
+  chatTabRealtimeChannel = sb.channel('chat_tab_all_messages')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'driver_messages' },
+      (payload) => onChatTabRealtimeInsert(payload.new))
+    .subscribe();
+}
+function unsubscribeChatTabRealtime() {
+  if (chatTabRealtimeChannel) { sb?.removeChannel(chatTabRealtimeChannel); chatTabRealtimeChannel = null; }
+}
+async function onChatTabRealtimeInsert(msg) {
+  chatTabLastMsgByDrv[msg.drv_id] = msg;
+  if (msg.drv_id === chatTabDrvId) {
+    if (!chatTabMessages.some(m => m.id === msg.id)) {
+      chatTabMessages.push(msg);
+      renderChatTabMessages();
+    }
+    if (msg.sender_role === 'driver') {
+      await markDrvChatRead(chatTabDrvId, 'driver');
+      driverChatUnreadIds.delete(chatTabDrvId);
+    }
+  } else if (msg.sender_role === 'driver') {
+    driverChatUnreadIds.add(msg.drv_id);
+  }
+  renderChatTabDrvList();
+  if (!document.getElementById('pg2')?.classList.contains('hide')) renderDrv();
+}
+
 /* ===== ドライバーとのチャット（管理側） ===== */
 let eChatDrvId = null; // 現在チャットモーダルで開いているドライバーID
 let drvChatMessages = []; // 開いているスレッドのメッセージキャッシュ
@@ -11131,6 +11164,7 @@ async function initChatTab() {
     }
   } catch(e) { console.warn('initChatTab:', e.message); }
   renderChatTabDrvList();
+  subscribeChatTabRealtime();
 }
 function renderChatTabDrvList() {
   const el = document.getElementById('chatTabDrvList');
@@ -11170,18 +11204,7 @@ async function openChatTabDrv(drvId) {
   driverChatUnreadIds.delete(drvId);
   renderChatTabDrvList();
   if (!document.getElementById('pg2')?.classList.contains('hide')) renderDrv();
-  subscribeDrvChatRealtime(drvId, async (msg) => {
-    if (chatTabMessages.some(m => m.id === msg.id)) return;
-    chatTabMessages.push(msg);
-    renderChatTabMessages();
-    chatTabLastMsgByDrv[drvId] = msg;
-    if (msg.sender_role === 'driver') {
-      await markDrvChatRead(drvId, 'driver');
-      driverChatUnreadIds.delete(drvId);
-      renderChatTabDrvList();
-      if (!document.getElementById('pg2')?.classList.contains('hide')) renderDrv();
-    }
-  });
+  // メッセージのリアルタイム反映はチャットタブ全体で1本の購読(subscribeChatTabRealtime)にまとめて処理する
 }
 async function loadChatTabMessages(drvId) {
   try {
