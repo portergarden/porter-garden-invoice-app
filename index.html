@@ -10984,9 +10984,11 @@ async function openStmtStatusM() {
     const cs = 'padding:6px 8px;border:0.5px solid var(--border)';
     el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:var(--bg2)">
-        <th style="${cs}">配信日</th><th style="${cs}">ドライバー</th><th style="${cs}">対象月</th><th style="${cs};text-align:right">金額</th><th style="${cs}">状態</th><th style="${cs}"></th>
+        <th style="${cs}">配信日</th><th style="${cs}">ドライバー</th><th style="${cs}">対象月</th><th style="${cs};text-align:right">金額</th><th style="${cs}">既読</th><th style="${cs}">受領確認</th><th style="${cs}"></th>
       </tr></thead>
-      <tbody>${data.map(s => `<tr>
+      <tbody>${data.map(s => {
+        const ack = statementAckStatus(s);
+        return `<tr>
         <td style="${cs}">${(s.created_at||'').slice(0,10)}</td>
         <td style="${cs};font-weight:500">${drvs.find(d=>d.id===s.drv_id)?.name||`ID:${s.drv_id}`}</td>
         <td style="${cs}">${s.month||'—'}</td>
@@ -10994,11 +10996,15 @@ async function openStmtStatusM() {
         <td style="${cs};text-align:center">${s.read_at
           ? `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--green-bg);color:var(--green-text)">既読 ${(s.read_at||'').slice(0,10)}</span>`
           : `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--amber-bg);color:var(--amber-text)">未読</span>`}</td>
+        <td style="${cs};text-align:center">${ack.acked
+          ? `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--green-bg);color:var(--green-text)">${ack.auto?'自動確認済み':'受領確認済み'}</span>`
+          : `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--red-bg);color:var(--red-text)">未確認</span>`}</td>
         <td style="${cs};text-align:center;white-space:nowrap">
           <button class="ibtn" title="内容を確認" onclick="viewStatementFile('${s.file_path}')">🔍</button>
           <button class="ibtn" style="color:#e05b5b" title="配信を取り消す" onclick="deleteStatement(${s.id},'${s.file_path}')">🗑</button>
         </td>
-      </tr>`).join('')}</tbody>
+      </tr>`;
+      }).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red-text);font-size:12px">読み込みエラー: ${e.message}</div>`; }
 }
@@ -11031,6 +11037,15 @@ async function deleteStatement(id, path) {
   } catch(e) { showT('取消エラー: ' + e.message, 'ter'); }
 }
 
+// 支払明細書の受領確認状態を判定する。ドライバー本人が押していなくても、
+// 配信から2週間経過していれば「自動的に受領済み」扱いとする（催促の手間を減らすため）
+const STATEMENT_AUTO_ACK_DAYS = 14;
+function statementAckStatus(s) {
+  if (s.acknowledged_at) return { acked:true, auto:false, label:`受領確認済み ${s.acknowledged_at.slice(0,10)}` };
+  const days = Math.floor((Date.now() - new Date(s.created_at).getTime()) / 86400000);
+  if (days >= STATEMENT_AUTO_ACK_DAYS) return { acked:true, auto:true, label:`受領確認済み（自動・${STATEMENT_AUTO_ACK_DAYS}日経過）` };
+  return { acked:false, auto:false, label:`未確認（配信後${days}日）` };
+}
 // ドライバーポータル側: 自分宛の明細書一覧（既読管理付き）
 async function loadDriverStatements() {
   const el = document.getElementById('drvStmtList');
@@ -11039,15 +11054,31 @@ async function loadDriverStatements() {
     const {data, error} = await sb.from('driver_statements').select('*').eq('drv_id', me.driver_id).order('created_at', {ascending:false}).limit(24);
     if (error) throw error;
     if (!data?.length) { el.innerHTML = '<span style="color:var(--text2)">配信された明細書はまだありません</span>'; return; }
-    el.innerHTML = data.map(s => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+    el.innerHTML = data.map(s => {
+      const ack = statementAckStatus(s);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="font-weight:500;color:var(--text)">${s.title||s.month+'分 支払明細書'}</div>
         <div style="font-size:10px;color:var(--text2)">配信日: ${(s.created_at||'').slice(0,10)}　${yen(s.amount||0)}</div>
+        <div style="font-size:10px;color:${ack.acked?'var(--green-text)':'var(--red-text)'};margin-top:2px">${ack.acked?'✓ ':'⚠ '}${ack.label}</div>
       </div>
       ${s.read_at ? '' : '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:var(--red-bg);color:var(--red-text)">未読</span>'}
       <button class="btn sml pri" onclick="openDriverStatement(${s.id},'${s.file_path}',${s.read_at?'true':'false'})">📄 開く</button>
-    </div>`).join('');
+      ${!s.acknowledged_at ? `<button class="btn sml" onclick="acknowledgeStatement(${s.id})">✓ 受領確認する</button>` : ''}
+    </div>`;
+    }).join('');
   } catch(e) { el.innerHTML = `<span style="color:var(--red-text)">読み込みエラー: ${e.message}</span>`; }
+}
+// ドライバー本人が支払明細書の内容を確認したことを明示的に記録するボタン。
+// 押さなくても配信から2週間経つと自動的に受領済み扱いになるため、催促・未確認の取りこぼしを防げる
+async function acknowledgeStatement(id) {
+  if (!confirm('この支払明細書の内容を確認済みとして記録します。よろしいですか？')) return;
+  try {
+    const {error} = await sb.from('driver_statements').update({acknowledged_at: new Date().toISOString()}).eq('id', id);
+    if (error) throw error;
+    showT('受領確認しました。ご確認ありがとうございます');
+    loadDriverStatements();
+  } catch(e) { showT('更新エラー: ' + e.message, 'ter'); }
 }
 async function openDriverStatement(id, path, isRead) {
   const win = window.open('','_blank');
@@ -15328,7 +15359,8 @@ CREATE TABLE IF NOT EXISTS driver_statements (
   id bigserial PRIMARY KEY, drv_id int NOT NULL REFERENCES drivers(id),
   month text NOT NULL, title text NOT NULL DEFAULT '', file_path text NOT NULL,
   amount int DEFAULT 0, published_by text DEFAULT '',
-  created_at timestamptz DEFAULT now(), read_at timestamptz
+  created_at timestamptz DEFAULT now(), read_at timestamptz,
+  acknowledged_at timestamptz -- ドライバー本人が「受領確認」した日時（未確認でも配信から2週間経過で自動的に確認済み扱いにする）
 );
 
 -- ============================================================
