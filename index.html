@@ -5543,18 +5543,18 @@ async function addPartnerDoc(){
   if (!file) { showT('ファイルを選択してください', 'twa'); return; }
   showLoad(true);
   try {
+    const origSize = file.size;
     const blob = await resizeImageToBlob(file, 1600);
-    const ext = file.type === 'application/pdf' ? 'pdf' : 'jpg';
-    const filePath = `partner${partnerId}/${Date.now()}.${ext}`;
-    const { error: upErr } = await sb.storage.from('partner-docs').upload(filePath, blob, { contentType: file.type === 'application/pdf' ? 'application/pdf' : 'image/jpeg' });
+    const filePath = `partner${partnerId}/${Date.now()}.jpg`;
+    const { error: upErr } = await sb.storage.from('partner-docs').upload(filePath, blob, { contentType: 'image/jpeg' });
     if (upErr) throw upErr;
     const row = { partner_id: partnerId, title, file_path: filePath, expiry_date: expiry, uploaded_by: me?.name||'' };
     const { data, error } = await sb.from('partner_company_docs').insert(row).select().single();
     if (error) throw error;
     partnerDocs.unshift(data);
     document.getElementById('pdTitle').value=''; fileEl.value=''; document.getElementById('pdExpiry').value='';
-    addLog('協力会社書類追加', `partner:${partnerId} ${title}`);
-    showT('書類を追加しました');
+    addLog('協力会社書類追加', `partner:${partnerId} ${title}（${fmtBytes(origSize)} → ${fmtBytes(blob.size)}）`);
+    showT(`書類を追加しました（${fmtBytes(origSize)} → ${fmtBytes(blob.size)}）`);
     renderPartnerDocsMBody();
   } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
   showLoad(false);
@@ -10241,10 +10241,13 @@ function docStatusPill(doc) {
   return `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:${st.bg};color:${st.fg};white-space:nowrap">${st.label}</span>`;
 }
 
-// 画像ファイルを縮小してBlob化（写真の容量を抑える。PDFはそのまま）
-function resizeImageToBlob(file, maxSize) {
+// 提出書類のアップロード上限（圧縮後）。これを超える場合はエラーとして拒否する
+const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+function fmtBytes(n) { return n >= 1024*1024 ? (n/1024/1024).toFixed(1)+'MB' : Math.round(n/1024)+'KB'; }
+
+// 画像ファイルを縮小してBlob化（写真の容量を抑える）
+function compressImageFileToBlob(file, maxSize) {
   return new Promise((resolve, reject) => {
-    if (file.type === 'application/pdf') { resolve(file); return; }
     const reader = new FileReader();
     reader.onerror = reject;
     reader.onload = () => {
@@ -10262,6 +10265,46 @@ function resizeImageToBlob(file, maxSize) {
     };
     reader.readAsDataURL(file);
   });
+}
+// PDFの各ページ（最大3ページ）を画像化し、縦に並べて1枚のJPEGにまとめて軽量化する
+// （元がスキャン画像埋め込みの未圧縮PDFだと数MB〜になりがちなため、再ラスタライズして圧縮し直す）
+async function compressPdfToJpegBlob(file, maxSize) {
+  const ab = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  const pageCount = Math.min(pdf.numPages, 3);
+  const pageCanvases = [];
+  for (let i = 1; i <= pageCount; i++) {
+    const page = await pdf.getPage(i);
+    const baseVp = page.getViewport({ scale: 1 });
+    const scale = Math.min(2, maxSize / Math.max(baseVp.width, baseVp.height));
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    pageCanvases.push(canvas);
+  }
+  const totalW = Math.max(...pageCanvases.map(c => c.width));
+  const totalH = pageCanvases.reduce((s, c) => s + c.height, 0);
+  const combined = document.createElement('canvas');
+  combined.width = totalW; combined.height = totalH;
+  const ctx = combined.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, totalW, totalH);
+  let y = 0;
+  pageCanvases.forEach(c => { ctx.drawImage(c, 0, y); y += c.height; });
+  return new Promise((resolve, reject) => {
+    combined.toBlob(b => b ? resolve(b) : reject(new Error('PDF変換に失敗しました')), 'image/jpeg', 0.85);
+  });
+}
+// 画像・PDFいずれも軽量化したJPEG Blobにして返す（PDFはページを画像化して再圧縮）。
+// 圧縮してもUPLOAD_MAX_BYTESを超える場合はエラーにする
+async function resizeImageToBlob(file, maxSize) {
+  const blob = file.type === 'application/pdf'
+    ? await compressPdfToJpegBlob(file, maxSize)
+    : await compressImageFileToBlob(file, maxSize);
+  if (blob.size > UPLOAD_MAX_BYTES) {
+    throw new Error(`圧縮後も${fmtBytes(blob.size)}あり、上限の10MBを超えています。ページ数を減らすか、解像度の低いファイルで再度お試しください`);
+  }
+  return blob;
 }
 
 // 1書類分の登録・更新（ファイルは任意。期限だけの更新も可能）
@@ -10302,16 +10345,18 @@ async function saveDriverDoc(drvId, docType) {
   showLoad(true);
   try {
     let filePath = existing?.file_path || '';
+    let sizeMsg = '';
     if (file) {
+      const origSize = file.size;
       const blob = await resizeImageToBlob(file, 1600);
-      const ext = file.type === 'application/pdf' ? 'pdf' : 'jpg';
-      filePath = `drv${drvId}/${docType}_${Date.now()}.${ext}`;
-      const {error: upErr} = await sb.storage.from('driver-docs').upload(filePath, blob, { contentType: file.type === 'application/pdf' ? 'application/pdf' : 'image/jpeg' });
+      filePath = `drv${drvId}/${docType}_${Date.now()}.jpg`;
+      const {error: upErr} = await sb.storage.from('driver-docs').upload(filePath, blob, { contentType: 'image/jpeg' });
       if (upErr) throw upErr;
       // 旧ファイルは差し替え成功後に削除（失敗しても本体処理は続行）
       if (existing?.file_path && existing.file_path !== filePath) {
         sb.storage.from('driver-docs').remove([existing.file_path]).catch?.(()=>{});
       }
+      sizeMsg = `（${fmtBytes(origSize)} → ${fmtBytes(blob.size)}）`;
     }
     const row = { drv_id: drvId, doc_type: docType, file_path: filePath, expiry_date: expiry, uploaded_by: me?.name || '' , updated_at: new Date().toISOString() };
     const {data, error} = await sb.from('driver_documents').upsert(row, { onConflict: 'drv_id,doc_type' }).select().single();
@@ -10319,9 +10364,9 @@ async function saveDriverDoc(drvId, docType) {
     driverDocs = driverDocs.filter(d => !(d.drv_id===drvId && d.doc_type===docType));
     driverDocs.push(data);
     if (fileEl) fileEl.value = '';
-    addLog('書類登録', `drv:${drvId} ${docType}${expiry?` 期限:${expiry}`:''}`);
+    addLog('書類登録', `drv:${drvId} ${docType}${expiry?` 期限:${expiry}`:''}${sizeMsg}`);
     await syncVehicleExpiryFromDriverDoc(drvId, docType, expiry);
-    showT('書類を保存しました');
+    showT('書類を保存しました'+sizeMsg);
     refreshDocViews(drvId);
   } catch(e) { showT('保存エラー: ' + e.message, 'ter'); }
   showLoad(false);
