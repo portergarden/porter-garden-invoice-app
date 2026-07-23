@@ -549,12 +549,13 @@ try {
       <div id="driverInviteStatus" style="font-size:12px;color:var(--text2);text-align:center;padding:10px 0">確認中...</div>
       <div id="driverInviteForm" style="display:none">
         <div class="fld"><label>お名前 <span style="color:var(--red)">*</span></label><input type="text" id="diName" placeholder="山田太郎"></div>
-        <div class="fld"><label>電話番号（任意）</label><input type="text" id="diTel" placeholder="090-0000-0000"></div>
+        <div class="fld"><label>電話番号 <span style="color:var(--red)">*</span></label><input type="text" id="diTel" placeholder="090-0000-0000"></div>
         <div class="fld">
-          <label>担当車番（複数可・任意）</label>
+          <label>担当車番（複数可） <span style="color:var(--red)">*</span></label>
           <div id="diTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
           <div style="display:flex;gap:5px"><input type="text" id="diCi" placeholder="例: 品川300あ1234" style="flex:1" onkeydown="if(event.key==='Enter'){addTag('di');event.preventDefault()}"><button class="btn" onclick="addTag('di')">＋ 追加</button></div>
         </div>
+        <div class="fld"><label>所属協力会社（任意。自社所属の場合は空欄）</label><input type="text" id="diPartner" list="diPartnerList" placeholder="候補から選択、または新しい会社名を入力"><datalist id="diPartnerList"></datalist></div>
         <div class="lerr" id="diErr"></div>
         <button class="btn pri" style="width:100%;justify-content:center;margin-top:8px" onclick="submitDriverSelfRegistration()">登録する</button>
       </div>
@@ -5984,33 +5985,66 @@ async function checkDriverInviteToken(token){
     document.getElementById('diName').value = '';
     document.getElementById('diTel').value = '';
     document.getElementById('diCi').value = '';
+    document.getElementById('diPartner').value = '';
     renderTags();
     document.getElementById('driverInviteForm').style.display = 'block';
+    // 協力会社の候補（自由入力＋既存候補からの選択の両方に対応するdatalist）
+    try {
+      const { data: partnerRows } = await sb.rpc('list_partner_names_for_invite', { p_token: token });
+      document.getElementById('diPartnerList').innerHTML = (partnerRows||[]).map(p=>`<option value="${escHtml(p.name)}">`).join('');
+    } catch(e) { /* 候補が取れなくても手入力自体は可能なので握りつぶす */ }
   }catch(e){
     statusEl.textContent = '確認中にエラーが発生しました: ' + e.message;
+  }
+}
+// 自己登録の完了後、そのドライバーにログイン（users）がなければ発行し、画面に表示する
+// （マッチした既存ドライバー・新規登録どちらの場合も対象。既にログインがある場合はIDのみ表示しパスワードは再表示しない）
+async function ensureAndShowDriverLogin(driverId){
+  try {
+    const { data: infoRows } = await sb.rpc('get_driver_login_info', { p_token: currentInviteToken, p_driver_id: driverId });
+    const existingLoginId = Array.isArray(infoRows) ? infoRows[0]?.login_id : infoRows?.login_id;
+    if (existingLoginId) {
+      return `<div style="margin-top:10px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);font-size:12px">ログインID: <b>${escHtml(existingLoginId)}</b><br>既に発行済みのため、パスワードは管理者にご確認ください。</div>`;
+    }
+    const { data, error } = await sb.functions.invoke('manage-login', { body: { action: 'self_register_create', token: currentInviteToken, driver_id: driverId } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    return `<div style="margin-top:10px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);font-size:12px">
+      ログインID: <b>${escHtml(data.login_id)}</b><br>初期パスワード: <b>${escHtml(data.password)}</b><br>このID・パスワードでログインし、初回ログイン時にパスワードを変更してください。</div>`;
+  } catch(e) {
+    console.warn('ensureAndShowDriverLogin:', e.message);
+    return `<div style="margin-top:10px;font-size:11px;color:var(--text2)">ログイン情報の発行に失敗しました。お手数ですが管理者にお問い合わせください。</div>`;
   }
 }
 async function submitDriverSelfRegistration(){
   const name = document.getElementById('diName').value.trim();
   const tel = document.getElementById('diTel').value.trim();
+  const partner = document.getElementById('diPartner').value.trim();
   const errEl = document.getElementById('diErr');
   errEl.textContent = '';
   if (!name) { errEl.textContent = 'お名前を入力してください'; return; }
+  if (!tel) { errEl.textContent = '電話番号を入力してください'; return; }
+  if (!pendTags.length) { errEl.textContent = '担当車番を1台以上追加してください'; return; }
   showLoad(true);
   try{
-    const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel||null, p_cars: pendTags });
+    const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel, p_cars: pendTags, p_partner_name: partner||null });
     if (error) throw error;
     // 電話番号または氏名が既存ドライバーと一致した場合、新規登録せず車番だけ既存レコードに追記している（二重登録防止）
-    const merged = Array.isArray(data) ? data[0]?.merged : data?.merged;
+    const row = Array.isArray(data) ? data[0] : data;
+    const merged = row?.merged;
+    const driverId = row?.driver_id;
     document.getElementById('driverInviteForm').style.display = 'none';
     const statusEl = document.getElementById('driverInviteStatus');
     statusEl.style.display = 'block';
     statusEl.style.color = 'var(--green-text)';
-    statusEl.textContent = merged
-      ? 'すでに登録があるお名前・電話番号でしたので、車両情報を既存の登録に追加しました。このページは閉じて構いません。'
-      : '登録が完了しました。管理者が内容を確認後、ご連絡します。このページは閉じて構いません。';
+    statusEl.innerHTML = merged
+      ? 'すでに登録があるお名前・電話番号でしたので、車両情報を既存の登録に追加しました。'
+      : '登録が完了しました。';
+    if (driverId != null) {
+      const loginHtml = await ensureAndShowDriverLogin(driverId);
+      statusEl.innerHTML += loginHtml;
+    }
   }catch(e){
-    const reasonMsg = { invalid_token: INVITE_REASON_MSG.invalid, token_already_used: INVITE_REASON_MSG.used, token_expired: INVITE_REASON_MSG.expired, name_required: 'お名前を入力してください' };
+    const reasonMsg = { invalid_token: INVITE_REASON_MSG.invalid, token_already_used: INVITE_REASON_MSG.used, token_expired: INVITE_REASON_MSG.expired, name_required: 'お名前を入力してください', tel_required: '電話番号を入力してください', car_required: '担当車番を1台以上追加してください' };
     errEl.textContent = reasonMsg[e.message] || ('登録エラー: ' + e.message);
   }
   showLoad(false);
