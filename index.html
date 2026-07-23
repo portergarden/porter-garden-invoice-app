@@ -651,7 +651,7 @@ try {
     <div id="p0area0" style="display:none">
     <div style="padding:8px 14px 0;font-size:12px;font-weight:600;color:var(--text2)">📋 明細一覧</div>
     <div class="tbar">
-      <input type="text" id="sq" placeholder="車番・取引先で検索…" oninput="renderInv()">
+      <input type="text" id="sq" placeholder="車番・取引先で検索…" oninput="renderInvDebounced()">
       <input type="date" id="sd1" onchange="renderInv()">
       <span style="font-size:10px;color:var(--text2)">〜</span>
       <input type="date" id="sd2" onchange="renderInv()">
@@ -1142,7 +1142,7 @@ try {
 
       <!-- ===== 明細一覧（旧pg21） ===== -->
       <div class="tbar">
-        <input type="text" id="payListSearch" placeholder="車番・ドライバー名・作業明細で検索…" style="width:220px;flex:none" oninput="renderPayTable()">
+        <input type="text" id="payListSearch" placeholder="車番・ドライバー名・作業明細で検索…" style="width:220px;flex:none" oninput="renderPayTableDebounced()">
         <span style="font-size:10px;color:var(--text2)">集計期間:</span>
         <button class="btn sml" onclick="monthRangeShift('payFrom','payTo',-1,changePayMonthRange)" title="前月">◀</button>
         <input type="date" id="payFrom" class="fin" style="width:118px;padding:4px" onchange="changePayMonthRange()">
@@ -1310,7 +1310,7 @@ try {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px;">
      <div style="display:flex;align-items:center;gap:12px;">
         <span style="font-size:11px;color:var(--text2)">車番とドライバーを紐づけて登録します</span>
-        <input type="text" id="drvSearch" placeholder="🔍 ドライバー名・協力会社・車番で検索…" oninput="renderDrv()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:220px">
+        <input type="text" id="drvSearch" placeholder="🔍 ドライバー名・協力会社・車番で検索…" oninput="renderDrvDebounced()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:220px">
         <select id="drvStatusFilter" onchange="renderDrv()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
           <option value="active" selected>稼働中のみ</option>
           <option value="terminated">解約済みのみ</option>
@@ -1341,7 +1341,7 @@ try {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span style="font-size:11.5px;color:var(--text2)">取引先を登録して請求明細書と紐づけます</span>
-        <input type="text" id="cliSearch" placeholder="🔍 取引先名で検索…" oninput="renderCli()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+        <input type="text" id="cliSearch" placeholder="🔍 取引先名で検索…" oninput="renderCliDebounced()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
         <div style="display:inline-flex;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg2);margin-left:12px;align-items:stretch;">
           <button id="bCliViewCard" style="border:none;padding:6px 14px;cursor:pointer;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;" onclick="setCliView('card')" title="四角表示">
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:2px;width:12px;height:12px;">
@@ -1361,7 +1361,7 @@ try {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span style="font-size:11.5px;color:var(--text2)">ドライバーを供給している会社・仕事をくれる会社をまとめて登録します</span>
-        <input type="text" id="partnerSearch" placeholder="🔍 協力会社名で検索…" oninput="renderPartners()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+        <input type="text" id="partnerSearch" placeholder="🔍 協力会社名で検索…" oninput="renderPartnersDebounced()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
         <div style="display:inline-flex;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg2);margin-left:12px;align-items:stretch;">
           <button id="bPartnerViewCard" style="border:none;padding:6px 14px;cursor:pointer;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;" onclick="setPartnerView('card')" title="四角表示">
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:2px;width:12px;height:12px;">
@@ -1381,7 +1381,7 @@ try {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span style="font-size:11.5px;color:var(--text2)">自社の代車・リース車など、貸し借りする車両と車検・保険期限をまとめて管理します</span>
-        <input type="text" id="vehicleSearch" placeholder="🔍 車番で検索…" oninput="renderVehicles()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+        <input type="text" id="vehicleSearch" placeholder="🔍 車番で検索…" oninput="renderVehiclesDebounced()" style="padding:5px 8px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
         <select id="vehicleLeaseFilter" onchange="renderVehicles()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
           <option value="">種別・リース会社: すべて</option>
         </select>
@@ -1906,7 +1906,7 @@ try {
 <div id="pg27" class="hide">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border)">
     <span style="font-size:13px;font-weight:500">💬 チャット</span>
-    <input type="text" id="chatTabSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderChatTabDrvList()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+    <input type="text" id="chatTabSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderChatTabDrvListDebounced()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
   </div>
   <div style="display:flex;height:calc(100vh - 100px)">
     <div id="chatTabDrvList" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
@@ -3180,7 +3180,7 @@ async function logout(exp=false){
   unsubscribeDrvChatRealtime();
   document.body.classList.remove('drv-lock');
   if(me)await addLog('ログアウト',exp?'セッション期限切れ':`${me.name}がログアウト`);
-  me=null;selIds=new Set();recs=[];clients=[];drvs=[];users=[];
+  me=null;selIds=new Set();recs=[];clients=[];drvs=[];users=[];invalidateDriverIndexes();
   // ドライバーポータル・管理画面のどちらも必ず非表示のままにする。
   // 以前はここで管理画面(pgMain)を一度表示してからsignOut後に隠す実装になっており、
   // signOut()中（ネットワーク遅延やエラー時）に管理画面が見えてしまう致命的な不具合があったため、
@@ -3209,6 +3209,7 @@ async function loadAll(){
     ]);
     recs=(invRes.data||[]).map(r=>({...r,hw:r.hw||0,oth:r.oth||0}));
     drvs=drvRes.data||[];
+    invalidateDriverIndexes();
     clients=cliRes.data||[];
     users=usrRes.data||[];
     partnerCompanies=partnerRes.data||[];
@@ -3260,7 +3261,23 @@ const typeLabel=t=>(TYPE_META[t]||TYPE_META.other).label;
 const typeShort=t=>(TYPE_META[t]||TYPE_META.other).short;
 const typeBadge=t=>(TYPE_META[t]||TYPE_META.other).badge;
 const nm=s=>(s||'').replace(/\s/g,'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
-const lkD=car=>{const n=nm(car);return drvs.find(d=>(d.cars||[]).some(c=>nm(c)===n))||null;};
+// 車番→ドライバー・ID→ドライバーの索引（drvsが変わるたびinvalidateDriverIndexes()でnullに戻し、
+// 次回lkD/recDrv呼び出し時に再構築する）。件数が多いページ（明細一覧・ドライバー一覧等）で
+// 行ごとにdrvs.find()の線形探索を繰り返す(O(件数×ドライバー数))のを避け、体感速度を上げるため
+let _carDriverIndex = null, _idDriverIndex = null;
+function invalidateDriverIndexes() { _carDriverIndex = null; _idDriverIndex = null; }
+function driverIndexes() {
+  if (!_carDriverIndex) {
+    _carDriverIndex = new Map();
+    _idDriverIndex = new Map();
+    drvs.forEach(d => {
+      _idDriverIndex.set(d.id, d);
+      (d.cars||[]).forEach(c => { const n = nm(c); if (!_carDriverIndex.has(n)) _carDriverIndex.set(n, d); });
+    });
+  }
+  return { car: _carDriverIndex, id: _idDriverIndex };
+}
+const lkD=car=>{const n=nm(car);return driverIndexes().car.get(n)||null;};
 // 略式車番（数字のみ）を、紐づくドライバーのフル表記車番に変換する（表示・集計の見た目をフル表記に統一するため）。
 // フル表記自体やフル表記が見つからない車（代車など）はそのまま返す
 const canonicalCar=car=>{
@@ -3272,7 +3289,7 @@ const canonicalCar=car=>{
 };
 const lkC=id=>clients.find(c=>c.id===id)||null;
 // 同じ車両を複数人で稼働することがあるため、レコードにdrv_id（手動選択）があればそれを優先し、なければ車番から自動判定する
-const recDrv=r=>(r.drv_id!=null && drvs.find(d=>d.id===r.drv_id)) || lkD(r.car);
+const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkD(r.car);
 // 取引先ID・ドライバーIDの新規登録時の自動採番（既存の最大値+1。数値以外は無視）
 function nextIdFor(list, field) {
   const nums = list.map(x => parseInt(x[field], 10)).filter(n => !isNaN(n));
@@ -3295,6 +3312,19 @@ const yen=n=>'¥'+Math.round(n).toLocaleString();
 // innerHTML/document.writeに埋め込む前にユーザー入力（乗務員の自由記入欄など）をエスケープする共通ヘルパー。
 // 低権限（ドライバー）が入力した文字列が高権限（管理者）セッションのDOM/印刷ウィンドウで実行されるのを防ぐ
 const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 検索・絞り込み欄は1文字打つたびに一覧全体を再描画すると入力がカクつくため、
+// 入力が止まってから短い間隔をおいて再描画する（連続入力中の再描画回数を減らす）
+function debounce(fn, wait) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+}
+const renderInvDebounced = debounce(() => renderInv(), 200);
+const renderPayTableDebounced = debounce(() => renderPayTable(), 200);
+const renderDrvDebounced = debounce(() => renderDrv(), 200);
+const renderCliDebounced = debounce(() => renderCli(), 200);
+const renderPartnersDebounced = debounce(() => renderPartners(), 200);
+const renderVehiclesDebounced = debounce(() => renderVehicles(), 200);
+const renderChatTabDrvListDebounced = debounce(() => renderChatTabDrvList(), 200);
 // 支払明細書（side='payment'）では pay_fare/pay_hw/pay_oth が設定されていればそれを優先する
 // （受注入力で請求額と別に支払額を個別調整できるため。0/未設定なら請求側の値にフォールバック）
 const payOr=(r,payField,rawField)=>(r[payField]!=null && r[payField]!==0) ? r[payField] : (r[rawField]||0);
@@ -4398,7 +4428,7 @@ function goPage(n,el){
   if(n===1){populateYearSelect('dashYear',true);renderDash();}
   if(n===23){populateYearSelect('anaCliYear',true);renderCliAnalysis();}
   if(n===24){populateYearSelect('anaDrvYear',true);renderDrvAnalysis();}
-  if(n===2){renderDrv();if(!driverDocs.length)loadDriverDocs().then(()=>renderDrv());loadDriverChatUnread().then(()=>renderDrv());}
+  if(n===2){renderDrv();const needDocs=!driverDocs.length;Promise.all([needDocs?loadDriverDocs():Promise.resolve(),loadDriverChatUnread()]).then(()=>renderDrv());}
   if(n===3)renderCli();
   if(n===25)renderPartners();
   if(n===26)renderVehicles();
@@ -4774,15 +4804,20 @@ async function renderDashWarnings(){
   const unC=recs.filter(r=>!recDrv(r)).length;
   if(unC)items.push({sev:'amber',icon:'🚚',text:`未配車の車番: ${unC}件`,btn:'請求明細一覧へ',go:0,nt:'nt0'});
 
-  try{
-    const boardMsg=await checkBoardAlerts();
-    if(boardMsg)items.push({sev:'amber',icon:'📢',text:boardMsg.replace(/^📢\s*/,''),btn:'掲示板へ',go:14,nt:'nt14'});
-  }catch(e){console.warn('renderDashWarnings(掲示板):',e.message);}
-
   const backupMsg=checkBackupReminder();
   if(backupMsg)items.push({sev:'amber',icon:'💾',text:backupMsg.replace(/^💾\s*/,''),btn:'セットアップへ',go:17,nt:'nt17'});
 
-  if(drvs.length){
+  // 掲示板・ドライバー書類/チャット・日報・支払/入金予定の各チェックは互いに独立したSupabase問い合わせのため、
+  // 直列にawaitすると往復回数分（ログイン直後は特に体感できるほど）待たされていた。まとめて並行実行する
+  const checkBoard = async () => {
+    try{
+      const boardMsg=await checkBoardAlerts();
+      if(boardMsg)items.push({sev:'amber',icon:'📢',text:boardMsg.replace(/^📢\s*/,''),btn:'掲示板へ',go:14,nt:'nt14'});
+    }catch(e){console.warn('renderDashWarnings(掲示板):',e.message);}
+  };
+
+  const checkDrivers = async () => {
+    if(!drvs.length)return;
     let nt2Warn=false;
     try{
       await loadDriverDocs();
@@ -4807,33 +4842,39 @@ async function renderDashWarnings(){
 
     // ドライバー管理タブ(nt2)は書類期限・未読チャットのどちらかがあれば赤丸を出す（以前はログイン時の別処理が担っていたが、通知パネル統合時に呼び出しごと削除されていたため復旧）
     setNavWarnDot('nt2', nt2Warn);
-  }
+  };
 
-  try{
-    if(sb && recs.length){
-      const now=new Date();
-      const thisM=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-      const invDates=new Set(recs.filter(r=>r.date?.startsWith(thisM)).map(r=>r.date));
-      if(invDates.size){
-        const[y,m]=thisM.split('-');
-        const{data,error}=await sb.from('daily_reports').select('date').gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0)));
-        if(!error){
-          const drDates=new Set((data||[]).map(r=>r.date));
-          const missing=[...invDates].filter(d=>!drDates.has(d));
-          if(missing.length)items.push({sev:'amber',icon:'📱',text:`日報未提出の稼働日: ${missing.length}日（今月）`,btn:'日報管理へ',go:10,nt:'nt10'});
+  const checkDailyReports = async () => {
+    try{
+      if(sb && recs.length){
+        const now=new Date();
+        const thisM=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        const invDates=new Set(recs.filter(r=>r.date?.startsWith(thisM)).map(r=>r.date));
+        if(invDates.size){
+          const[y,m]=thisM.split('-');
+          const{data,error}=await sb.from('daily_reports').select('date').gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0)));
+          if(!error){
+            const drDates=new Set((data||[]).map(r=>r.date));
+            const missing=[...invDates].filter(d=>!drDates.has(d));
+            if(missing.length)items.push({sev:'amber',icon:'📱',text:`日報未提出の稼働日: ${missing.length}日（今月）`,btn:'日報管理へ',go:10,nt:'nt10'});
+          }
         }
       }
-    }
-  }catch(e){console.warn('renderDashWarnings(日報):',e.message);}
+    }catch(e){console.warn('renderDashWarnings(日報):',e.message);}
+  };
 
-  try{
-    const today=fmtLocalDate(new Date());
-    if(!receiptSchedData.length) await loadReceiptSched().catch(()=>{});
-    const payOverdue=schedData.filter(s=>!s.done&&s.date<today).length;
-    const recvOverdue=receiptSchedData.filter(s=>!s.done&&s.date<today).length;
-    if(payOverdue)items.push({sev:'red',icon:'💳',text:`支払予定の期限超過: ${payOverdue}件`,btn:'支払スケジュールへ',go:9,nt:'nt9'});
-    if(recvOverdue)items.push({sev:'red',icon:'💰',text:`入金予定の期限超過: ${recvOverdue}件`,btn:'入金スケジュールへ',go:22,nt:'nt22'});
-  }catch(e){console.warn('renderDashWarnings(スケジュール):',e.message);}
+  const checkSchedules = async () => {
+    try{
+      const today=fmtLocalDate(new Date());
+      if(!receiptSchedData.length) await loadReceiptSched().catch(()=>{});
+      const payOverdue=schedData.filter(s=>!s.done&&s.date<today).length;
+      const recvOverdue=receiptSchedData.filter(s=>!s.done&&s.date<today).length;
+      if(payOverdue)items.push({sev:'red',icon:'💳',text:`支払予定の期限超過: ${payOverdue}件`,btn:'支払スケジュールへ',go:9,nt:'nt9'});
+      if(recvOverdue)items.push({sev:'red',icon:'💰',text:`入金予定の期限超過: ${recvOverdue}件`,btn:'入金スケジュールへ',go:22,nt:'nt22'});
+    }catch(e){console.warn('renderDashWarnings(スケジュール):',e.message);}
+  };
+
+  await Promise.all([checkBoard(), checkDrivers(), checkDailyReports(), checkSchedules()]);
 
   // 各タブ固有の警告（未配車・掲示板・バックアップ・支払/入金予定の期限超過・日報未提出）も、
   // ダッシュボードの警告一覧に出す条件とタブの赤丸をズレなく揃えるためitemsから一括反映する
@@ -5028,6 +5069,7 @@ async function delDrv(id){
     const{error}=await sb.from('drivers').delete().eq('id',id);
     if(error)throw error;
     drvs=drvs.filter(d=>d.id!==id);
+    invalidateDriverIndexes();
     addLog('ドライバー削除',`${d.name}（id:${id}）`);
     renderDrv();renderInv();
     showT(`「${d.name}」を削除しました`);
@@ -5075,10 +5117,10 @@ async function saveDrv(){
   };
   showLoad(true);
   try{
-    if(eDrvId!==null){const{data,error}=await sb.from('drivers').update(obj).eq('id',eDrvId).select().single();if(error)throw error;const idx=drvs.findIndex(x=>x.id===eDrvId);if(idx>=0)drvs[idx]=data;addLog('ドライバー編集',name);}
+    if(eDrvId!==null){const{data,error}=await sb.from('drivers').update(obj).eq('id',eDrvId).select().single();if(error)throw error;const idx=drvs.findIndex(x=>x.id===eDrvId);if(idx>=0)drvs[idx]=data;invalidateDriverIndexes();addLog('ドライバー編集',name);}
     else{
       obj.line_link_code=genDriverLinkCode(); // LINE通知の連携コードは新規登録時に発行
-      const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);addLog('ドライバー追加',name);
+      const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);invalidateDriverIndexes();addLog('ドライバー追加',name);
       if(createLogin){
         try{
           // ログイン用のSupabase AuthアカウントをEdge Function（管理者権限）経由で作成。初期パスワードは1234固定で、初回ログイン時に本人へ変更を求める
@@ -5662,6 +5704,7 @@ async function createPayeeDriverFromPartner(partnerId) {
     const {data, error} = await sb.from('drivers').insert(obj).select().single();
     if (error) throw error;
     drvs.push(data);
+    invalidateDriverIndexes();
     addLog('協力会社支払先登録', `${p.name}（drv:${data.id}）`);
     renderPartnerPayeeArea(partnerId); renderPartners(); renderDrv();
     showT('支払先として登録しました。受注入力のドライバー欄から選択できます');
@@ -6908,6 +6951,11 @@ function renderDrv() {
     return;
   }
 
+  // 車番ごとの請求明細件数を先に1回だけ集計しておく（ドライバーごとに毎回recs全件を走査するとO(ドライバー数×件数)になり遅いため）
+  const recCountByCar = new Map();
+  recs.forEach(r => { const c = nm(r.car); recCountByCar.set(c, (recCountByCar.get(c)||0)+1); });
+  const drvRecCount = d => (d.cars||[]).reduce((sum,c) => sum + (recCountByCar.get(nm(c))||0), 0);
+
   const sortedDrvs = [...filteredDrvs].sort((a, b) => {
     const idA = a.supplier_id ? parseInt(a.supplier_id, 10) || 999999 : 999999;
     const idB = b.supplier_id ? parseInt(b.supplier_id, 10) || 999999 : 999999;
@@ -6921,7 +6969,7 @@ function renderDrv() {
 
     grid.innerHTML = sortedDrvs.map(d => {
       const ini = (d.name || '').replace(/\s/g, '').slice(-2) || '?';
-      const cnt = recs.filter(r => (d.cars || []).some(c => nm(c) === nm(r.car))).length;
+      const cnt = drvRecCount(d);
 
       return `<div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
@@ -6960,7 +7008,7 @@ function renderDrv() {
     </div>`;
     grid.innerHTML = drvHeaderRow + sortedDrvs.map(d => {
       const ini = (d.name || '').replace(/\s/g, '').slice(-2) || '?';
-      const cnt = recs.filter(r => (d.cars || []).some(c => nm(c) === nm(r.car))).length;
+      const cnt = drvRecCount(d);
 
       return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;">
         <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
@@ -8013,10 +8061,18 @@ function filterPayRowsIndexed() {
 function groupPayRowsByDriver(indexed) {
   const groups = {};
   const order = [];
+  const idIdx = driverIndexes().id;
+  // car_infoの車番と完全一致するドライバーの索引を1回だけ作っておく（大半の行はこれで解決するため、
+  // 行ごとにdrvs全件を線形探索するO(件数×ドライバー数)を避けられる。完全一致がない場合だけ、
+  // 元のロジック通りendsWithによる部分一致へフォールバックする）
+  const carExactIdx = new Map();
+  drvs.forEach(d => (d.cars||[]).forEach(c => { const nc = nm(c); if (!carExactIdx.has(nc)) carExactIdx.set(nc, d); }));
   indexed.forEach(item => {
     const carNum = (item.r.car_info||'').replace(/[\s　].+/, '').trim();
-    const drv = (item.r.drv_id != null ? drvs.find(d => d.id === item.r.drv_id) : null)
-      || drvs.find(d => (d.cars||[]).some(c => { const nc=nm(c), nn=nm(carNum); return nc===nn || nc.endsWith(nn); }));
+    const nn = nm(carNum);
+    const drv = (item.r.drv_id != null ? idIdx.get(item.r.drv_id) : null)
+      || carExactIdx.get(nn)
+      || drvs.find(d => (d.cars||[]).some(c => nm(c).endsWith(nn)));
     const key = drv ? 'd'+drv.id : (item.r.supplier_id ? 'sup'+item.r.supplier_id : 'u'+(carNum||'unknown'));
     const label = drv ? drv.name : (item.r.supplier_id ? `未登録（ドライバーID:${item.r.supplier_id}）` : (carNum || '車番未照合'));
     if (!groups[key]) { groups[key] = {key, label, rows:[]}; order.push(key); }
