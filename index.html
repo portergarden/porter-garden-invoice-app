@@ -3874,11 +3874,12 @@ async function rezipXlsxStored(arrayBuffer, patches) {
   return result;
 }
 
-// シートXMLへ<pageSetup>（A4縦・固定縮小率で1ページ幅に収める）と<rowBreaks>（改ページ位置）を注入する。
-// fitToWidth（自動縮小）ではなくscale（固定倍率）を指定するのは、STATEMENT_PAGE_BUDGET_PTの改ページ計算が
-// 前提にしている縮小率と実際の印刷結果を必ず一致させ、ページ内の余白のズレをなくすため
+// シートXMLへ<pageSetup>（A4縦・横1ページ収まり）と<rowBreaks>（改ページ位置）を注入する。
+// 固定のscale値を自前計算する方式は、実際のExcel環境（既定フォントの実体は環境依存）での
+// 縮小率とズレて列がページ幅からはみ出す事故が起きたため廃止し、Excel自身に正しく
+// 1ページ幅へ収めさせるfitToWidth（自動縮小）に戻した
 function injectPageSetupXml(xmlText, rowBreaksRows) {
-  const pageSetupTag = `<pageSetup paperSize="9" orientation="portrait" scale="${STATEMENT_PRINT_SCALE_PCT}"/>`;
+  const pageSetupTag = `<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>`;
   let rowBreaksTag = '';
   if (rowBreaksRows && rowBreaksRows.length) {
     const brks = rowBreaksRows.map(r=>`<brk id="${r}" max="16383" man="1"/>`).join('');
@@ -3889,6 +3890,9 @@ function injectPageSetupXml(xmlText, rowBreaksRows) {
     out = out.replace(/(<pageMargins[^>]*\/>)/, `$1${pageSetupTag}${rowBreaksTag}`);
   } else {
     out = out.replace('</worksheet>', `${pageSetupTag}${rowBreaksTag}</worksheet>`);
+  }
+  if (!out.includes('<sheetPr')) {
+    out = out.replace(/(<worksheet[^>]*>)/, `$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>`);
   }
   return out;
 }
@@ -3913,30 +3917,14 @@ async function downloadXlsxWithPageSetup(wb, filename, rowBreaksBySheetIndex) {
 
 const STATEMENT_COLS_WCH = [4,5,5,6,6,6,11,11,11,9,9,7,11,13];
 
-// 列幅(wch)からExcelの実ピクセル幅を求める。SheetJSは書き出し時にwchへ+0.83203125した値を列幅として
-// 保存するため（実際に生成したxlsxを検証して確認した値）、それをOOXML標準の文字幅→ピクセル換算式
-// （既定フォントの最大文字幅7px、96dpi基準）にかけて実寸を出す
-function sheetColWidthToPx(wch) {
-  const mdw = 7;
-  const realWch = wch + 0.83203125;
-  return Math.floor((256 * realWch + Math.floor(128 / mdw)) / 256 * mdw);
-}
-const A4_PORTRAIT_WIDTH_PT = 595.28, A4_PORTRAIT_HEIGHT_PT = 841.89;
-const STATEMENT_MARGIN_LR_PT = 0.4 * 72, STATEMENT_MARGIN_TB_PT = 0.5 * 72;
-const STATEMENT_USABLE_WIDTH_PT = A4_PORTRAIT_WIDTH_PT - STATEMENT_MARGIN_LR_PT * 2;
-const STATEMENT_USABLE_HEIGHT_PT = A4_PORTRAIT_HEIGHT_PT - STATEMENT_MARGIN_TB_PT * 2;
-const STATEMENT_CONTENT_WIDTH_PT = STATEMENT_COLS_WCH.reduce((s,w) => s + sheetColWidthToPx(w), 0) * 0.75; // 96dpi: 1px=0.75pt
-
-// 列の合計幅がページ幅より広いため、印刷時はExcelが自動で縮小しないと1ページに収まらない。
-// fitToWidthの「自動」縮小に任せると実際の縮小率が分からず、行の高さ(hpt)ベースの改ページ計算と
-// ズレて1ページ目に大きな余白が残ってしまうため、縮小率をここで計算してscale指定として固定し、
-// ページに収まる行の高さ予算(STATEMENT_PAGE_BUDGET_PT)もその縮小率に合わせて調整する
-const STATEMENT_PRINT_SCALE_PCT = Math.max(50, Math.min(100, Math.floor(STATEMENT_USABLE_WIDTH_PT / STATEMENT_CONTENT_WIDTH_PT * 100)));
-// A4縦1ページに印刷できる高さの目安（pt）。上記の縮小率で印刷されることを踏まえた「縮小前」の行高さ予算。
-// 印刷誤差を見込みつつ紙を無駄にしないよう、実際の余白から20pt差し引いた値にしている。全行に明示的な
-// 行高(hpt)を設定し、この予算内で改ページ位置を自前で計算することで、内訳・備考の箱がページの
-// 途中で分断されるのを確実に防ぐ
-const STATEMENT_PAGE_BUDGET_PT = Math.floor(STATEMENT_USABLE_HEIGHT_PT / (STATEMENT_PRINT_SCALE_PCT / 100)) - 20;
+// 列の合計幅がページ幅より広いため、印刷時はExcelのfitToWidth（自動縮小）で1ページ幅に収めている。
+// 縮小率は環境（実際に使われるフォントの字幅）によって変わり、JS側で正確に予測することはできない
+// （縮小率をこちらで計算してscale固定にしていた時期があったが、実際のExcel環境で想定より縮小率が
+// 小さく列がページ幅からはみ出す不具合が起きたため、fitToWidthの自動計算に戻した）。
+// 行の高さ(hpt)ベースの改ページ予算は、A4縦1ページの高さ(約770pt)に対し、印刷時にある程度縮小される
+// （＝縮小前の行高さでは1ページにもっと多く収まる）ことを見込みつつ、縮小率を読み違えても
+// 内訳・備考の箱がページの途中で分断されないよう安全側に倒した目安値にしている
+const STATEMENT_PAGE_BUDGET_PT = 830;
 
 function writeStatementBlock(ws, side, rows, startRow, merge, rowBreaksOut) {
   const d = buildStatementSheetData(side, rows);
