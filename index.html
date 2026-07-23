@@ -555,7 +555,11 @@ try {
           <div id="diTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
           <div style="display:flex;gap:5px"><input type="text" id="diCi" placeholder="例: 品川300あ1234" style="flex:1" onkeydown="if(event.key==='Enter'){addTag('di');event.preventDefault()}"><button class="btn" onclick="addTag('di')">＋ 追加</button></div>
         </div>
-        <div class="fld"><label>所属協力会社（任意。自社所属の場合は空欄）</label><input type="text" id="diPartner" list="diPartnerList" placeholder="候補から選択、または新しい会社名を入力"><datalist id="diPartnerList"></datalist></div>
+        <div class="fld" style="position:relative">
+          <label>所属協力会社（任意。自社所属の場合は空欄）</label>
+          <input type="text" id="diPartner" placeholder="会社名を入力（2文字以上で候補表示）" autocomplete="off" oninput="onDiPartnerInput()" onblur="setTimeout(hideDiPartnerSuggestions,150)">
+          <div id="diPartnerSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:10;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);max-height:160px;overflow-y:auto;box-shadow:0 2px 8px rgba(0,0,0,0.15)"></div>
+        </div>
         <div class="lerr" id="diErr"></div>
         <button class="btn pri" style="width:100%;justify-content:center;margin-top:8px" onclick="submitDriverSelfRegistration()">登録する</button>
       </div>
@@ -5986,6 +5990,25 @@ function copyLoginInfoText(){
 
 // ===== ドライバー自己登録（招待URL/QRコードで開いた場合。ログイン不要のためsb.rpc経由でトークンを検証する） =====
 let currentInviteToken = null;
+let invitePartnerNames = []; // 協力会社の候補名一覧（未入力時は表示しない。絞り込みでヒットした分だけ表示する）
+// 2文字以上入力された時だけ、部分一致する候補を絞り込んで表示する（未入力状態で全件見えると社名一覧の漏洩になるため）
+function onDiPartnerInput() {
+  const box = document.getElementById('diPartnerSuggestions');
+  const q = nm(document.getElementById('diPartner').value);
+  if (q.length < 2 || !invitePartnerNames.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const matches = invitePartnerNames.filter(name => nm(name).includes(q)).slice(0, 8);
+  if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = matches.map(name => `<div style="padding:6px 8px;font-size:12px;cursor:pointer" onmousedown="selectDiPartner('${escHtml(name).replace(/'/g,"\\'")}')" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">${escHtml(name)}</div>`).join('');
+  box.style.display = 'block';
+}
+function selectDiPartner(name) {
+  document.getElementById('diPartner').value = name;
+  hideDiPartnerSuggestions();
+}
+function hideDiPartnerSuggestions() {
+  const box = document.getElementById('diPartnerSuggestions');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
 const INVITE_REASON_MSG = { invalid:'このリンクは無効です。招待URLを再度ご確認ください。', used:'このリンクはすでに使用済みです。管理者に新しいリンクを発行してもらってください。', expired:'このリンクの有効期限が切れています。管理者に新しいリンクを発行してもらってください。' };
 async function checkDriverInviteToken(token){
   currentInviteToken = token;
@@ -6008,10 +6031,13 @@ async function checkDriverInviteToken(token){
     document.getElementById('diPartner').value = '';
     renderTags();
     document.getElementById('driverInviteForm').style.display = 'block';
-    // 協力会社の候補（自由入力＋既存候補からの選択の両方に対応するdatalist）
+    // 協力会社の候補（自由入力＋既存候補からの選択の両方に対応）。
+    // 未入力の状態で候補が全件見えると社名の一覧が漏れてしまうため、入力欄には出さず
+    // JS側に保持しておき、一定文字数以上入力されて絞り込まれた時だけ候補を表示する
+    invitePartnerNames = [];
     try {
       const { data: partnerRows } = await sb.rpc('list_partner_names_for_invite', { p_token: token });
-      document.getElementById('diPartnerList').innerHTML = (partnerRows||[]).map(p=>`<option value="${escHtml(p.name)}">`).join('');
+      invitePartnerNames = (partnerRows||[]).map(p=>p.name).filter(Boolean);
     } catch(e) { /* 候補が取れなくても手入力自体は可能なので握りつぶす */ }
   }catch(e){
     statusEl.textContent = '確認中にエラーが発生しました: ' + e.message;
