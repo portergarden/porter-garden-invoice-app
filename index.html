@@ -440,6 +440,11 @@ td.dim{color:var(--text2)}
 .cal-day .cal-dn{font-weight:500;margin-bottom:1px}
 .cal-day .cal-cnt{font-size:9px;color:var(--text2)}
 .cal-day .cal-amt{font-size:9px;color:var(--blue);font-weight:500}
+/* 予定管理タブのカレンダーは、乗務カレンダー(pg8)より文字が小さく見づらいとの指摘があったため
+   ここだけ文字サイズ・行高さを大きめにする（乗務カレンダー側は既存の見た目のまま変えない） */
+#staffSchedGrid .cal-head{font-size:12px;padding:5px}
+#staffSchedGrid .cal-day{min-height:64px;font-size:12px;padding:4px 5px}
+#staffSchedGrid .cal-day .cal-dn{font-size:13px}
 .sched-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:0.5px solid var(--border);font-size:12px}
 .sched-row.overdue{background:var(--red-bg)}
 .sched-row.soon{background:var(--amber-bg)}
@@ -8836,7 +8841,7 @@ function renderStaffSchedCal() {
       <div class="cal-dn">${day}</div>
       ${dayItems.map(s=>{
         const u = users.find(x=>x.id===s.user_id);
-        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:9px;background:var(--blue-bg);color:var(--blue-text);border-radius:3px;padding:1px 3px;margin:1px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.start_time?escHtml(s.start_time)+' ':''}${escHtml(s.title)}${u?'（'+escHtml(u.name)+'）':''}</div>`;
+        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:11.5px;background:var(--blue-bg);color:var(--blue-text);border-radius:3px;padding:2px 4px;margin:2px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.start_time?escHtml(s.start_time)+' ':''}${escHtml(s.title)}${u?'（'+escHtml(u.name)+'）':''}</div>`;
       }).join('')}
     </div>`;
   }
