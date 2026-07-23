@@ -300,6 +300,7 @@ input:focus,select:focus{border-color:var(--blue)}
 .ntab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:500}
 .ntab:hover{color:var(--text)}
 .nav-warn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red)}
+.chat-badge{min-width:15px;height:15px;padding:0 3px;border-radius:99px;background:var(--red);color:#fff;font-size:9px;font-weight:700;line-height:15px;text-align:center;box-sizing:border-box;display:inline-block}
 .nav-group{display:flex;background:var(--bg2);border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
 /* 受注入力（手入力）の全画面表示モード：ヘッダー・ナビを隠して入力欄を広く使う */
 body.entry-fullscreen .sbar,
@@ -1912,9 +1913,14 @@ try {
     <div style="flex:1;display:flex;flex-direction:column;min-width:0">
       <div id="chatTabHeader" style="padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:13px;font-weight:500;color:var(--text2)">左の一覧からドライバーを選択してください</div>
       <div id="chatTabMsgList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px"></div>
-      <div id="chatTabInputArea" style="display:none;padding:10px 14px;border-top:0.5px solid var(--border);gap:6px;display:flex">
-        <textarea id="chatTabInput" placeholder="メッセージを入力…" rows="2" style="flex:1;resize:none;font-size:12px;padding:6px 8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatTabMessage();}"></textarea>
-        <button class="btn pri" onclick="sendChatTabMessage()">送信</button>
+      <div id="chatTabInputArea" style="display:none;padding:10px 14px;border-top:0.5px solid var(--border);flex-direction:column;gap:6px;display:flex">
+        <div id="chatTabFileChip" style="font-size:11px;color:var(--text2)"></div>
+        <div style="display:flex;gap:6px">
+          <input type="file" id="chatTabFileInput" style="display:none" onchange="onChatFileSelected('chatTabFileInput','chatTabFileChip')">
+          <button class="btn sml" onclick="document.getElementById('chatTabFileInput').click()" title="ファイルを添付" style="align-self:flex-end">📎</button>
+          <textarea id="chatTabInput" placeholder="メッセージを入力…" rows="2" style="flex:1;resize:none;font-size:12px;padding:6px 8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatTabMessage();}"></textarea>
+          <button class="btn pri" onclick="sendChatTabMessage()" style="align-self:flex-end">送信</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2139,9 +2145,14 @@ try {
       </div>
       <div id="drvChatPortalList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px;min-height:0"></div>
       <!-- スマホのジェスチャーバー・戻るボタンと重ならないよう、下端にセーフエリア分の余白を足す（viewport-fit=coverが必要） -->
-      <div style="display:flex;gap:6px;padding:8px 14px calc(8px + env(safe-area-inset-bottom));border-top:0.5px solid var(--border);flex-shrink:0">
-        <input type="text" id="drvChatPortalInput" placeholder="メッセージを入力…" style="flex:1;padding:8px;font-size:16px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')sendDrvPortalChatMessage()">
-        <button class="btn pri" onclick="sendDrvPortalChatMessage()">送信</button>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:8px 14px calc(8px + env(safe-area-inset-bottom));border-top:0.5px solid var(--border);flex-shrink:0">
+        <div id="drvChatPortalFileChip" style="font-size:11px;color:var(--text2)"></div>
+        <div style="display:flex;gap:6px">
+          <input type="file" id="drvChatPortalFileInput" style="display:none" onchange="onChatFileSelected('drvChatPortalFileInput','drvChatPortalFileChip')">
+          <button class="btn" onclick="document.getElementById('drvChatPortalFileInput').click()" title="ファイルを添付">📎</button>
+          <input type="text" id="drvChatPortalInput" placeholder="メッセージを入力…" style="flex:1;padding:8px;font-size:16px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')sendDrvPortalChatMessage()">
+          <button class="btn pri" onclick="sendDrvPortalChatMessage()">送信</button>
+        </div>
       </div>
     </div>
 
@@ -2222,7 +2233,10 @@ try {
   <div class="modal" style="width:520px;max-width:95vw;display:flex;flex-direction:column;max-height:80vh">
     <div class="mh" id="mDrvChatH">💬 チャット <button class="ibtn" onclick="closeDrvChatM()">✕</button></div>
     <div id="drvChatList" style="flex:1;overflow-y:auto;padding:8px 2px;display:flex;flex-direction:column;gap:8px;min-height:220px;max-height:50vh"></div>
-    <div style="display:flex;gap:6px;margin-top:8px">
+    <div id="drvChatFileChip" style="font-size:11px;color:var(--text2);margin-top:6px"></div>
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <input type="file" id="drvChatFileInput" style="display:none" onchange="onChatFileSelected('drvChatFileInput','drvChatFileChip')">
+      <button class="btn" onclick="document.getElementById('drvChatFileInput').click()" title="ファイルを添付">📎</button>
       <input type="text" id="drvChatInput" placeholder="メッセージを入力…" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')sendDrvChatMessage()">
       <button class="btn pri" onclick="sendDrvChatMessage()">送信</button>
     </div>
@@ -6889,7 +6903,7 @@ function renderDrv() {
       return `<div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
           <div class="av drv">${ini}</div>
-          <div style="display:flex;gap:1px"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
+          <div style="display:flex;gap:1px"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${chatUnreadBadgeHtml(d.id)}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
         </div>
         <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${d.name}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">解約済み</span>':''}${d.company?` <span style="font-size:10.5px;font-weight:500;color:var(--text2);padding:1px 5px;background:var(--bg2);border-radius:99px">${d.company}</span>`:''}</div>
         ${d.supplier_id ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">仕入先ID: ${d.supplier_id}</div>` : ''}
@@ -6941,7 +6955,7 @@ function renderDrv() {
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${drvPayScheduleLabel(d)}</div>
           <div style="width:70px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
         </div>
-        <div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${driverChatUnreadIds.has(d.id)?'<span class="nav-warn-dot" style="position:absolute;top:2px;right:2px"></span>':''}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
+        <div style="display:flex;gap:1px;flex-shrink:0;"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${chatUnreadBadgeHtml(d.id)}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
       </div>`;
     }).join('');
   }
@@ -11054,9 +11068,11 @@ async function onChatTabRealtimeInsert(msg) {
     if (msg.sender_role === 'driver') {
       await markDrvChatRead(chatTabDrvId, 'driver');
       driverChatUnreadIds.delete(chatTabDrvId);
+      delete driverChatUnreadCounts[chatTabDrvId];
     }
   } else if (msg.sender_role === 'driver') {
     driverChatUnreadIds.add(msg.drv_id);
+    driverChatUnreadCounts[msg.drv_id] = (driverChatUnreadCounts[msg.drv_id]||0) + 1;
   }
   renderChatTabDrvList();
   if (!document.getElementById('pg2')?.classList.contains('hide')) renderDrv();
@@ -11066,15 +11082,24 @@ async function onChatTabRealtimeInsert(msg) {
 let eChatDrvId = null; // 現在チャットモーダルで開いているドライバーID
 let drvChatMessages = []; // 開いているスレッドのメッセージキャッシュ
 let driverChatUnreadIds = new Set(); // ドライバー発言の未読メッセージがあるドライバーID一覧（ドライバー管理一覧のバッジ用）
+let driverChatUnreadCounts = {}; // drvId -> 未読メッセージ件数（LINEのような件数バッジ表示用）
 
-// ドライバー管理タブを開いたときに、各ドライバーの未読チャット有無をまとめて取得する
+// ドライバー管理タブを開いたときに、各ドライバーの未読チャット件数をまとめて取得する
 async function loadDriverChatUnread() {
   if (!sb) return;
   try {
     const { data, error } = await sb.from('driver_messages').select('drv_id').eq('sender_role','driver').is('read_at', null);
     if (error) throw error;
-    driverChatUnreadIds = new Set((data||[]).map(m=>m.drv_id));
+    driverChatUnreadCounts = {};
+    (data||[]).forEach(m => { driverChatUnreadCounts[m.drv_id] = (driverChatUnreadCounts[m.drv_id]||0) + 1; });
+    driverChatUnreadIds = new Set(Object.keys(driverChatUnreadCounts).map(Number));
   } catch(e) { console.warn('loadDriverChatUnread:', e.message); }
+}
+// チャット未読件数バッジ（LINEのような赤丸+数字）。styleでボタン右上の絶対配置／リスト行の通常配置を切り替え
+function chatUnreadBadgeHtml(drvId, style) {
+  const n = driverChatUnreadCounts[drvId] || 0;
+  if (!n) return '';
+  return `<span class="chat-badge" style="${style||'position:absolute;top:2px;right:2px'}">${n>99?'99+':n}</span>`;
 }
 
 async function openDrvChatM(drvId) {
@@ -11083,10 +11108,12 @@ async function openDrvChatM(drvId) {
   eChatDrvId = drvId;
   document.getElementById('mDrvChatH').innerHTML = `💬 ${escHtml(d.name)} とのチャット <button class="ibtn" onclick="closeDrvChatM()">✕</button>`;
   document.getElementById('drvChatList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
+  clearChatFile('drvChatFileInput','drvChatFileChip');
   document.getElementById('mDrvChat').classList.add('on');
   await loadDrvChatMessages(drvId);
   await markDrvChatRead(drvId, 'driver');
   driverChatUnreadIds.delete(drvId);
+  delete driverChatUnreadCounts[drvId];
   renderDrv();
   // ドライバーからの返信をLINEのように即時反映する（開いている間だけ購読）
   subscribeDrvChatRealtime(drvId, async (msg) => {
@@ -11096,6 +11123,7 @@ async function openDrvChatM(drvId) {
     if (msg.sender_role === 'driver') {
       await markDrvChatRead(drvId, 'driver');
       driverChatUnreadIds.delete(drvId);
+      delete driverChatUnreadCounts[drvId];
       renderDrv();
     }
   });
@@ -11117,35 +11145,101 @@ async function loadDrvChatMessages(drvId) {
   }
 }
 
-function renderDrvChatMessages() {
-  const el = document.getElementById('drvChatList');
-  if (!el) return;
-  if (!drvChatMessages.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">まだメッセージがありません</div>'; return; }
-  el.innerHTML = drvChatMessages.map(m => {
-    const mine = m.sender_role === 'admin';
-    const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-    return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
-      <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(mine?'管理者':'ドライバー'))} ・ ${dt}</div>
-      <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${escHtml(m.body)}</div>
-    </div>`;
-  }).join('');
-  el.scrollTop = el.scrollHeight;
+/* ===== チャット共通: ファイル添付・吹き出し描画（モーダル/チャットタブ/ドライバーポータルで共有） ===== */
+const CHAT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+let chatFileUrlCache = {}; // storageパス -> 署名付きURL（1時間有効。取得済みはキャッシュして再利用）
+
+// 画像は縮小してJPEG化、それ以外（PDF等）はそのままアップロードする
+async function prepareChatAttachment(file) {
+  if (file.type && file.type.startsWith('image/')) {
+    const canvas = await imageFileToCanvas(file, 1600);
+    const blob = await new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('画像変換に失敗しました')), 'image/jpeg', 0.85));
+    if (blob.size > CHAT_FILE_MAX_BYTES) throw new Error(`画像を圧縮しても${fmtBytes(blob.size)}あり、上限の10MBを超えています`);
+    return { blob, name: file.name.replace(/\.\w+$/, '') + '.jpg', type: 'image/jpeg' };
+  }
+  if (file.size > CHAT_FILE_MAX_BYTES) throw new Error(`ファイルサイズが${fmtBytes(file.size)}あり、上限の10MBを超えています`);
+  return { blob: file, name: file.name, type: file.type || 'application/octet-stream' };
 }
+// 添付ファイルをchat-filesバケットにアップロードし、driver_messagesに保存するフィールドを返す
+async function uploadChatAttachment(file, drvId) {
+  const prepared = await prepareChatAttachment(file);
+  const safeName = prepared.name.replace(/[\\/:*?"<>|]/g, '_');
+  const path = `drv${drvId}/${Date.now()}_${safeName}`;
+  const { error } = await sb.storage.from('chat-files').upload(path, prepared.blob, { contentType: prepared.type });
+  if (error) throw error;
+  return { file_path: path, file_name: safeName, file_type: prepared.type, file_size: prepared.blob.size };
+}
+// 添付ファイルの表示（画像はサムネイル、それ以外はダウンロードリンク）。署名付きURL未取得の間は読み込み中表示にする
+function chatFileChipHtml(m) {
+  if (!m.file_path) return '';
+  const url = chatFileUrlCache[m.file_path];
+  const mt = m.body ? '6px' : '0';
+  if (!url) return `<div style="font-size:11px;color:var(--text2);padding-top:${mt}">📎 ${escHtml(m.file_name||'ファイル')}（読み込み中…）</div>`;
+  if ((m.file_type||'').startsWith('image/')) {
+    return `<a href="${url}" target="_blank" rel="noopener" style="display:block;margin-top:${mt}"><img src="${url}" style="max-width:200px;max-height:200px;border-radius:8px;display:block"></a>`;
+  }
+  return `<a href="${url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:11.5px;padding:6px 8px;background:var(--bg2);border-radius:8px;margin-top:${mt};color:inherit;text-decoration:none">📎 ${escHtml(m.file_name||'ファイル')}${m.file_size?` (${fmtBytes(m.file_size)})`:''}</a>`;
+}
+// 1件分の吹き出しHTML（本文・添付ファイル共通）。mineRoleは「自分側」とみなすsender_role（管理側は'admin'、ドライバーポータルは'driver'）
+function chatBubbleHtml(m, mineRole) {
+  const mine = m.sender_role === mineRole;
+  const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  const nameLabel = m.sender_name || (m.sender_role==='admin' ? '管理者' : 'ドライバー');
+  return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
+    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(nameLabel)} ・ ${dt}</div>
+    <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${m.body?escHtml(m.body):''}${chatFileChipHtml(m)}</div>
+  </div>`;
+}
+// メッセージ一覧の共通描画。添付ファイルの署名付きURLが未取得なら取得後に再描画する
+function renderChatMessagesInto(elId, messages, mineRole) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!messages.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">まだメッセージがありません</div>'; return; }
+  el.innerHTML = messages.map(m => chatBubbleHtml(m, mineRole)).join('');
+  el.scrollTop = el.scrollHeight;
+  const missing = [...new Set(messages.filter(m=>m.file_path && !chatFileUrlCache[m.file_path]).map(m=>m.file_path))];
+  if (missing.length && sb?.storage) {
+    sb.storage.from('chat-files').createSignedUrls(missing, 3600).then(({data,error}) => {
+      if (error) return;
+      (data||[]).forEach(d => { if (d.signedUrl) chatFileUrlCache[d.path] = d.signedUrl; });
+      renderChatMessagesInto(elId, messages, mineRole);
+    }).catch(()=>{});
+  }
+}
+// ファイル選択時のプレビュー表示・解除（3つのチャットUIで共通利用）
+function onChatFileSelected(fileInputId, chipId) {
+  const f = document.getElementById(fileInputId)?.files?.[0];
+  const chip = document.getElementById(chipId);
+  if (!chip) return;
+  chip.innerHTML = f ? `📎 ${escHtml(f.name)}（${fmtBytes(f.size)}） <span style="cursor:pointer;color:var(--red-text)" onclick="clearChatFile('${fileInputId}','${chipId}')">✕</span>` : '';
+}
+function clearChatFile(fileInputId, chipId) {
+  const fi = document.getElementById(fileInputId); if (fi) fi.value = '';
+  const chip = document.getElementById(chipId); if (chip) chip.innerHTML = '';
+}
+
+function renderDrvChatMessages() { renderChatMessagesInto('drvChatList', drvChatMessages, 'admin'); }
 
 async function sendDrvChatMessage() {
   const input = document.getElementById('drvChatInput');
   const body = input.value.trim();
-  if (!body || !eChatDrvId) return;
+  const file = document.getElementById('drvChatFileInput')?.files?.[0];
+  if ((!body && !file) || !eChatDrvId) return;
+  showLoad(true);
   try {
-    const { data, error } = await sb.from('driver_messages').insert({drv_id: eChatDrvId, sender_role:'admin', sender_name: me?.name||'', body}).select().single();
+    let fileFields = {};
+    if (file) fileFields = await uploadChatAttachment(file, eChatDrvId);
+    const { data, error } = await sb.from('driver_messages').insert({drv_id: eChatDrvId, sender_role:'admin', sender_name: me?.name||'', body: body||'', ...fileFields}).select().single();
     if (error) throw error;
     drvChatMessages.push(data);
     renderDrvChatMessages();
     input.value = '';
+    clearChatFile('drvChatFileInput','drvChatFileChip');
     // LINE/メール通知（1時間に1回まで: refに時間バケットを含めdedupeさせ、連投で通知が溢れないようにする）
     const hourBucket = new Date().toISOString().slice(0,13);
     notifyDrivers([eChatDrvId], 'chat', `chat-${eChatDrvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
+  showLoad(false);
 }
 
 /* ===== チャット専用タブ（掲示板の右隣）=====
@@ -11185,7 +11279,7 @@ function renderChatTabDrvList() {
     return `<div onclick="openChatTabDrv(${d.id})" style="padding:9px 12px;cursor:pointer;border-bottom:0.5px solid var(--border);${active?'background:var(--blue-bg)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
         <span style="font-weight:${unread?'700':'500'};font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.name)}</span>
-        ${unread?'<span class="nav-warn-dot" style="position:relative;flex-shrink:0"></span>':''}
+        ${chatUnreadBadgeHtml(d.id, 'flex-shrink:0')}
       </div>
       ${last?`<div style="font-size:10.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${last.sender_role==='admin'?'自分: ':''}${escHtml(last.body)}</div>`:''}
     </div>`;
@@ -11198,10 +11292,12 @@ async function openChatTabDrv(drvId) {
   document.getElementById('chatTabHeader').textContent = `💬 ${d.name}`;
   document.getElementById('chatTabInputArea').style.display = 'flex';
   document.getElementById('chatTabMsgList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
+  clearChatFile('chatTabFileInput','chatTabFileChip');
   renderChatTabDrvList();
   await loadChatTabMessages(drvId);
   await markDrvChatRead(drvId, 'driver');
   driverChatUnreadIds.delete(drvId);
+  delete driverChatUnreadCounts[drvId];
   renderChatTabDrvList();
   if (!document.getElementById('pg2')?.classList.contains('hide')) renderDrv();
   // メッセージのリアルタイム反映はチャットタブ全体で1本の購読(subscribeChatTabRealtime)にまとめて処理する
@@ -11217,35 +11313,28 @@ async function loadChatTabMessages(drvId) {
     if (el) el.innerHTML = `<div style="color:var(--red);font-size:11px;padding:12px">${e.message}</div>`;
   }
 }
-function renderChatTabMessages() {
-  const el = document.getElementById('chatTabMsgList');
-  if (!el) return;
-  if (!chatTabMessages.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">まだメッセージがありません</div>'; return; }
-  el.innerHTML = chatTabMessages.map(m => {
-    const mine = m.sender_role === 'admin';
-    const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-    return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:70%">
-      <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(mine?'管理者':'ドライバー'))} ・ ${dt}</div>
-      <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${escHtml(m.body)}</div>
-    </div>`;
-  }).join('');
-  el.scrollTop = el.scrollHeight;
-}
+function renderChatTabMessages() { renderChatMessagesInto('chatTabMsgList', chatTabMessages, 'admin'); }
 async function sendChatTabMessage() {
   const input = document.getElementById('chatTabInput');
   const body = input.value.trim();
-  if (!body || !chatTabDrvId) return;
+  const file = document.getElementById('chatTabFileInput')?.files?.[0];
+  if ((!body && !file) || !chatTabDrvId) return;
+  showLoad(true);
   try {
-    const { data, error } = await sb.from('driver_messages').insert({drv_id: chatTabDrvId, sender_role:'admin', sender_name: me?.name||'', body}).select().single();
+    let fileFields = {};
+    if (file) fileFields = await uploadChatAttachment(file, chatTabDrvId);
+    const { data, error } = await sb.from('driver_messages').insert({drv_id: chatTabDrvId, sender_role:'admin', sender_name: me?.name||'', body: body||'', ...fileFields}).select().single();
     if (error) throw error;
     chatTabMessages.push(data);
     renderChatTabMessages();
     chatTabLastMsgByDrv[chatTabDrvId] = data;
     renderChatTabDrvList();
     input.value = '';
+    clearChatFile('chatTabFileInput','chatTabFileChip');
     const hourBucket = new Date().toISOString().slice(0,13);
     notifyDrivers([chatTabDrvId], 'chat', `chat-${chatTabDrvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
+  showLoad(false);
 }
 
 // 一斉メッセージ: 選択した複数ドライバーのチャットに同文を個別送信する（掲示板は全員向け、個別連絡はチャットという役割分担のための補助機能）
@@ -11349,32 +11438,25 @@ async function loadDrvPortalChat() {
   }
 }
 
-function renderDrvPortalChatMessages() {
-  const el = document.getElementById('drvChatPortalList');
-  if (!el) return;
-  if (!drvChatMessages.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">まだメッセージがありません。管理者へのメッセージを送ってみましょう</div>'; return; }
-  el.innerHTML = drvChatMessages.map(m => {
-    const mine = m.sender_role === 'driver';
-    const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-    return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
-      <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(mine?'自分':'管理者'))} ・ ${dt}</div>
-      <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${escHtml(m.body)}</div>
-    </div>`;
-  }).join('');
-  el.scrollTop = el.scrollHeight;
-}
+function renderDrvPortalChatMessages() { renderChatMessagesInto('drvChatPortalList', drvChatMessages, 'driver'); }
 
 async function sendDrvPortalChatMessage() {
   const input = document.getElementById('drvChatPortalInput');
   const body = input.value.trim();
-  if (!body || !me?.driver_id) return;
+  const file = document.getElementById('drvChatPortalFileInput')?.files?.[0];
+  if ((!body && !file) || !me?.driver_id) return;
+  showLoad(true);
   try {
-    const { data, error } = await sb.from('driver_messages').insert({drv_id: me.driver_id, sender_role:'driver', sender_name: me?.name||'', body}).select().single();
+    let fileFields = {};
+    if (file) fileFields = await uploadChatAttachment(file, me.driver_id);
+    const { data, error } = await sb.from('driver_messages').insert({drv_id: me.driver_id, sender_role:'driver', sender_name: me?.name||'', body: body||'', ...fileFields}).select().single();
     if (error) throw error;
     drvChatMessages.push(data);
     renderDrvPortalChatMessages();
     input.value = '';
+    clearChatFile('drvChatPortalFileInput','drvChatPortalFileChip');
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
+  showLoad(false);
 }
 
 // ログイン時、管理者からの未読メッセージがあればナビに赤丸を出す（チャットタブは既定タブではないため、掲示板と違い直後には開かれない）
@@ -15909,12 +15991,18 @@ CREATE TABLE IF NOT EXISTS driver_messages (
   drv_id integer NOT NULL REFERENCES drivers(id),
   sender_role text NOT NULL CHECK (sender_role IN ('admin','driver')),
   sender_name text,
-  body text NOT NULL,
+  body text,                 -- ファイル添付のみの送信も許可するためNULL可
+  file_path text,             -- 添付ファイル（chat-filesバケット内のパス）
+  file_name text,
+  file_type text,
+  file_size int,
   created_at timestamptz NOT NULL DEFAULT now(),
   read_at timestamptz
 );
 -- チャットを更新せず双方向にリアルタイム反映させるため、Realtimeのpublicationに追加する
 ALTER PUBLICATION supabase_realtime ADD TABLE driver_messages;
+-- チャット添付ファイル用ストレージバケット（drv{driver_id}/配下に保存。RLSはdriver-docsと同じ本人フォルダ制限パターン）
+INSERT INTO storage.buckets (id, name, public) VALUES ('chat-files', 'chat-files', false) ON CONFLICT (id) DO NOTHING;
 
 -- 手入力テンプレート
 CREATE TABLE IF NOT EXISTS input_templates (
@@ -16466,6 +16554,19 @@ CREATE POLICY "driver_docs_storage_update" ON storage.objects FOR UPDATE TO auth
 DROP POLICY IF EXISTS "driver_docs_storage_delete" ON storage.objects;
 CREATE POLICY "driver_docs_storage_delete" ON storage.objects FOR DELETE TO authenticated USING (
   bucket_id = 'driver-docs' AND "current_role"() = ANY(ARRAY['admin','editor'])
+);
+
+DROP POLICY IF EXISTS "chat_files_storage_select" ON storage.objects;
+CREATE POLICY "chat_files_storage_select" ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'chat-files' AND ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR (storage.foldername(name))[1] = 'drv' || (SELECT driver_id::text FROM users WHERE auth_uid = auth.uid()))
+);
+DROP POLICY IF EXISTS "chat_files_storage_insert" ON storage.objects;
+CREATE POLICY "chat_files_storage_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (
+  bucket_id = 'chat-files' AND ("current_role"() = ANY(ARRAY['admin','editor']) OR (storage.foldername(name))[1] = 'drv' || (SELECT driver_id::text FROM users WHERE auth_uid = auth.uid()))
+);
+DROP POLICY IF EXISTS "chat_files_storage_delete" ON storage.objects;
+CREATE POLICY "chat_files_storage_delete" ON storage.objects FOR DELETE TO authenticated USING (
+  bucket_id = 'chat-files' AND "current_role"() = ANY(ARRAY['admin','editor'])
 );
 
 DROP POLICY IF EXISTS "driver_stmt_storage_select" ON storage.objects;
