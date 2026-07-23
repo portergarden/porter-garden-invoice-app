@@ -3220,6 +3220,24 @@ async function logout(exp=false){
 /* ===== DATA LOAD ===== */
 async function loadAll(){
   showLoad(true);
+  // ドライバーは他ドライバーの請求・取引先・協力会社・銀行口座等の全社データを一切必要としない
+  // （RLSでも自分の分しか読めない）。フル読み込み(recs/clients/users/partnerCompanies等の全件取得、
+  // 計10回のSupabase往復)をそのまま流用するとログインのたびに無駄な通信が発生し体感速度が悪化するため、
+  // ドライバーは自分の1件だけを取得して即座に終える
+  if (me?.role === 'driver') {
+    try {
+      if (me.driver_id) {
+        const {data, error} = await sb.from('drivers').select('*').eq('id', me.driver_id).single();
+        if (error) throw error;
+        drvs = data ? [data] : [];
+      } else {
+        drvs = [];
+      }
+      invalidateDriverIndexes();
+    } catch(e) { showT('データ読み込みエラー: '+e.message,'ter'); }
+    showLoad(false);
+    return;
+  }
   try{
     const[invRes,drvRes,cliRes,usrRes,partnerRes]=await Promise.all([
       sb.from('invoices').select('*').order('date',{ascending:false}),
