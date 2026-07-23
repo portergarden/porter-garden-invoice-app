@@ -1996,6 +1996,17 @@ try {
           <input type="range" id="companyStampRotation" min="-45" max="45" step="1" value="-4" oninput="onCompanyStampRotationInput()" style="flex:1">
           <span id="companyStampRotationLabel" style="font-size:11px;color:var(--text2);width:44px;text-align:right">-4°</span>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+          <label style="font-size:11px;color:var(--text2);white-space:nowrap">大きさ</label>
+          <input type="range" id="companyStampSize" min="30" max="120" step="1" value="64" oninput="onCompanyStampSizeInput()" style="flex:1">
+          <span id="companyStampSizeLabel" style="font-size:11px;color:var(--text2);width:44px;text-align:right">64px</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+          <label style="font-size:11px;color:var(--text2);white-space:nowrap">色を変更</label>
+          <input type="color" id="companyStampColorPicker" value="#c81e3a" style="width:36px;height:24px;padding:0;border:0.5px solid var(--border2);border-radius:4px">
+          <button class="btn sml" onclick="applyStampColorTint()">この色を適用</button>
+          <button class="btn sml" onclick="resetStampColorTint()" title="アップロードした元の色に戻す">元の色に戻す</button>
+        </div>
       </div>
       <div class="fld">
         <label>LINE公式アカウント 友だち追加URL（任意・ドライバーへのLINE通知に使用）</label>
@@ -3320,6 +3331,8 @@ const yen=n=>'¥'+Math.round(n).toLocaleString();
 const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // 社印画像の傾き（度）。会社設定で調整可能。未設定時は従来の見た目に合わせた既定値-4度
 const hankoStampRotationDeg=()=>{const v=(companySettings||{}).stamp_rotation_deg;return (v===null||v===undefined)?-4:v;};
+// 社印画像の大きさ（px）。会社設定で調整可能。未設定時は従来の見た目に合わせた既定値64px
+const hankoStampSizePx=()=>{const v=(companySettings||{}).stamp_size_px;return (v===null||v===undefined)?64:v;};
 // 検索・絞り込み欄は1文字打つたびに一覧全体を再描画すると入力がカクつくため、
 // 入力が止まってから短い間隔をおいて再描画する（連続入力中の再描画回数を減らす）
 function debounce(fn, wait) {
@@ -7533,7 +7546,7 @@ function printLeaseStatement(company) {
           <div class="name">${escHtml(companyLines[0])}</div>
           <div class="meta">${companyLines.slice(1).map(escHtml).join('<br>')}</div>
         </div>
-        ${cAll.stamp_image ? `<div class="hanko hanko-img" style="transform:rotate(${hankoStampRotationDeg()}deg)"><img src="${cAll.stamp_image}"></div>` : `<div class="hanko"><span style="font-size:21px">印</span></div>`}
+        ${cAll.stamp_image ? `<div class="hanko hanko-img" style="transform:rotate(${hankoStampRotationDeg()}deg);width:${hankoStampSizePx()}px;height:${hankoStampSizePx()}px"><img src="${cAll.stamp_image}"></div>` : `<div class="hanko"><span style="font-size:21px">印</span></div>`}
       </div>
     </div>
     <div class="period-bar"><span>${escHtml(periodLabel)}</span><span>対象月: <b>${month||'—'}</b></span></div>
@@ -12940,7 +12953,7 @@ function getDocCss() {
     font-size:10px;font-weight:700;letter-spacing:1px;line-height:1.3;
     transform:rotate(-6deg);opacity:.82;mix-blend-mode:multiply;
   }
-  .hanko.hanko-img{border:none;width:64px;height:64px;opacity:.9}
+  .hanko.hanko-img{border:none;opacity:.9}
   .hanko.hanko-img img{max-width:100%;max-height:100%;object-fit:contain;mix-blend-mode:multiply}
   .period-bar{display:flex;justify-content:space-between;align-items:center;background:var(--bg2);border:1px solid var(--border2);padding:6px 13px;margin-bottom:10px;font-size:11.5px;color:var(--text)}
   .period-bar b{color:var(--text);font-weight:600}
@@ -13038,7 +13051,7 @@ function buildStatementDocInner(side, rows) {
           <div class="name">${d.companyLines[0]||''}</div>
           <div class="meta">${d.companyLines.slice(1).filter(Boolean).join('<br>')}</div>
         </div>
-        ${(companySettings||{}).stamp_image ? `<div class="hanko hanko-img" style="transform:rotate(${hankoStampRotationDeg()}deg)"><img src="${companySettings.stamp_image}"></div>` : `<div class="hanko"><span style="font-size:21px">印</span></div>`}
+        ${(companySettings||{}).stamp_image ? `<div class="hanko hanko-img" style="transform:rotate(${hankoStampRotationDeg()}deg);width:${hankoStampSizePx()}px;height:${hankoStampSizePx()}px"><img src="${companySettings.stamp_image}"></div>` : `<div class="hanko"><span style="font-size:21px">印</span></div>`}
       </div>
     </div>
     <div class="period-bar"><span>${d.periodLabel}</span><span>${d.dateLabel}: <b>${d.dateValue}</b></span></div>
@@ -13157,7 +13170,7 @@ function buildCoverPageHtml(side, rowGroups, addressee) {
   // 右側：自社情報（個別明細書の会社欄と同じ内容・印影も表示）
   const companyBlock = getCompanyBlock();
   const hankoBlock = (companySettings||{}).stamp_image
-    ? `<div class="hanko hanko-img" style="transform:rotate(${hankoStampRotationDeg()}deg)"><img src="${companySettings.stamp_image}"></div>`
+    ? `<div class="hanko hanko-img" style="transform:rotate(${hankoStampRotationDeg()}deg);width:${hankoStampSizePx()}px;height:${hankoStampSizePx()}px"><img src="${companySettings.stamp_image}"></div>`
     : `<div class="hanko"><span style="font-size:21px">印</span></div>`;
 
   const allDates = rowGroups.flat().map(x=>x.date).filter(Boolean).sort();
@@ -16713,6 +16726,7 @@ const REQUIRED_TABLES = [
 /* ===== 会社設定 ===== */
 let companySettings = {};
 let pendingStampDataUrl = undefined; // undefined=未変更（既存値を維持）, null=削除, 文字列=新しい画像
+let pendingStampOriginalDataUrl = undefined; // 色を変更する前の画像（今回のアップロード分のみ。「元の色に戻す」用）
 
 async function loadCompanySettings() {
   if (!sb) return;
@@ -16727,8 +16741,15 @@ async function loadCompanySettings() {
       const lineEl = document.getElementById('companyLineAddUrl');
       if (lineEl) lineEl.value = data.line_add_url||'';
       pendingStampDataUrl = undefined;
+      pendingStampOriginalDataUrl = undefined;
       const rotEl = document.getElementById('companyStampRotation');
       if (rotEl) rotEl.value = data.stamp_rotation_deg ?? -4;
+      const sizeEl = document.getElementById('companyStampSize');
+      if (sizeEl) sizeEl.value = data.stamp_size_px ?? 64;
+      const sizeLabelEl = document.getElementById('companyStampSizeLabel');
+      if (sizeLabelEl) sizeLabelEl.textContent = (data.stamp_size_px ?? 64) + 'px';
+      const colorEl = document.getElementById('companyStampColorPicker');
+      if (colorEl && data.stamp_color) colorEl.value = data.stamp_color;
       renderCompanyStampPreview(data.stamp_image||'');
       applyBrandName(data.name);
       const planSel = document.getElementById('supabasePlanSel');
@@ -16929,11 +16950,13 @@ async function onCompanyStampFileChange(e) {
       pendingStampDataUrl = resizeCanvasDataUrl(sourceCanvas, 200);
       showT('ハンコの自動検出ができなかったため、画像全体を使用します', 'twa');
     }
+    pendingStampOriginalDataUrl = pendingStampDataUrl;
     renderCompanyStampPreview(pendingStampDataUrl);
   } catch(err) { showT('画像の読み込みに失敗しました: '+err.message, 'ter'); }
 }
 function removeCompanyStamp() {
   pendingStampDataUrl = null;
+  pendingStampOriginalDataUrl = undefined;
   document.getElementById('companyStampFile').value = '';
   renderCompanyStampPreview('');
 }
@@ -16943,7 +16966,11 @@ function renderCompanyStampPreview(dataUrl) {
   if (!img) return;
   const rotEl = document.getElementById('companyStampRotation');
   const rot = rotEl ? +rotEl.value : -4;
+  const sizeEl = document.getElementById('companyStampSize');
+  const size = sizeEl ? +sizeEl.value : 64;
   img.style.transform = `rotate(${rot}deg)`;
+  const box = document.getElementById('companyStampPreviewBox');
+  if (box) { box.style.width = size+'px'; box.style.height = size+'px'; }
   if (dataUrl) { img.src = dataUrl; img.style.display = 'block'; empty.style.display = 'none'; }
   else { img.style.display = 'none'; empty.style.display = 'block'; }
 }
@@ -16954,6 +16981,46 @@ function onCompanyStampRotationInput() {
   if (label) label.textContent = rotEl.value + '°';
   const img = document.getElementById('companyStampPreview');
   if (img) img.style.transform = `rotate(${rotEl.value}deg)`;
+}
+// 大きさスライダーの操作に合わせてプレビュー枠をその場でリサイズする
+function onCompanyStampSizeInput() {
+  const sizeEl = document.getElementById('companyStampSize');
+  const label = document.getElementById('companyStampSizeLabel');
+  if (label) label.textContent = sizeEl.value + 'px';
+  const box = document.getElementById('companyStampPreviewBox');
+  if (box) { box.style.width = sizeEl.value+'px'; box.style.height = sizeEl.value+'px'; }
+}
+// 現在プレビュー表示中の印影画像の形（透過マスク）を保ったまま、選んだ色に塗り替える
+async function applyStampColorTint() {
+  const base = pendingStampDataUrl !== undefined ? pendingStampDataUrl : (companySettings||{}).stamp_image;
+  if (!base) { showT('先にハンコ画像をアップロードしてください', 'twa'); return; }
+  const colorHex = document.getElementById('companyStampColorPicker').value;
+  const r = parseInt(colorHex.slice(1,3),16), g = parseInt(colorHex.slice(3,5),16), b = parseInt(colorHex.slice(5,7),16);
+  try {
+    const img = new Image();
+    await new Promise((resolve,reject) => { img.onload = resolve; img.onerror = reject; img.src = base; });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width; canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i+3] === 0) continue; // 透明部分（背景）はそのまま
+      d[i] = r; d[i+1] = g; d[i+2] = b;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    pendingStampDataUrl = canvas.toDataURL('image/png');
+    renderCompanyStampPreview(pendingStampDataUrl);
+    showT('ハンコの色を変更しました（保存すると反映されます）');
+  } catch(e) { showT('色の変更に失敗しました: '+e.message, 'ter'); }
+}
+// アップロード直後（色を変更する前）の画像に戻す。今回のセッションでアップロードしていない場合は対象がない
+function resetStampColorTint() {
+  if (pendingStampOriginalDataUrl === undefined) { showT('元に戻せる画像がありません。もう一度アップロードしてください', 'twa'); return; }
+  pendingStampDataUrl = pendingStampOriginalDataUrl;
+  renderCompanyStampPreview(pendingStampDataUrl);
+  showT('元の色に戻しました');
 }
 
 async function saveCompanySettings() {
@@ -16968,6 +17035,8 @@ async function saveCompanySettings() {
     line_add_url: document.getElementById('companyLineAddUrl')?.value.trim()||'',
     stamp_image: pendingStampDataUrl===undefined ? (companySettings.stamp_image||'') : (pendingStampDataUrl||''),
     stamp_rotation_deg: (v => Number.isFinite(v) ? v : -4)(+document.getElementById('companyStampRotation')?.value),
+    stamp_size_px: (v => Number.isFinite(v) ? v : 64)(+document.getElementById('companyStampSize')?.value),
+    stamp_color: document.getElementById('companyStampColorPicker')?.value || null,
     updated_at: new Date().toISOString(),
   };
   showLoad(true);
@@ -16976,6 +17045,7 @@ async function saveCompanySettings() {
     if (error) throw error;
     companySettings = obj;
     pendingStampDataUrl = undefined;
+    pendingStampOriginalDataUrl = undefined;
     const msg = document.getElementById('companySettingMsg');
     if (msg) { msg.textContent='✔ 保存しました'; setTimeout(()=>{msg.textContent='';},2000); }
     addLog('会社設定保存', obj.name);
