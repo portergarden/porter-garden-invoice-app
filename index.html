@@ -16823,6 +16823,14 @@ function renderSupabaseUsage(usage) {
 function isHankoRedPixel(r, g, b) {
   return r > 100 && (r - g) > 30 && (r - b) > 30;
 }
+// 「どれくらい赤いか」を0(赤くない)〜1(はっきり赤い)の連続値で返す。
+// 最終的な透過度をこの値で滑らかに変化させることで、輪郭やハンコ内部の彫り文字の
+// 縁がギザギザにならず、なだらかな境目（アンチエイリアス）になるようにする
+function hankoRedness(r, g, b) {
+  if (r <= 100) return 0;
+  const strength = Math.min(r - g, r - b) - 30; // 30(判定の閾値)を超えた分だけを強度にする
+  return Math.max(0, Math.min(1, strength / 60)); // 60階調でなだらかに不透明へ近づける
+}
 // 画像・PDFいずれもフル解像度のcanvasにして返す共通の読み込み処理。
 // PDFはpdf.js（既存の書類アップロード圧縮機能と共通）で1ページ目をラスタライズする
 async function stampSourceToCanvas(file) {
@@ -16906,16 +16914,17 @@ function extractHankoDataUrl(sourceCanvas) {
     const cropCtx = cropCanvas.getContext('2d');
     cropCtx.drawImage(sourceCanvas, fx0, fy0, fw, fh, 0, 0, fw, fh);
 
-    // ③ 切り抜き範囲内で、赤系以外のピクセルを透明化する（用紙の白・影を消す）
+    // ③ 切り抜き範囲内で、赤の強さに応じてなめらかに透明度を変える（用紙の白・影は消しつつ、
+    // 輪郭やハンコ内部の彫り文字の縁がギザギザにならないようアンチエイリアスをかける）
     const cropData = cropCtx.getImageData(0, 0, fw, fh);
     const d = cropData.data;
     for (let i = 0; i < d.length; i += 4) {
-      if (!isHankoRedPixel(d[i], d[i+1], d[i+2])) d[i+3] = 0;
+      d[i+3] = Math.round(hankoRedness(d[i], d[i+1], d[i+2]) * 255);
     }
     cropCtx.putImageData(cropData, 0, 0);
 
-    // ④ 保存データ量を抑えるため、必要なら最終サイズを縮小する
-    const FINAL_MAX = 300;
+    // ④ 保存データ量を抑えつつ彫り文字などの細部が潰れないよう、必要なら最終サイズを縮小する
+    const FINAL_MAX = 600;
     const finalScale = Math.min(1, FINAL_MAX / Math.max(fw, fh));
     if (finalScale < 1) {
       const outCanvas = document.createElement('canvas');
