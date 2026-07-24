@@ -1924,7 +1924,10 @@ try {
 <div id="pg27" class="hide">
   <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border)">
     <span style="font-size:13px;font-weight:500">💬 チャット</span>
-    <input type="text" id="chatTabSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderChatTabDrvListDebounced()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <button id="chatTabShowTerminatedBtn" class="btn sml" onclick="toggleChatTabShowTerminated()">解約済みを表示</button>
+      <input type="text" id="chatTabSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderChatTabDrvListDebounced()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
+    </div>
   </div>
   <div style="display:flex;height:calc(100vh - 100px)">
     <div id="chatTabDrvList" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
@@ -3341,6 +3344,8 @@ const nm=s=>(s||'').replace(/\s/g,'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>Stri
 // 行ごとにdrvs.find()の線形探索を繰り返す(O(件数×ドライバー数))のを避け、体感速度を上げるため
 let _carDriverIndex = null, _idDriverIndex = null;
 function invalidateDriverIndexes() { _carDriverIndex = null; _idDriverIndex = null; }
+// 解約済みドライバーを除いた一覧。今後の選択・新規登録が不要な画面（月報・カレンダー・各種プルダウン等）で使う
+function activeDrvs() { return drvs.filter(d => d.status !== 'terminated'); }
 function driverIndexes() {
   if (!_carDriverIndex) {
     _carDriverIndex = new Map();
@@ -4765,7 +4770,7 @@ function openInvM(){eInvId=null;clrInvF();populateDrvSel();document.getElementBy
 function populateDrvSel(){
   const dl=document.getElementById('fDrvSelList');
   if(!dl)return;
-  dl.innerHTML=drvs.map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+  dl.innerHTML=activeDrvs().map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
 }
 // ドライバー手入力検索欄: 候補と完全一致すればhidden項目(id)へ反映、一致しなければ自動判定に戻す
 function onFDrvSelTextInput(){
@@ -6917,7 +6922,7 @@ function openVehicleHistM(car) {
   const vMaster = vehicles.find(v => nm(v.car) === nm(car));
   document.getElementById('vhRate').value = vMaster?.daily_rate ?? '';
   document.getElementById('vhNote').value = '';
-  document.getElementById('vhDrvList').innerHTML = drvs.map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+  document.getElementById('vhDrvList').innerHTML = activeDrvs().map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
   renderVehicleHist();
   document.getElementById('mVehicleHist').classList.add('on');
 }
@@ -8753,7 +8758,7 @@ function initCal() {
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">全員</option>' +
-    drvs.map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
+    activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
 }
 
 function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderCal(); }
@@ -9121,7 +9126,7 @@ async function deleteTask() {
 
 function openSchedM() {
   const sel = document.getElementById('scDrv');
-  sel.innerHTML = '<option value="">選択</option>' + drvs.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+  sel.innerHTML = '<option value="">選択</option>' + activeDrvs().map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
   const now = new Date();
   document.getElementById('scDate').value = '';
   document.getElementById('scAmt').value = '';
@@ -9773,7 +9778,7 @@ function renderDailyList() {
   if (drvSel) {
     const cur = drvSel.value;
     drvSel.innerHTML = '<option value="">全ドライバー</option>' +
-      drvs.map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
+      activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
     drvSel.value = cur;
   }
 
@@ -10267,7 +10272,7 @@ function populateMrDrvSel() {
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">全ドライバー</option>' +
-    [...drvs].sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
+    [...activeDrvs()].sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
       .map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${d.supplier_id}）`:''}</option>`).join('');
   if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
 }
@@ -10303,7 +10308,7 @@ async function renderMonthlyReport() {
   // ドライバー個別選択（未選択なら全ドライバー対象のまま）。KPI・カード一覧の両方に反映する
   populateMrDrvSel();
   const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
-  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : drvs;
+  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : activeDrvs();
   if (mrDrvId) {
     const selCars = targetDrvs.flatMap(d=>d.cars||[]);
     drReports = drReports.filter(r => selCars.some(c=>nm(c)===nm(r.car)));
@@ -10544,7 +10549,7 @@ async function printMonthlyReportA4() {
 
   // 月報タブで選択中のドライバーがいればその1名分のみ、未選択（全ドライバー）ならこれまで通り全員分を出力する
   const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
-  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : drvs;
+  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : activeDrvs();
 
   const pages = targetDrvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
@@ -11477,11 +11482,21 @@ function formatChatListTime(iso) {
   if (d.getFullYear() === now.getFullYear()) return `${d.getMonth()+1}/${d.getDate()}`;
   return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
 }
+// 解約済みドライバーは既定では一覧から隠すが、未読メッセージが残っている場合は
+// 見落とし防止のため隠さない（解約後にやり取りが必要になるケースがあるため）
+let chatTabShowTerminated = false;
+function toggleChatTabShowTerminated() {
+  chatTabShowTerminated = !chatTabShowTerminated;
+  const btn = document.getElementById('chatTabShowTerminatedBtn');
+  if (btn) { btn.textContent = chatTabShowTerminated ? '稼働中のみ表示' : '解約済みを表示'; btn.classList.toggle('pri', chatTabShowTerminated); }
+  renderChatTabDrvList();
+}
 function renderChatTabDrvList() {
   const el = document.getElementById('chatTabDrvList');
   if (!el) return;
   const q = nm(document.getElementById('chatTabSearch')?.value || '');
-  let list = q ? drvs.filter(d => nm(d.name).includes(q)) : drvs.slice();
+  const base = chatTabShowTerminated ? drvs : drvs.filter(d => d.status !== 'terminated' || driverChatUnreadIds.has(d.id));
+  let list = q ? base.filter(d => nm(d.name).includes(q)) : base.slice();
   list.sort((a,b) => {
     const au = driverChatUnreadIds.has(a.id) ? 1 : 0, bu = driverChatUnreadIds.has(b.id) ? 1 : 0;
     if (au !== bu) return bu - au; // 未読を先頭に
@@ -11495,7 +11510,7 @@ function renderChatTabDrvList() {
     const active = d.id === chatTabDrvId;
     return `<div onclick="openChatTabDrv(${d.id})" style="padding:9px 12px;cursor:pointer;border-bottom:0.5px solid var(--border);${active?'background:var(--blue-bg)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-        <span style="font-weight:${unread?'700':'500'};font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(d.name)}</span>
+        <span style="font-weight:${unread?'700':'500'};font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(d.name)}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text);font-weight:500">解約済み</span>':''}</span>
         ${last?`<span style="font-size:9.5px;color:var(--text2);flex-shrink:0">${formatChatListTime(last.created_at)}</span>`:''}
         ${chatUnreadBadgeHtml(d.id, 'flex-shrink:0')}
       </div>
@@ -11558,7 +11573,7 @@ async function sendChatTabMessage() {
 // 一斉メッセージ: 選択した複数ドライバーのチャットに同文を個別送信する（掲示板は全員向け、個別連絡はチャットという役割分担のための補助機能）
 function openBulkChatM(){
   const list = document.getElementById('bulkChatDrvList');
-  const sorted = [...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999));
+  const sorted = [...activeDrvs()].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999));
   list.innerHTML = sorted.map(d=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" class="bulkChatChk" value="${d.id}" style="width:auto">${escHtml(d.name)}${d.company?`<span style="color:var(--text2);font-size:10.5px">（${escHtml(d.company)}）</span>`:''}</label>`).join('') || '<div style="font-size:11px;color:var(--text2)">ドライバーが登録されていません</div>';
   document.getElementById('bulkChatBody').value = '';
   document.getElementById('mBulkChat').classList.add('on');
@@ -11604,7 +11619,7 @@ async function openDocStatusM() {
 // 期限切れ・期限間近の書類を全ドライバー横断で抽出（管理側の警告表示用）
 function summarizeDocAlerts() {
   const issues = [];
-  drvs.forEach(d => {
+  activeDrvs().forEach(d => {
     DRIVER_DOC_TYPES.forEach(t => {
       const st = docStatusOf(findDriverDoc(d.id, t.key));
       if (st.cls === 'expired' || st.cls === 'soon') issues.push({ drv: d, t, st });
@@ -11691,8 +11706,9 @@ async function checkDriverOwnChatAlerts() {
 function renderDocStatusBody() {
   const el = document.getElementById('docStatusBody');
   if (!el) return;
-  if (!drvs.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">ドライバーが登録されていません</div>'; return; }
-  const sorted = [...drvs].sort((a,b)=>{
+  const activeList = activeDrvs();
+  if (!activeList.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">ドライバーが登録されていません</div>'; return; }
+  const sorted = [...activeList].sort((a,b)=>{
     const na = parseInt(a.supplier_id,10)||999999, nb = parseInt(b.supplier_id,10)||999999;
     return na - nb;
   });
@@ -12293,7 +12309,7 @@ function renderBoardTargetDrvList() {
   const listEl = document.getElementById('boardTargetDrvList');
   const cntEl = document.getElementById('boardTargetCount');
   if (!listEl) return;
-  const sorted = [...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999));
+  const sorted = [...activeDrvs()].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999));
   listEl.innerHTML = sorted.map(d => `<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer">
     <input type="checkbox" style="width:auto" ${pendBoardTargetIds.has(d.id)?'checked':''} onchange="toggleBoardTargetDrv(${d.id})">${escHtml(d.name)}${d.company?`<span style="color:var(--text2);font-size:10.5px">（${escHtml(d.company)}）</span>`:''}
   </label>`).join('') || '<div style="font-size:11px;color:var(--text2)">ドライバーが登録されていません</div>';
@@ -14111,7 +14127,7 @@ function q0DrvOverrideLabel(d) {
 function populateQ0DrvSel() {
   const dl = document.getElementById('q0DrvOverrideList');
   if (!dl) return;
-  dl.innerHTML = drvs.map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+  dl.innerHTML = activeDrvs().map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
 }
 // 乗務ドライバーの手入力検索欄: 候補と完全一致すればhidden項目(id)へ反映、一致しなければ自動判定に戻す
 function onQ0DrvOverrideTextInput() {
