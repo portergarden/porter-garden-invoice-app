@@ -7041,8 +7041,10 @@ function renderDrv() {
   if (drvKpiEl) {
     const expiredCnt = docIssues.filter(i=>i.st.cls==='expired').length;
     const soonCnt = docIssues.filter(i=>i.st.cls==='soon').length;
+    const activeCnt = drvs.filter(d=>d.status!=='terminated').length;
+    const terminatedCnt = drvs.filter(d=>d.status==='terminated').length;
     drvKpiEl.innerHTML = `
-      <div class="kpi-card"><div class="kpi-label">総ドライバー数</div><div class="kpi-val">${drvs.length}名</div></div>
+      <div class="kpi-card"><div class="kpi-label">総ドライバー数</div><div class="kpi-val">${drvs.length}名</div><div class="kpi-diff kpi-eq">稼働中 ${activeCnt}名 ／ 解約 ${terminatedCnt}名</div></div>
       <div class="kpi-card"><div class="kpi-label">書類期限切れ</div><div class="kpi-val" style="color:${expiredCnt?'var(--red)':'var(--green)'}">${expiredCnt}件</div></div>
       <div class="kpi-card"><div class="kpi-label">書類期限間近</div><div class="kpi-val" style="color:${soonCnt?'var(--amber-text)':'var(--green)'}">${soonCnt}件</div></div>
       <div class="kpi-card"><div class="kpi-label">未読チャット</div><div class="kpi-val" style="color:${driverChatUnreadIds.size?'var(--amber-text)':'var(--green)'}">${driverChatUnreadIds.size}名</div></div>
