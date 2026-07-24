@@ -152,6 +152,7 @@
     who TEXT,
     action TEXT,
     detail TEXT,
+    role TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
   );
 
@@ -1403,8 +1404,15 @@ try {
     <div style="padding:10px 14px" id="vehicleList"></div>
   </div>
   <div id="pg4" class="hide">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:0.5px solid var(--border)">
-      <span style="font-size:11px;color:var(--text2)" id="logAreaLabel">全操作履歴（最新100件）</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text2)" id="logAreaLabel">スタッフ操作履歴（最新100件）</span>
+        <div style="display:inline-flex;border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg2)">
+          <button id="logRoleStaff" onclick="setLogRoleFilter('staff')" style="border:none;padding:4px 10px;cursor:pointer;font-size:11px;background:var(--blue);color:#fff;font-weight:bold">スタッフ操作</button>
+          <button id="logRoleDriver" onclick="setLogRoleFilter('driver')" style="border:none;padding:4px 10px;cursor:pointer;font-size:11px;background:transparent;color:var(--text)">ドライバー操作</button>
+          <button id="logRoleAll" onclick="setLogRoleFilter('')" style="border:none;padding:4px 10px;cursor:pointer;font-size:11px;background:transparent;color:var(--text)">全て</button>
+        </div>
+      </div>
       <button class="btn sml" onclick="loadLogs()">更新</button>
     </div>
     <div style="display:flex;gap:6px;align-items:center;padding:6px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;background:var(--bg2)">
@@ -3263,6 +3271,7 @@ async function loadAll(){
   // 個別読込（テーブル未作成でもloadAll全体を止めない）
   await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments(), loadVehicles()]);
 }
+let logRoleFilter = 'staff';
 async function loadLogs(){
   const la=document.getElementById('logArea');if(!la)return;
   const kw = document.getElementById('logSearchKw')?.value.trim().toLowerCase() || '';
@@ -3271,12 +3280,15 @@ async function loadLogs(){
   const to = document.getElementById('logSearchTo')?.value || '';
   const hasFilter = kw || who || from || to;
   const labelEl = document.getElementById('logAreaLabel');
-  if (labelEl) labelEl.textContent = hasFilter ? '検索結果（最大500件）' : '全操作履歴（最新100件）';
+  const roleLabel = logRoleFilter==='driver' ? 'ドライバー操作' : logRoleFilter==='staff' ? 'スタッフ操作' : '全操作';
+  if (labelEl) labelEl.textContent = hasFilter ? `検索結果（${roleLabel}・最大500件）` : `${roleLabel}履歴（最新100件）`;
   try{
     let q = sb.from('audit_logs').select('*').order('created_at',{ascending:false}).limit(hasFilter?500:100);
     if (who) q = q.ilike('who', `%${who}%`);
     if (from) q = q.gte('created_at', from);
     if (to) q = q.lte('created_at', to+'T23:59:59');
+    if (logRoleFilter === 'driver') q = q.eq('role', 'driver');
+    else if (logRoleFilter === 'staff') q = q.or('role.neq.driver,role.is.null');
     const{data,error}=await q;
     if (error) throw error;
     let rows = data||[];
@@ -3285,13 +3297,25 @@ async function loadLogs(){
     la.innerHTML=rows.map(l=>`<div class="lrow"><div class="ltime">${escHtml(l.ts)}</div><div class="lwho">${escHtml(l.who||'—')}</div><div style="flex:1">${escHtml(l.action)}: <span style="color:var(--text2)">${escHtml(l.detail||'')}</span></div></div>`).join('');
   }catch(e){la.innerHTML='<div style="color:var(--text2);font-size:11px;padding:10px 0">ログ読み込みエラー</div>';}
 }
+function setLogRoleFilter(role){
+  logRoleFilter = role;
+  const map = {logRoleStaff:'staff', logRoleDriver:'driver', logRoleAll:''};
+  Object.keys(map).forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    const active = map[id] === role;
+    el.style.background = active ? 'var(--blue)' : 'transparent';
+    el.style.color = active ? '#fff' : 'var(--text)';
+    el.style.fontWeight = active ? 'bold' : 'normal';
+  });
+  loadLogs();
+}
 function clearLogSearch(){
   ['logSearchKw','logSearchWho','logSearchFrom','logSearchTo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   loadLogs();
 }
 async function addLog(action,detail){
   if(!sb)return;
-  try{await sb.from('audit_logs').insert({ts:new Date().toLocaleString('ja-JP',{hour12:false}),who:me?me.name:'—',action,detail});}catch(e){}
+  try{await sb.from('audit_logs').insert({ts:new Date().toLocaleString('ja-JP',{hour12:false}),who:me?me.name:'—',action,detail,role:me?.role||null});}catch(e){}
 }
 
 /* ===== HELPERS ===== */
@@ -11418,6 +11442,19 @@ async function initChatTab() {
   renderChatTabDrvList();
   subscribeChatTabRealtime();
 }
+function formatChatListTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const dOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const nOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((nOnly - dOnly) / 86400000);
+  if (diffDays === 0) return d.toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+  if (diffDays === 1) return '昨日';
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth()+1}/${d.getDate()}`;
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+}
 function renderChatTabDrvList() {
   const el = document.getElementById('chatTabDrvList');
   if (!el) return;
@@ -11436,7 +11473,8 @@ function renderChatTabDrvList() {
     const active = d.id === chatTabDrvId;
     return `<div onclick="openChatTabDrv(${d.id})" style="padding:9px 12px;cursor:pointer;border-bottom:0.5px solid var(--border);${active?'background:var(--blue-bg)':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-        <span style="font-weight:${unread?'700':'500'};font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.name)}</span>
+        <span style="font-weight:${unread?'700':'500'};font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(d.name)}</span>
+        ${last?`<span style="font-size:9.5px;color:var(--text2);flex-shrink:0">${formatChatListTime(last.created_at)}</span>`:''}
         ${chatUnreadBadgeHtml(d.id, 'flex-shrink:0')}
       </div>
       ${last?`<div style="font-size:10.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${last.sender_role==='admin'?'自分: ':''}${escHtml(last.body)}</div>`:''}
@@ -16076,7 +16114,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 
 -- 監査ログ
 CREATE TABLE IF NOT EXISTS audit_logs (
-  id bigserial PRIMARY KEY, ts text, who text, action text, detail text,
+  id bigserial PRIMARY KEY, ts text, who text, action text, detail text, role text,
   created_at timestamptz DEFAULT now()
 );
 
