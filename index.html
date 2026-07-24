@@ -3129,7 +3129,14 @@ function proceedAfterLogin() {
     loadCompanySettings().then(()=>renderDrvLineBanner()).catch(()=>{});
     return;
   }
-  goPage(1, document.getElementById('nt1'));
+  const savedPage = getSavedHistoryPage('ppage');
+  if (savedPage !== null && document.getElementById('pg'+savedPage)) {
+    _skipHistoryPush = true;
+    try { goPage(savedPage, document.querySelector(`.ntab[onclick="goPage(${savedPage},this)"]`)); }
+    finally { _skipHistoryPush = false; }
+  } else {
+    goPage(1, document.getElementById('nt1'));
+  }
   restoreStmtIssueDate();
   setTimeout(()=>{ checkDailyReportMissing().catch(()=>{}); }, 2000);
   setTimeout(()=>loadCompanySettings().catch(()=>{}), 2500);
@@ -4473,6 +4480,12 @@ function switchNavGroup(group, skipPageSwitch) {
 }
 
 let _skipHistoryPush = false;
+// リロード後の自動再ログイン時に、直前まで見ていたページへ復帰できるよう
+// pushState済みのhistory.stateから復元する（file://再読込でもstateは維持される）
+function getSavedHistoryPage(key) {
+  const n = history.state ? history.state[key] : null;
+  return (typeof n === 'number') ? n : null;
+}
 function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
   if (n!==27) unsubscribeChatTabRealtime();
@@ -10813,7 +10826,14 @@ function applyDriverPortal() {
   const stmtTabEl = document.getElementById('dnt2');
   if (stmtTabEl) stmtTabEl.style.display = hideStatement ? 'none' : '';
 
-  goDrvPage(3, document.getElementById('dnt3'));
+  const savedDpage = getSavedHistoryPage('dpage');
+  if (savedDpage !== null && document.getElementById('dpg'+savedDpage)) {
+    _skipHistoryPush = true;
+    try { goDrvPage(savedDpage, document.querySelector(`.ntab[onclick="goDrvPage(${savedDpage},this)"]`)); }
+    finally { _skipHistoryPush = false; }
+  } else {
+    goDrvPage(3, document.getElementById('dnt3'));
+  }
 
   // 自分の提出書類の期限切れ・期限間近をログイン時に知らせる
   setTimeout(()=>{ checkDriverOwnDocAlerts().catch(()=>{}); }, 1500);
