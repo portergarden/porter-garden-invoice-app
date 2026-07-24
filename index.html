@@ -2626,7 +2626,7 @@ try {
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dCreateLogin" style="width:auto" onchange="document.getElementById('dLoginIdWrap').style.display=this.checked?'block':'none'">ログインアカウントも作成する（ドライバーポータル用）</label>
         <div id="dLoginIdWrap" style="display:none;margin-top:6px">
           <input type="text" id="dLoginId" placeholder="ログインID（半角英数、例: driver001）">
-          <div style="font-size:10px;color:var(--text2);margin-top:3px">初期パスワードは 1234 です。本人が初回ログイン時に変更を求められます</div>
+          <div style="font-size:10px;color:var(--text2);margin-top:3px">初期パスワードは登録後に画面へ表示されます。本人が初回ログイン時に変更を求められます</div>
         </div>
       </div>
     </div>
@@ -3133,9 +3133,13 @@ function proceedAfterLogin() {
     return;
   }
   const savedPage = getSavedHistoryPage('ppage');
-  if (savedPage !== null && document.getElementById('pg'+savedPage)) {
+  const savedTab = savedPage !== null ? document.querySelector(`.ntab[onclick="goPage(${savedPage},this)"]`) : null;
+  // 復元は「そのタブが現在の権限で表示されている」場合のみ行う。
+  // 例: 前セッションが管理者でpg5(ユーザー管理)にいた後、同じブラウザで閲覧者がログインしても
+  // 管理者専用タブの画面枠が復元されないよう、非表示タブへの復元は既定ページに倒す
+  if (savedPage !== null && document.getElementById('pg'+savedPage) && savedTab && !savedTab.classList.contains('hide')) {
     _skipHistoryPush = true;
-    try { goPage(savedPage, document.querySelector(`.ntab[onclick="goPage(${savedPage},this)"]`)); }
+    try { goPage(savedPage, savedTab); }
     finally { _skipHistoryPush = false; }
   } else {
     goPage(1, document.getElementById('nt1'));
@@ -3325,7 +3329,8 @@ function clearLogSearch(){
 }
 async function addLog(action,detail){
   if(!sb)return;
-  try{await sb.from('audit_logs').insert({ts:new Date().toLocaleString('ja-JP',{hour12:false}),who:me?me.name:'—',action,detail,role:me?.role||null});}catch(e){}
+  // 操作者名(who)・役割(role)・時刻(ts)はサーバ側RPCが auth.uid() から確定する（クライアントからの偽装を防止）
+  try{await sb.rpc('add_audit_log',{p_action:action,p_detail:detail??''});}catch(e){}
 }
 
 /* ===== HELPERS ===== */
@@ -5165,6 +5170,7 @@ async function saveDrv(){
   // 新規登録時のみ「ログインアカウントも作成する」を選べる（編集時は対象外）
   const createLogin = eDrvId===null && document.getElementById('dCreateLogin')?.checked;
   let loginId = '';
+  let createdInitialPw = null; // 自動作成したログインの初期パスワード（発行後に画面表示するため保持）
   if(createLogin){
     loginId = document.getElementById('dLoginId').value.trim();
     if(!loginId){alert('ログインIDを入力してください');return;}
@@ -5201,8 +5207,9 @@ async function saveDrv(){
       const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);invalidateDriverIndexes();addLog('ドライバー追加',name);
       if(createLogin){
         try{
-          // ログイン用のSupabase AuthアカウントをEdge Function（管理者権限）経由で作成。初期パスワードは1234固定で、初回ログイン時に本人へ変更を求める
-          const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'create',login_id:loginId,password:'1234'}});
+          // ログイン用のSupabase AuthアカウントをEdge Function（管理者権限）経由で作成。初期パスワードはランダム生成し、初回ログイン時に本人へ変更を求める
+          createdInitialPw=genInitialPassword();
+          const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'create',login_id:loginId,password:createdInitialPw}});
           if(fnErr||fnData?.error)throw new Error(fnData?.error||fnErr.message);
           const{data:uData,error:uErr}=await sb.from('users').insert({id:loginId,name,role:'driver',auth_uid:fnData.auth_uid,driver_id:data.id,must_change_password:true}).select().single();
           if(uErr)throw uErr;
@@ -5212,7 +5219,7 @@ async function saveDrv(){
       }
     }
     closeM('mDrv');renderDrv();renderInv();
-    if(createLogin && users.find(u=>u.id===loginId)){showT('ドライバーとログインを登録しました');showLoginCreatedInfo(loginId,'1234');}
+    if(createLogin && createdInitialPw && users.find(u=>u.id===loginId)){showT('ドライバーとログインを登録しました');showLoginCreatedInfo(loginId,createdInitialPw);}
     else showT('ドライバーを登録しました');
   }catch(e){showT(e.code==='23505'?`ドライバーID「${supId}」は既に使用されています`:'保存エラー: '+e.message,'ter');}
   showLoad(false);
@@ -5917,10 +5924,10 @@ function onUsrRoleChange(){
   const isDrv=document.getElementById('uRo').value==='driver';
   document.getElementById('uDrvFld').style.display=isDrv?'block':'none';
   if(isDrv)populateUsrDrvSel();
-  // 新規ドライバーアカウントは初期パスワードを1234にし、初回ログイン時の変更を促す
+  // 新規ドライバーアカウントは初期パスワードをランダム生成して欄に入れておく（管理者が確認・変更可能）。初回ログイン時の変更を促す
   const pwEl=document.getElementById('uPw');
   const isNew=eUsrId===null;
-  if(isDrv&&isNew&&!pwEl.value)pwEl.value='1234';
+  if(isDrv&&isNew&&!pwEl.value)pwEl.value=genInitialPassword();
   document.getElementById('uPwHint').style.display=(isDrv&&isNew)?'block':'none';
 }
 function populateUsrDrvSel(cur){
@@ -5984,26 +5991,40 @@ async function saveUsr(){
   showLoad(false);
 }
 
-// ドライバー管理から、そのドライバーのログインパスワードを1234にワンクリックでリセットする
+// ドライバー管理から、そのドライバーのログインパスワードをランダムな初期値にワンクリックでリセットする
 // （パスワードを忘れた等の際に、ユーザー管理タブまで行かなくても対応できるようにするショートカット）
+// リセット後は新しい初期パスワードを画面に表示し、そのまま本人へ連絡できるようにする
 async function resetDriverPassword(drvId){
   const d=drvs.find(x=>x.id===drvId);if(!d)return;
   const u=users.find(x=>x.driver_id===drvId&&x.role==='driver');
   if(!u){alert(`「${d.name}」にはログインアカウントがありません（ユーザー管理から作成してください）`);return;}
-  if(!confirm(`「${d.name}」のパスワードを初期値(1234)にリセットしますか？\n次回ログイン時に本人へ変更を求めます。`))return;
+  if(!confirm(`「${d.name}」のパスワードを新しい初期パスワードにリセットしますか？\n新しいパスワードは次の画面に表示されます。次回ログイン時に本人へ変更を求めます。`))return;
   showLoad(true);
   try{
-    const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'set_password',auth_uid:u.auth_uid,password:'1234'}});
+    const newPw=genInitialPassword();
+    const{data:fnData,error:fnErr}=await sb.functions.invoke('manage-login',{body:{action:'set_password',auth_uid:u.auth_uid,password:newPw}});
     if(fnErr||fnData?.error)throw new Error(fnData?.error||fnErr.message);
     const{data,error}=await sb.from('users').update({must_change_password:true}).eq('id',u.id).select().single();
     if(error)throw error;
     const idx=users.findIndex(x=>x.id===u.id);if(idx>=0)users[idx]=data;
     addLog('パスワードリセット',`${d.name}（ドライバー管理から）`);
-    showT(`「${d.name}」のパスワードを1234にリセットしました`);
+    showT(`「${d.name}」のパスワードをリセットしました`);
+    showLoginCreatedInfo(u.id,newPw);
   }catch(e){showT('リセットエラー: '+e.message,'ter');}
   showLoad(false);
 }
 
+// 初期パスワードを毎回ランダム生成する。ログインID＝仕入先ID（連番で推測可能）のため、
+// 固定値「1234」だと未ログインのアカウントを総当たりで乗っ取れてしまう。発行時に画面表示するので運用に支障はない。
+// 紛らわしい文字(0,O,1,l,I)を除いた英数字8桁。must_change_passwordで初回ログイン時に必ず変更される一時値。
+function genInitialPassword(){
+  const chars='23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz';
+  const arr=new Uint32Array(8);
+  if(window.crypto?.getRandomValues) crypto.getRandomValues(arr);
+  else for(let i=0;i<8;i++) arr[i]=Math.floor(Math.random()*4294967296);
+  let s=''; for(let i=0;i<8;i++) s+=chars[arr[i]%chars.length];
+  return s;
+}
 const DRIVER_INVITE_EXPIRY_DAYS = 7;
 // ランダムな招待トークンを生成する（crypto.randomUUIDが使えない古いブラウザ向けにフォールバックあり）
 function genInviteToken(){
@@ -6041,7 +6062,7 @@ function copyDriverInviteUrl(){
 
 // ログインを新規発行した直後、そのままLINE/SMS等に貼り付けて本人へ送れる文面を表示する
 // （管理者がドライバーへの連絡手段を自分で選べるよう、自動送信ではなくコピー用の画面にとどめている）
-function showLoginCreatedInfo(loginId, password='1234'){
+function showLoginCreatedInfo(loginId, password=''){
   const url = location.origin + location.pathname;
   document.getElementById('loginInfoText').value =
     `ログインURL: ${url}\nログインID: ${loginId}\n初期パスワード: ${password}\n\n初回ログイン時にパスワードの変更が必要です。`;
@@ -9610,9 +9631,10 @@ async function submitDailyReport() {
   }
 
   // drv_id: RLSで「自分の日報だけ見える」を成立させるための紐付け。
-  // 車番から解決できればそれを優先（管理者が代理入力した場合も正しいドライバーに紐づく）、
-  // できない場合（ドライバー自身の未登録車番など）は自分自身のIDにフォールバック
-  const resolvedDrvId = lkD(car)?.id ?? (me?.role === 'driver' ? me.driver_id : null);
+  // ドライバー本人の提出は、共有車両（車番の所有者が別ドライバー）でも必ず本人IDに紐づける
+  // （車番所有者に紐づけると本人が自分の日報を見られず、RLSのINSERT本人チェックにも弾かれるため）。
+  // 管理者・編集者が代理入力する場合のみ、車番から所有ドライバーを解決する。
+  const resolvedDrvId = (me?.role === 'driver') ? me.driver_id : (lkD(car)?.id ?? null);
 
   const obj = {
     date,
@@ -10832,9 +10854,11 @@ function applyDriverPortal() {
   if (stmtTabEl) stmtTabEl.style.display = hideStatement ? 'none' : '';
 
   const savedDpage = getSavedHistoryPage('dpage');
-  if (savedDpage !== null && document.getElementById('dpg'+savedDpage)) {
+  const savedDtab = savedDpage !== null ? document.querySelector(`.ntab[onclick="goDrvPage(${savedDpage},this)"]`) : null;
+  // 支払明細書を隠す設定のドライバーが該当タブ(dnt2)に復元されないよう、非表示タブは既定ページに倒す
+  if (savedDpage !== null && document.getElementById('dpg'+savedDpage) && savedDtab && savedDtab.style.display !== 'none') {
     _skipHistoryPush = true;
-    try { goDrvPage(savedDpage, document.querySelector(`.ntab[onclick="goDrvPage(${savedDpage},this)"]`)); }
+    try { goDrvPage(savedDpage, savedDtab); }
     finally { _skipHistoryPush = false; }
   } else {
     goDrvPage(3, document.getElementById('dnt3'));
@@ -16570,9 +16594,20 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 -- 閲覧はadmin/editor/viewerのみ（ドライバーを含む全員が閲覧可能だった重大な設定ミスを修正）
 DROP POLICY IF EXISTS "audit_logs_select" ON audit_logs;
 CREATE POLICY "audit_logs_select" ON audit_logs FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
--- 書き込みはドライバー自身の操作ログ記録(日報提出・チャット送信等)に必要なため全員可のまま
+-- 書き込みは add_audit_log RPC 経由に一本化（who/roleをサーバ側でauth.uid()から確定し偽装を防止）。
+-- クライアントからの直接INSERTは許可しない（INSERTポリシーを置かない）。
 DROP POLICY IF EXISTS "audit_logs_insert" ON audit_logs;
-CREATE POLICY "audit_logs_insert" ON audit_logs FOR INSERT TO authenticated WITH CHECK (true);
+CREATE OR REPLACE FUNCTION public.add_audit_log(p_action text, p_detail text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE v_who text; v_role text;
+BEGIN
+  SELECT name, role INTO v_who, v_role FROM public.users WHERE auth_uid = auth.uid() LIMIT 1;
+  INSERT INTO public.audit_logs (ts, who, action, detail, role)
+  VALUES (to_char(now() AT TIME ZONE 'Asia/Tokyo','YYYY/MM/DD HH24:MI:SS'), COALESCE(v_who,'—'), p_action, p_detail, v_role);
+END;
+$function$;
+REVOKE EXECUTE ON FUNCTION public.add_audit_log(text,text) FROM public;
+GRANT EXECUTE ON FUNCTION public.add_audit_log(text,text) TO authenticated;
 
 -- 支払明細書・請求明細書: 社内のみ閲覧・編集可
 ALTER TABLE payment_slips ENABLE ROW LEVEL SECURITY;
@@ -16600,7 +16635,8 @@ ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "daily_reports_select" ON daily_reports;
 CREATE POLICY "daily_reports_select" ON daily_reports FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 DROP POLICY IF EXISTS "daily_reports_insert" ON daily_reports;
-CREATE POLICY "daily_reports_insert" ON daily_reports FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','driver']));
+-- ドライバーが投入する日報は drv_id が本人と一致する場合のみ許可（他ドライバーを騙った日報の投入を防止）
+CREATE POLICY "daily_reports_insert" ON daily_reports FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 DROP POLICY IF EXISTS "daily_reports_update" ON daily_reports;
 CREATE POLICY "daily_reports_update" ON daily_reports FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 DROP POLICY IF EXISTS "daily_reports_delete" ON daily_reports;
