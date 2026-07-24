@@ -11119,8 +11119,8 @@ function docRowHtml(drvId, t, canDelete) {
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
       <span style="font-weight:600;font-size:13px">${t.label}</span>
       ${statusPill}
-      ${!t.noExpiry && doc?.expiry_date ? `<span style="font-size:11px;color:var(--text2)">${t.expLabel}: ${doc.expiry_date}</span>` : ''}
       ${t.hasStart && doc?.start_date ? `<span style="font-size:11px;color:var(--text2)">${t.startLabel}: ${doc.start_date}</span>` : ''}
+      ${!t.noExpiry && doc?.expiry_date ? `<span style="font-size:11px;color:var(--text2)">${t.expLabel}: ${doc.expiry_date}</span>` : ''}
       ${t.hasAttendDate && doc?.attend_date ? `<span style="font-size:11px;color:var(--text2)">${t.attendLabel}: ${doc.attend_date}</span>` : ''}
       ${t.hasNumber && doc?.doc_number ? `<span style="font-size:11px;color:var(--text2)">${t.numberLabel}: ${escHtml(doc.doc_number)}</span>` : ''}
       ${doc ? `<span style="font-size:10px;color:var(--text3)">更新: ${(doc.updated_at||'').slice(0,10)}${doc.uploaded_by?` (${doc.uploaded_by})`:''}</span>` : ''}
@@ -11136,11 +11136,11 @@ function docRowHtml(drvId, t, canDelete) {
       ${t.hasNumber ? `<div class="fld" style="margin-bottom:0"><label>${t.numberLabel}${t.numberRequired?' ※必須':'（任意）'}</label>
         <input type="text" id="dd_num_${drvId}_${t.key}" value="${escHtml(doc?.doc_number||'')}" style="width:160px">
       </div>` : ''}
-      ${!t.noExpiry ? `<div class="fld" style="margin-bottom:0"><label>${t.expLabel}</label>
-        <input type="date" id="dd_exp_${drvId}_${t.key}" value="${doc?.expiry_date||''}">
-      </div>` : ''}
       ${t.hasStart ? `<div class="fld" style="margin-bottom:0"><label>${t.startLabel}</label>
         <input type="date" id="dd_start_${drvId}_${t.key}" value="${doc?.start_date||''}">
+      </div>` : ''}
+      ${!t.noExpiry ? `<div class="fld" style="margin-bottom:0"><label>${t.expLabel}</label>
+        <input type="date" id="dd_exp_${drvId}_${t.key}" value="${doc?.expiry_date||''}">
       </div>` : ''}
       ${t.hasAttendDate ? `<div class="fld" style="margin-bottom:0"><label>${t.attendLabel}</label>
         <input type="date" id="dd_attend_${drvId}_${t.key}" value="${doc?.attend_date||''}">
