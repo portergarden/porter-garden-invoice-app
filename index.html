@@ -609,7 +609,7 @@ try {
     <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先分析</div>
     <div class="ntab" id="nt24" onclick="goPage(24,this)">🚚 ドライバー分析</div>
     <div class="ntab" id="nt28" onclick="goPage(28,this)">🗓 予定管理</div>
-    <div class="ntab" id="nt29" onclick="goPage(29,this)">📋 送付管理</div>
+    <div class="ntab" id="nt29" onclick="goPage(29,this)">✅ タスク管理</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 日別売上管理</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
@@ -1302,10 +1302,18 @@ try {
   <div id="pg29" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:13px;font-weight:500">📋 請求・明細書 送付管理</span>
+        <span style="font-size:13px;font-weight:500">✅ タスク管理</span>
         <button class="btn sml" onclick="bpPrevMonth()">◀</button>
         <input type="month" id="bpMonth" onchange="onBpMonthChange()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
         <button class="btn sml" onclick="bpNextMonth()">▶</button>
+        <select id="bpDataFilter" onchange="renderBillingProgress()" title="その月の請求実績が無い取引先を一覧に出すかどうか" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="hasdata" selected>実績ありのみ</option>
+          <option value="">実績なしも表示</option>
+        </select>
+        <select id="bpSort" onchange="renderBillingProgress()" title="取引先の並び順" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="id" selected>ID順</option>
+          <option value="name">アイウエオ順</option>
+        </select>
         <select id="bpStatusFilter" onchange="renderBillingProgress()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
           <option value="">すべて表示</option>
           <option value="open">未完了のみ</option>
@@ -9228,21 +9236,32 @@ function renderBillingProgress() {
   const statusF = document.getElementById('bpStatusFilter')?.value || '';
   const q = nm(document.getElementById('bpSearch')?.value || '');
 
-  let list = [...clients].sort((a,b) => (a.client_no||'zzz').localeCompare(b.client_no||'zzz') || a.name.localeCompare(b.name));
-  if (q) list = list.filter(c => nm(c.name).includes(q) || nm(c.short||'').includes(q));
+  // 並び順: ID順 / アイウエオ順（漢字は読みデータが無いため、ja照合による近似順）
+  const sortMode = document.getElementById('bpSort')?.value || 'id';
+  const sortFn = sortMode === 'name'
+    ? (a,b) => (a.name||'').localeCompare(b.name||'', 'ja')
+    : (a,b) => (a.client_no||'zzz').localeCompare(b.client_no||'zzz') || (a.name||'').localeCompare(b.name||'', 'ja');
+
+  // その月の請求実績が無い取引先は既定で隠す（毎月使う取引先だけに絞って見られるようにする）
+  const dataF = document.getElementById('bpDataFilter')?.value ?? 'hasdata';
+  let base = [...clients].sort(sortFn);
+  if (dataF === 'hasdata') base = base.filter(c => invMap[String(c.id)]);
+
   const effStatus = c => bpRow(c.id)?.status || 'todo';
+  let list = base;
+  if (q) list = list.filter(c => nm(c.name).includes(q) || nm(c.short||'').includes(q));
   if (statusF === 'open') list = list.filter(c => effStatus(c) === 'todo');
   else if (statusF === 'done') list = list.filter(c => effStatus(c) === 'done');
   else if (statusF === 'none') list = list.filter(c => effStatus(c) === 'none');
 
-  // 進捗は「取引なし」を母数から除いて算出する
-  const targets = clients.filter(c => effStatus(c) !== 'none');
+  // 進捗は表示中の母集団（実績ありのみ等）から「取引なし」を除いて算出する
+  const targets = base.filter(c => effStatus(c) !== 'none');
   const doneCnt = targets.filter(c => effStatus(c) === 'done').length;
   const pct = targets.length ? Math.round(doneCnt / targets.length * 1000)/10 : 0;
   const totalAmt = Object.values(invMap).reduce((a,v)=>a+v.amt, 0);
   if (sumEl) {
     sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px">
-      <span>対象 <b>${targets.length}</b>件（取引なし ${clients.length-targets.length}件）</span>
+      <span>対象 <b>${targets.length}</b>件（取引なし ${base.length-targets.length}件${dataF==='hasdata'?` ／ 実績なし ${clients.length-base.length}件を非表示`:''}）</span>
       <span>完了 <b style="color:var(--green-text)">${doneCnt}</b> / 未完了 <b style="color:var(--amber-text)">${targets.length-doneCnt}</b></span>
       <span>請求合計 <b>${yen(totalAmt)}</b></span>
       <span style="flex:1;min-width:120px;display:flex;align-items:center;gap:6px">
@@ -9253,7 +9272,12 @@ function renderBillingProgress() {
   }
 
   if (!clients.length) { area.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:14px 0">取引先が登録されていません（取引先管理から登録してください）</div>'; return; }
-  if (!list.length) { area.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:14px 0">該当する取引先がありません</div>'; return; }
+  if (!list.length) {
+    const hint = (dataF === 'hasdata' && !base.length)
+      ? 'この月に請求実績のある取引先がありません（「実績なしも表示」に切り替えると全取引先を表示できます）'
+      : '該当する取引先がありません';
+    area.innerHTML = `<div style="color:var(--text2);font-size:12px;padding:14px 0">${hint}</div>`; return;
+  }
 
   const th = 'padding:6px 8px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;white-space:nowrap;position:sticky;top:0';
   const td = 'padding:4px 6px;border:0.5px solid var(--border);font-size:11.5px';
@@ -9269,7 +9293,8 @@ function renderBillingProgress() {
       <th style="${th}">送付方式</th>
       <th style="${th}">ステータス</th>
       <th style="${th}">管理担当者</th>
-      <th style="${th}">提出日</th>
+      <th style="${th}">明細到着日</th>
+      <th style="${th}">明細提出日</th>
       <th style="${th}">Check担当者</th>
       <th style="${th};text-align:left">備考</th>
     </tr></thead>
@@ -9302,6 +9327,7 @@ function renderBillingProgress() {
           </select>
         </td>
         <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'assignee_user_id',this.value)">${staffOpts(b.assignee_user_id)}</select></td>
+        <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.arrival_date||''}" onchange="saveBpField(${c.id},'arrival_date',this.value)"></td>
         <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.submitted_date||''}" onchange="saveBpField(${c.id},'submitted_date',this.value)"></td>
         <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'check_user_id',this.value)">${staffOpts(b.check_user_id)}</select></td>
         <td style="${td}"><input type="text" style="${inp};width:100%;min-width:110px" value="${escHtml(b.note||'')}" placeholder="—" onchange="saveBpField(${c.id},'note',this.value)"></td>
@@ -9311,7 +9337,7 @@ function renderBillingProgress() {
 const renderBillingProgressDebounced = debounce(renderBillingProgress, 250);
 
 // 1セルの変更をその場で保存する（取引先×月の行が無ければ作る）。
-// 「提出日」を入れたらステータスを自動で完了にし、二重入力を省く。
+// 「明細提出日」を入れたらステータスを自動で完了にし、二重入力を省く。
 async function saveBpField(cliId, field, value) {
   if (!sb) return;
   const month = bpCurrentMonth();
@@ -9336,9 +9362,15 @@ async function saveBpField(cliId, field, value) {
 function exportBillingProgressCsv() {
   const month = bpCurrentMonth();
   const invMap = bpInvoiceSummary(month);
-  const headers = ['取引先','取引先ID','請求金額','件数','請求日','送付方式','ステータス','管理担当者','提出日','Check担当者','備考'];
-  const rows = [...clients]
-    .sort((a,b)=>(a.client_no||'zzz').localeCompare(b.client_no||'zzz') || a.name.localeCompare(b.name))
+  const headers = ['取引先','取引先ID','請求金額','件数','請求日','送付方式','ステータス','管理担当者','明細到着日','明細提出日','Check担当者','備考'];
+  // CSVは画面の並び順・絞り込み（実績ありのみ等）に合わせて出力する
+  const sortMode = document.getElementById('bpSort')?.value || 'id';
+  const sortFn = sortMode === 'name'
+    ? (a,b) => (a.name||'').localeCompare(b.name||'', 'ja')
+    : (a,b) => (a.client_no||'zzz').localeCompare(b.client_no||'zzz') || (a.name||'').localeCompare(b.name||'', 'ja');
+  const dataF = document.getElementById('bpDataFilter')?.value ?? 'hasdata';
+  const rows = [...clients].sort(sortFn)
+    .filter(c => dataF !== 'hasdata' || invMap[String(c.id)])
     .map(c => {
       const b = bpRow(c.id) || {};
       const inv = invMap[String(c.id)];
@@ -9346,7 +9378,7 @@ function exportBillingProgressCsv() {
       const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
       return [c.name, c.client_no||'', inv?inv.amt:'', inv?inv.cnt:'', inv?inv.lastDate:'',
         BP_SEND_LABEL[b.send_method||c.send_method]||'', BP_STATUS_LABEL[b.status||'todo'],
-        an, b.submitted_date||'', cn, b.note||''];
+        an, b.arrival_date||'', b.submitted_date||'', cn, b.note||''];
     });
   const csv = [headers, ...rows].map(r=>r.map(v=>{
     const s = String(v??'');
@@ -9356,7 +9388,7 @@ function exportBillingProgressCsv() {
   const blob = new Blob([bom, csv], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `請求送付管理_${month}.csv`;
+  a.download = `タスク管理_${month}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -16385,7 +16417,8 @@ CREATE TABLE IF NOT EXISTS billing_progress (
   send_method text,                         -- 'mail'=メール / 'fax'=FAX / 'post'=郵送 / 'hand'=手渡し
   assignee_user_id text REFERENCES users(id),
   check_user_id text REFERENCES users(id),
-  submitted_date date,
+  arrival_date date,      -- 明細到着日（取引先から支払明細が届いた日）
+  submitted_date date,    -- 明細提出日（入力するとステータスが自動で完了になる）
   note text,
   updated_at timestamptz DEFAULT now(),
   UNIQUE (month, cli_id)
