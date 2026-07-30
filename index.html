@@ -2700,8 +2700,15 @@ try {
     <div class="mtab-panel on" data-tab="basic">
       <div class="fld"><label>取引先ID</label><input type="text" id="cCode" placeholder="自動採番"></div>
       <div class="g2">
-        <div class="fld"><label>取引先名</label><input type="text" id="cName" placeholder="例: 〇〇運輸"></div>
+        <div class="fld"><label>取引先名</label><input type="text" id="cName" placeholder="例: 〇〇運輸" oninput="onCliNameInput()"></div>
         <div class="fld"><label>略称（任意）</label><input type="text" id="cShort" placeholder="例: 運輸"></div>
+      </div>
+      <div class="fld"><label>カナ（アイウエオ順の並び替えに使用）</label>
+        <div style="display:flex;gap:5px;align-items:center">
+          <input type="text" id="cNameKana" placeholder="取引先名から自動入力されます" style="flex:1" oninput="onCliKanaEdited()">
+          <button type="button" class="btn sml" onclick="regenCliKana()" title="取引先名から読みを再生成します">自動</button>
+        </div>
+        <div style="font-size:10px;color:var(--text2);margin-top:3px" id="cNameKanaHint">漢字の読みは推定のため、違っていればこの欄を直してください</div>
       </div>
       <div class="g2">
         <div class="fld"><label>担当者名（任意）</label><input type="text" id="cPerson"></div>
@@ -5385,8 +5392,8 @@ function renderCli(){
     }).join('');
   }
 }
-function openCliM(){switchModalTab('mCli','basic');eCliId=null;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo'].forEach(id=>document.getElementById(id).value='');document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cSendMethod').value='';document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
-function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cSendMethod').value=c.send_method||'';document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
+function openCliM(){switchModalTab('mCli','basic');eCliId=null;cliKanaEdited=false;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo','cNameKana'].forEach(id=>document.getElementById(id).value='');updateCliKanaHint();document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cSendMethod').value='';document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
+function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cNameKana').value=c.name_kana||autoKana(c.name);cliKanaEdited=!!c.name_kana;updateCliKanaHint();document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cSendMethod').value=c.send_method||'';document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
 async function delCli(id){
   if(!confirm('削除しますか？'))return;
   try{
@@ -5396,12 +5403,39 @@ async function delCli(id){
     addLog('取引先削除',`id:${id}`);rebuildCliFilter();renderCli();renderInv();showT('削除しました');
   }catch(e){showT('削除エラー: '+e.message,'ter');}
 }
+// カナ欄は「未編集なら取引先名に追従、手で直したらそれを尊重する」挙動にする
+let cliKanaEdited = false;
+function onCliNameInput(){
+  if (cliKanaEdited) return;
+  const kanaEl = document.getElementById('cNameKana');
+  if (kanaEl) kanaEl.value = autoKana(document.getElementById('cName').value);
+  updateCliKanaHint();
+}
+function onCliKanaEdited(){ cliKanaEdited = true; updateCliKanaHint(); }
+function regenCliKana(){
+  const kanaEl = document.getElementById('cNameKana');
+  if (kanaEl) kanaEl.value = autoKana(document.getElementById('cName').value);
+  cliKanaEdited = false;
+  updateCliKanaHint();
+}
+function updateCliKanaHint(){
+  const hint = document.getElementById('cNameKanaHint');
+  if (!hint) return;
+  const v = document.getElementById('cNameKana')?.value || '';
+  if (kanaNeedsFix(v)) {
+    hint.textContent = '⚠ 読みを判定できない漢字が残っています。正しい読みに直してください';
+    hint.style.color = 'var(--amber-text)';
+  } else {
+    hint.textContent = '漢字の読みは推定のため、違っていればこの欄を直してください';
+    hint.style.color = 'var(--text2)';
+  }
+}
 async function saveCli(){
   const name=document.getElementById('cName').value.trim();if(!name){alert('取引先名は必須です');return;}
   const codeVal=document.getElementById('cCode').value.trim();
   if(codeVal){const dup=clients.find(c=>c.client_no===codeVal&&c.id!==eCliId);if(dup){alert(`取引先ID「${codeVal}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
   const feeRateVal=document.getElementById('cFeeRate').value;
-  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:parseDayInput(document.getElementById('cClosingDay').value),fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),send_method:document.getElementById('cSendMethod').value||null,pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:parseDayInput(document.getElementById('cPayDay').value),invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
+  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:parseDayInput(document.getElementById('cClosingDay').value),fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),send_method:document.getElementById('cSendMethod').value||null,name_kana:document.getElementById('cNameKana').value.trim()||null,pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:parseDayInput(document.getElementById('cPayDay').value),invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
   showLoad(true);
   try{
     let data,error,msg='取引先を保存しました';
@@ -9165,6 +9199,84 @@ async function deleteTask() {
    取引先マスタを毎月の行として自動で並べ、請求金額・請求日はシステムの請求データから自動反映する。
    毎月手で入れるのは「提出日」「Check担当者」など進行状況だけで済むようにしている。
    送付方式は取引先マスタ(clients.send_method)を既定値として引き継ぐ（月ごとに上書きも可能）。 */
+/* ===== 取引先名の読み（カナ）自動生成 =====
+   アイウエオ順の並び替え用。ひらがな→カタカナ変換と、社名によく出る語の辞書引きで組み立てる。
+   人名・地名など辞書に無い漢字はそのまま残るため（読みを機械的に判定できない）、
+   正しく並ばない取引先は取引先管理の「カナ」欄で手直しできるようにしている。 */
+const KANA_CORP_RE = /(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|社会福祉法人|医療法人|\(株\)|（株）|\(有\)|（有）|㈱|㈲)/g;
+// 社名に頻出する語。長い語から先に置換するため、登録順ではなく文字数順に並べ替えて使う
+const KANA_DICT = {
+  // 業種・組織
+  '郵便局':'ユウビンキョク','営業所':'エイギョウショ','損害保険':'ソンガイホケン','郵便':'ユウビン','保険':'ホケン',
+  '運輸':'ウンユ','運送':'ウンソウ','急送':'キュウソウ','急便':'キュウビン','通運':'ツウウン','物流':'ブツリュウ',
+  '配送':'ハイソウ','輸送':'ユソウ','陸運':'リクウン','海運':'カイウン','航空':'コウクウ','交通':'コウツウ',
+  '倉庫':'ソウコ','梱包':'コンポウ','包装':'ホウソウ','建設':'ケンセツ','工業':'コウギョウ','産業':'サンギョウ',
+  '鉄工':'テッコウ','工場':'コウジョウ','商店':'ショウテン','商事':'ショウジ','商会':'ショウカイ','食品':'ショクヒン',
+  '電機':'デンキ','電気':'デンキ','機械':'キカイ','製作所':'セイサクショ','製造':'セイゾウ','販売':'ハンバイ',
+  '支店':'シテン','支社':'シシャ','本社':'ホンシャ','主管':'シュカン',
+  // 地名（東北中心＋主要都市）
+  '北海道':'ホッカイドウ','青森':'アオモリ','岩手':'イワテ','宮城':'ミヤギ','秋田':'アキタ','山形':'ヤマガタ',
+  '福島':'フクシマ','仙台':'センダイ','盛岡':'モリオカ','釜石':'カマイシ','北上':'キタカミ','八戸':'ハチノヘ',
+  '東京':'トウキョウ','大阪':'オオサカ','名古屋':'ナゴヤ','横浜':'ヨコハマ','川崎':'カワサキ','京都':'キョウト',
+  '神戸':'コウベ','広島':'ヒロシマ','福岡':'フクオカ','新潟':'ニイガタ','千葉':'チバ','埼玉':'サイタマ',
+  '神奈川':'カナガワ','栃木':'トチギ','群馬':'グンマ','群馬県':'グンマケン','茨城':'イバラキ','静岡':'シズオカ',
+  '三多摩':'サンタマ','八潮':'ヤシオ','関東':'カントウ','東北':'トウホク','関西':'カンサイ','九州':'キュウシュウ',
+  '日本':'ニホン','中央':'チュウオウ','中部':'チュウブ','西店':'ニシテン','東店':'ヒガシテン',
+  // 序数・その他
+  '第一':'ダイイチ','第二':'ダイニ','第三':'ダイサン','大町':'オオマチ','泉':'イズミ',
+  '店':'テン','県':'ケン',
+  // 業種・組織（追加分）
+  '軽貨物':'ケイカモツ','貨物':'カモツ','自動車':'ジドウシャ','整備':'セイビ','鋼材':'コウザイ',
+  '郵政':'ユウセイ','火災':'カサイ','海上':'カイジョウ','引越':'ヒッコシ','印刷所':'インサツショ','印刷':'インサツ',
+  '鉄道':'テツドウ','眼科':'ガンカ','医院':'イイン','製作':'セイサク','創造':'ソウゾウ','最適':'サイテキ','急配':'キュウハイ',
+  // 方角つきの拠点名（単漢字の誤変換を避けるため、複合語としてのみ登録する）
+  '南営業所':'ミナミエイギョウショ','東営業所':'ヒガシエイギョウショ','北営業所':'キタエイギョウショ','西営業所':'ニシエイギョウショ',
+  '南支店':'ミナミシテン','東支店':'ヒガシシテン','北支店':'キタシテン','西支店':'ニシシテン',
+  '南店':'ミナミテン','東店':'ヒガシテン','北店':'キタテン',
+  // 地名（追加分）
+  '白石':'シライシ','古川':'フルカワ','相馬':'ソウマ','国見':'クニミ','岩沼':'イワヌマ','郡山':'コオリヤマ',
+  '京橋':'キョウバシ','安城':'アンジョウ','長野':'ナガノ','愛知':'アイチ','仙南':'センナン','新仙台':'シンセンダイ',
+  // 有名企業名・実データに出てくる社名（複合語として先に当てる）
+  '佐川急便':'サガワキュウビン','福山通運':'フクヤマツウウン','第一貨物':'ダイイチカモツ','日本郵政':'ニホンユウセイ',
+  '出光':'イデミツ','東亜':'トウア','中越':'チュウエツ','出前館':'デマエカン',
+  '南東北':'ミナミトウホク','新宮城':'シンミヤギ','日本海':'ニホンカイ',
+  '小田島':'オダジマ','中田':'ナカタ','落合':'オチアイ','同和':'ドウワ',
+  '佐々木':'ササキ','徳永':'トクナガ','黒木':'クロキ','左近':'サコン','早川':'ハヤカワ','藤井':'フジイ','武田':'タケダ',
+  // ※ 読みが複数ある名字（大和=ダイワ/ヤマト、小山=コヤマ/オヤマ 等）は誤変換を避けるため登録しない。
+  //    未変換のまま「要修正」として表示され、カナ欄で正しい読みを入れられる。
+  // ※ 単漢字（大・小・北・西など）は名字や地名の中で誤変換を起こすため辞書に入れない。
+  //    読みを取り違えるより、未変換のまま「要修正」として気づける方が安全なため。
+};
+const KANA_DICT_KEYS = Object.keys(KANA_DICT).filter(k=>KANA_DICT[k]).sort((a,b)=>b.length-a.length);
+function autoKana(name) {
+  if (!name) return '';
+  let s = String(name)
+    .replace(/[　\s]+/g, '')            // 全角・半角スペースを除去
+    .replace(KANA_CORP_RE, '')              // 株式会社などの法人格は並び順に影響させない
+    .replace(/[（(].*?[)）]/g, '');          // （山形県）等の補足を除去
+  // ひらがな → カタカナ
+  s = s.replace(/[ぁ-ゖ]/g, ch => String.fromCharCode(ch.charCodeAt(0) + 0x60));
+  // 全角英数 → 半角
+  s = s.replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+  // 辞書引き（長い語を優先）
+  KANA_DICT_KEYS.forEach(k => { if (s.includes(k)) s = s.split(k).join(KANA_DICT[k]); });
+  return s.toUpperCase();
+}
+// 読みが未確定（漢字が残っている）かどうか。手直しが必要な取引先の目印に使う
+const kanaNeedsFix = k => /[一-鿿]/.test(k || '');
+// 並び替えキー: 手入力のカナ → 自動生成カナ の順で採用する
+const clientKanaKey = c => (c.name_kana && c.name_kana.trim()) ? autoKana(c.name_kana) : autoKana(c.name);
+// 取引先IDは「1, 10, 100, 11」のようにゼロ埋めされていないため、数値として比較する
+// （文字列比較だと 1→10→100→11 の順になり、取引先管理の並びと食い違う）
+function clientNoCompare(a, b) {
+  const na = /^\d+$/.test(a.client_no||'') ? parseInt(a.client_no,10) : null;
+  const nb = /^\d+$/.test(b.client_no||'') ? parseInt(b.client_no,10) : null;
+  if (na !== null && nb !== null) return na - nb;
+  if (na !== null) return -1;   // 数値IDを先に、英字混在・未設定を後ろに
+  if (nb !== null) return 1;
+  return (a.client_no||'zzz').localeCompare(b.client_no||'zzz', 'ja');
+}
+
 const BP_SEND_LABEL = {mail:'メール', fax:'FAX', post:'郵送', hand:'手渡し'};
 const BP_STATUS_LABEL = {todo:'未着手', done:'完了', none:'取引なし'};
 const BP_STATUS_COLOR = {todo:['--gray-bg','--gray-text'], done:['--green-bg','--green-text'], none:['--gray-bg','--text2']};
@@ -9236,11 +9348,11 @@ function renderBillingProgress() {
   const statusF = document.getElementById('bpStatusFilter')?.value || '';
   const q = nm(document.getElementById('bpSearch')?.value || '');
 
-  // 並び順: ID順 / アイウエオ順（漢字は読みデータが無いため、ja照合による近似順）
+  // 並び順: ID順（数値として比較）/ アイウエオ順（カナ欄→自動生成カナ）
   const sortMode = document.getElementById('bpSort')?.value || 'id';
   const sortFn = sortMode === 'name'
-    ? (a,b) => (a.name||'').localeCompare(b.name||'', 'ja')
-    : (a,b) => (a.client_no||'zzz').localeCompare(b.client_no||'zzz') || (a.name||'').localeCompare(b.name||'', 'ja');
+    ? (a,b) => clientKanaKey(a).localeCompare(clientKanaKey(b), 'ja') || clientNoCompare(a,b)
+    : clientNoCompare;
 
   // その月の請求実績が無い取引先は既定で隠す（毎月使う取引先だけに絞って見られるようにする）
   const dataF = document.getElementById('bpDataFilter')?.value ?? 'hasdata';
@@ -9311,6 +9423,11 @@ function renderBillingProgress() {
           <span style="font-weight:600">${escHtml(c.name)}</span>
           ${c.client_no?`<span style="font-size:9.5px;color:var(--text2)"> ID:${escHtml(c.client_no)}</span>`:''}
           ${inv?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:4px">${inv.cnt}件</span>`:'<span style="font-size:9.5px;color:var(--text2);margin-left:4px">実績なし</span>'}
+          ${sortMode==='name'?(()=>{
+            const k = clientKanaKey(c);
+            const bad = kanaNeedsFix(k);
+            return `<div style="font-size:9.5px;color:var(${bad?'--amber-text':'--text2'})" title="${bad?'読みを判定できない漢字があります。取引先管理のカナ欄で修正できます':'並び替えに使っている読み'}">${bad?'⚠ ':''}${escHtml(k)}${c.name_kana?'':'（自動）'}</div>`;
+          })():''}
         </td>
         <td style="${td};text-align:right;white-space:nowrap">${inv?yen(inv.amt):'—'}</td>
         <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${inv?inv.lastDate:'—'}</td>
@@ -9366,8 +9483,8 @@ function exportBillingProgressCsv() {
   // CSVは画面の並び順・絞り込み（実績ありのみ等）に合わせて出力する
   const sortMode = document.getElementById('bpSort')?.value || 'id';
   const sortFn = sortMode === 'name'
-    ? (a,b) => (a.name||'').localeCompare(b.name||'', 'ja')
-    : (a,b) => (a.client_no||'zzz').localeCompare(b.client_no||'zzz') || (a.name||'').localeCompare(b.name||'', 'ja');
+    ? (a,b) => clientKanaKey(a).localeCompare(clientKanaKey(b), 'ja') || clientNoCompare(a,b)
+    : clientNoCompare;
   const dataF = document.getElementById('bpDataFilter')?.value ?? 'hasdata';
   const rows = [...clients].sort(sortFn)
     .filter(c => dataF !== 'hasdata' || invMap[String(c.id)])
@@ -16263,7 +16380,8 @@ CREATE TABLE IF NOT EXISTS clients (
   zip text, address text,
   pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end',
   invoice_no text, client_no text UNIQUE,
-  send_method text  -- 請求書の既定の送付方式（送付管理タブで毎月の既定値として使う）
+  send_method text, -- 請求書の既定の送付方式（タスク管理タブで毎月の既定値として使う）
+  name_kana text    -- 取引先名の読み（アイウエオ順の並び替え用）。未入力なら名称から自動生成した読みを使う
 );
 
 -- 協力会社（ドライバーを供給している会社・仕事をくれる会社・車両リース会社のマスタ）
