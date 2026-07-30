@@ -609,8 +609,8 @@ try {
     <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先分析</div>
     <div class="ntab" id="nt24" onclick="goPage(24,this)">🚚 ドライバー分析</div>
     <div class="ntab" id="nt28" onclick="goPage(28,this)">🗓 予定管理</div>
-    <div class="ntab" id="nt29" onclick="goPage(29,this)">✅ タスク管理</div>
-    <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 カレンダー</div>
+    <div class="ntab" id="nt29" onclick="goPage(29,this)">📋 送付管理</div>
+    <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 日別売上管理</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
     <div class="ntab" id="nt10" onclick="goPage(10,this)">📱 日報管理</div>
@@ -1301,21 +1301,23 @@ try {
   <!-- ===== pg29: タスク管理 ===== -->
   <div id="pg29" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:13px;font-weight:500">✅ タスク管理</span>
-        <select id="taskStatusFilter" onchange="renderTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
-          <option value="">すべて</option>
-          <option value="todo">未着手</option>
-          <option value="doing">進行中</option>
-          <option value="done">完了</option>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:500">📋 請求・明細書 送付管理</span>
+        <button class="btn sml" onclick="bpPrevMonth()">◀</button>
+        <input type="month" id="bpMonth" onchange="onBpMonthChange()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        <button class="btn sml" onclick="bpNextMonth()">▶</button>
+        <select id="bpStatusFilter" onchange="renderBillingProgress()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">すべて表示</option>
+          <option value="open">未完了のみ</option>
+          <option value="done">完了のみ</option>
+          <option value="none">取引なしのみ</option>
         </select>
-        <select id="taskAssigneeFilter" onchange="renderTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
-          <option value="">全担当者</option>
-        </select>
+        <input type="text" id="bpSearch" placeholder="🔍 取引先名で検索…" oninput="renderBillingProgressDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:170px">
       </div>
-      <button class="btn sml grn" onclick="openTaskM()">＋ タスク追加</button>
+      <button class="btn sml" onclick="exportBillingProgressCsv()">↓ CSV</button>
     </div>
-    <div id="taskListArea" style="padding:10px 14px"></div>
+    <div id="bpSummary" style="padding:8px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2)"></div>
+    <div style="padding:0 14px 14px;overflow-x:auto" id="bpArea"></div>
   </div>
   <div id="pg2" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px;">
@@ -2708,6 +2710,15 @@ try {
           <input type="text" id="cClosingDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
         </div>
         <div class="fld"><label>手数料率（%・任意）</label><input type="number" id="cFeeRate" placeholder="例: 3" step="0.1" title="請求金額に上乗せする手数料の割合"></div>
+        <div class="fld"><label>請求書の送付方式（任意）</label>
+          <select id="cSendMethod" style="width:100%" title="送付管理タブで毎月の既定値として使われます">
+            <option value="">未設定</option>
+            <option value="mail">メール</option>
+            <option value="fax">FAX</option>
+            <option value="post">郵送</option>
+            <option value="hand">手渡し</option>
+          </select>
+        </div>
       </div>
       <div style="border-top:0.5px solid var(--border2);margin:10px 0 10px;padding-top:10px">
         <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">入金予定日・インボイス番号</div>
@@ -4520,7 +4531,7 @@ function goPage(n,el){
   if(n===6){initAggPay();runAggPay();renderPayMets();}
   if(n===8){initCal();renderCal();}
   if(n===28){initStaffSched();loadStaffSchedules().then(()=>renderStaffSchedCal());}
-  if(n===29){initTasks();loadTasks().then(()=>renderTasks());}
+  if(n===29){initBillingProgress();loadBillingProgress().then(()=>renderBillingProgress());}
   if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
   if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
   if(n===10){_setDailyListMonth();initMob();}
@@ -5366,8 +5377,8 @@ function renderCli(){
     }).join('');
   }
 }
-function openCliM(){switchModalTab('mCli','basic');eCliId=null;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo'].forEach(id=>document.getElementById(id).value='');document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
-function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
+function openCliM(){switchModalTab('mCli','basic');eCliId=null;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo'].forEach(id=>document.getElementById(id).value='');document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cSendMethod').value='';document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
+function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cSendMethod').value=c.send_method||'';document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
 async function delCli(id){
   if(!confirm('削除しますか？'))return;
   try{
@@ -5382,7 +5393,7 @@ async function saveCli(){
   const codeVal=document.getElementById('cCode').value.trim();
   if(codeVal){const dup=clients.find(c=>c.client_no===codeVal&&c.id!==eCliId);if(dup){alert(`取引先ID「${codeVal}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
   const feeRateVal=document.getElementById('cFeeRate').value;
-  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:parseDayInput(document.getElementById('cClosingDay').value),fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:parseDayInput(document.getElementById('cPayDay').value),invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
+  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:parseDayInput(document.getElementById('cClosingDay').value),fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),send_method:document.getElementById('cSendMethod').value||null,pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:parseDayInput(document.getElementById('cPayDay').value),invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
   showLoad(true);
   try{
     let data,error,msg='取引先を保存しました';
@@ -9140,6 +9151,214 @@ async function deleteTask() {
     showT('タスクを削除しました');
   } catch(e) { showT('エラー: '+e.message,'ter'); }
   showLoad(false);
+}
+
+/* ===== 請求・明細書 送付管理（旧タスク管理タブ） =====
+   取引先マスタを毎月の行として自動で並べ、請求金額・請求日はシステムの請求データから自動反映する。
+   毎月手で入れるのは「提出日」「Check担当者」など進行状況だけで済むようにしている。
+   送付方式は取引先マスタ(clients.send_method)を既定値として引き継ぐ（月ごとに上書きも可能）。 */
+const BP_SEND_LABEL = {mail:'メール', fax:'FAX', post:'郵送', hand:'手渡し'};
+const BP_STATUS_LABEL = {todo:'未着手', done:'完了', none:'取引なし'};
+const BP_STATUS_COLOR = {todo:['--gray-bg','--gray-text'], done:['--green-bg','--green-text'], none:['--gray-bg','--text2']};
+let billingProgress = [];   // 表示中の月のbilling_progress行
+let bpLoadedMonth = null;
+
+function bpCurrentMonth() {
+  const el = document.getElementById('bpMonth');
+  if (el?.value) return el.value;
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+}
+function bpShiftMonth(delta) {
+  const [y,m] = bpCurrentMonth().split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  const v = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const el = document.getElementById('bpMonth');
+  if (el) el.value = v;
+  return v;
+}
+function bpPrevMonth(){ bpShiftMonth(-1); onBpMonthChange(); }
+function bpNextMonth(){ bpShiftMonth(1); onBpMonthChange(); }
+function onBpMonthChange(){ loadBillingProgress().then(()=>renderBillingProgress()); }
+
+async function initBillingProgress() {
+  const el = document.getElementById('bpMonth');
+  if (el && !el.value) {
+    // 請求業務は前月分を当月に処理することが多いため、既定は前月にしておく
+    const n = new Date();
+    const d = new Date(n.getFullYear(), n.getMonth()-1, 1);
+    el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+}
+async function loadBillingProgress() {
+  if (!sb) return;
+  const month = bpCurrentMonth();
+  try {
+    const {data, error} = await sb.from('billing_progress').select('*').eq('month', month);
+    if (error) {
+      if (error.message.includes('does not exist')||error.message.includes('relation')) { billingProgress=[]; return; }
+      throw error;
+    }
+    billingProgress = data || [];
+    bpLoadedMonth = month;
+  } catch(e) { console.warn('loadBillingProgress:', e.message); billingProgress = []; }
+}
+
+// その月の請求データ（invoices）を取引先ごとに集計。cli_id → {amt, cnt, lastDate}
+function bpInvoiceSummary(month) {
+  const map = {};
+  recs.forEach(r => {
+    if (!r.date || !r.date.startsWith(month) || r.cli == null) return;
+    const k = String(r.cli);
+    if (!map[k]) map[k] = {amt:0, cnt:0, lastDate:''};
+    map[k].amt += totR(r, taxMode);
+    map[k].cnt++;
+    if (r.date > map[k].lastDate) map[k].lastDate = r.date;
+  });
+  return map;
+}
+const bpRow = cliId => billingProgress.find(b => String(b.cli_id) === String(cliId));
+
+function renderBillingProgress() {
+  const area = document.getElementById('bpArea');
+  const sumEl = document.getElementById('bpSummary');
+  if (!area) return;
+  const month = bpCurrentMonth();
+  const invMap = bpInvoiceSummary(month);
+  const statusF = document.getElementById('bpStatusFilter')?.value || '';
+  const q = nm(document.getElementById('bpSearch')?.value || '');
+
+  let list = [...clients].sort((a,b) => (a.client_no||'zzz').localeCompare(b.client_no||'zzz') || a.name.localeCompare(b.name));
+  if (q) list = list.filter(c => nm(c.name).includes(q) || nm(c.short||'').includes(q));
+  const effStatus = c => bpRow(c.id)?.status || 'todo';
+  if (statusF === 'open') list = list.filter(c => effStatus(c) === 'todo');
+  else if (statusF === 'done') list = list.filter(c => effStatus(c) === 'done');
+  else if (statusF === 'none') list = list.filter(c => effStatus(c) === 'none');
+
+  // 進捗は「取引なし」を母数から除いて算出する
+  const targets = clients.filter(c => effStatus(c) !== 'none');
+  const doneCnt = targets.filter(c => effStatus(c) === 'done').length;
+  const pct = targets.length ? Math.round(doneCnt / targets.length * 1000)/10 : 0;
+  const totalAmt = Object.values(invMap).reduce((a,v)=>a+v.amt, 0);
+  if (sumEl) {
+    sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px">
+      <span>対象 <b>${targets.length}</b>件（取引なし ${clients.length-targets.length}件）</span>
+      <span>完了 <b style="color:var(--green-text)">${doneCnt}</b> / 未完了 <b style="color:var(--amber-text)">${targets.length-doneCnt}</b></span>
+      <span>請求合計 <b>${yen(totalAmt)}</b></span>
+      <span style="flex:1;min-width:120px;display:flex;align-items:center;gap:6px">
+        <span style="flex:1;height:7px;background:var(--border);border-radius:99px;overflow:hidden;display:inline-block">
+          <span style="display:block;height:100%;width:${pct}%;background:var(--green)"></span>
+        </span><b>${pct}%</b>
+      </span></div>`;
+  }
+
+  if (!clients.length) { area.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:14px 0">取引先が登録されていません（取引先管理から登録してください）</div>'; return; }
+  if (!list.length) { area.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:14px 0">該当する取引先がありません</div>'; return; }
+
+  const th = 'padding:6px 8px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;white-space:nowrap;position:sticky;top:0';
+  const td = 'padding:4px 6px;border:0.5px solid var(--border);font-size:11.5px';
+  const inp = 'padding:3px 5px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)';
+  const staff = staffMembers();
+  const staffOpts = (sel) => '<option value="">未入力</option>' + staff.map(u=>`<option value="${escHtml(u.id)}" ${String(u.id)===String(sel||'')?'selected':''}>${escHtml(u.name)}</option>`).join('');
+
+  area.innerHTML = `<table style="width:100%;border-collapse:collapse;min-width:1000px">
+    <thead><tr>
+      <th style="${th};text-align:left">取引先</th>
+      <th style="${th};text-align:right">請求金額<div style="font-weight:400;color:var(--text2)">自動</div></th>
+      <th style="${th}">請求日<div style="font-weight:400;color:var(--text2)">自動</div></th>
+      <th style="${th}">送付方式</th>
+      <th style="${th}">ステータス</th>
+      <th style="${th}">管理担当者</th>
+      <th style="${th}">提出日</th>
+      <th style="${th}">Check担当者</th>
+      <th style="${th};text-align:left">備考</th>
+    </tr></thead>
+    <tbody>${list.map(c => {
+      const b = bpRow(c.id) || {};
+      const inv = invMap[String(c.id)];
+      const st = b.status || 'todo';
+      const sc = BP_STATUS_COLOR[st] || BP_STATUS_COLOR.todo;
+      // 送付方式は月次の指定 → 取引先マスタの既定値 の順で採用する
+      const sm = b.send_method || c.send_method || '';
+      const noDeal = st === 'none';
+      return `<tr style="${noDeal?'opacity:.55':''}">
+        <td style="${td};text-align:left;white-space:nowrap">
+          <span style="font-weight:600">${escHtml(c.name)}</span>
+          ${c.client_no?`<span style="font-size:9.5px;color:var(--text2)"> ID:${escHtml(c.client_no)}</span>`:''}
+          ${inv?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:4px">${inv.cnt}件</span>`:'<span style="font-size:9.5px;color:var(--text2);margin-left:4px">実績なし</span>'}
+        </td>
+        <td style="${td};text-align:right;white-space:nowrap">${inv?yen(inv.amt):'—'}</td>
+        <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${inv?inv.lastDate:'—'}</td>
+        <td style="${td};text-align:center">
+          <select style="${inp}" onchange="saveBpField(${c.id},'send_method',this.value)">
+            <option value="">未設定</option>
+            ${Object.entries(BP_SEND_LABEL).map(([k,v])=>`<option value="${k}" ${sm===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+          ${!b.send_method && c.send_method?'<div style="font-size:9px;color:var(--text2)">マスタ既定</div>':''}
+        </td>
+        <td style="${td};text-align:center">
+          <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveBpField(${c.id},'status',this.value)">
+            ${Object.entries(BP_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${st===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </td>
+        <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'assignee_user_id',this.value)">${staffOpts(b.assignee_user_id)}</select></td>
+        <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.submitted_date||''}" onchange="saveBpField(${c.id},'submitted_date',this.value)"></td>
+        <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'check_user_id',this.value)">${staffOpts(b.check_user_id)}</select></td>
+        <td style="${td}"><input type="text" style="${inp};width:100%;min-width:110px" value="${escHtml(b.note||'')}" placeholder="—" onchange="saveBpField(${c.id},'note',this.value)"></td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+const renderBillingProgressDebounced = debounce(renderBillingProgress, 250);
+
+// 1セルの変更をその場で保存する（取引先×月の行が無ければ作る）。
+// 「提出日」を入れたらステータスを自動で完了にし、二重入力を省く。
+async function saveBpField(cliId, field, value) {
+  if (!sb) return;
+  const month = bpCurrentMonth();
+  const patch = { [field]: value === '' ? null : value };
+  if (field === 'submitted_date' && value) {
+    const cur = bpRow(cliId);
+    if ((cur?.status || 'todo') === 'todo') patch.status = 'done';
+  }
+  try {
+    const {data, error} = await sb.from('billing_progress')
+      .upsert({ month, cli_id: cliId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'month,cli_id' })
+      .select().single();
+    if (error) throw error;
+    const idx = billingProgress.findIndex(b => String(b.cli_id) === String(cliId));
+    if (idx >= 0) billingProgress[idx] = data; else billingProgress.push(data);
+    renderBillingProgress();
+    const cli = clients.find(c=>c.id===cliId);
+    addLog('送付管理更新', `${month} ${cli?cli.name:`cli:${cliId}`} ${field}=${value||'（クリア）'}`);
+  } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
+}
+
+function exportBillingProgressCsv() {
+  const month = bpCurrentMonth();
+  const invMap = bpInvoiceSummary(month);
+  const headers = ['取引先','取引先ID','請求金額','件数','請求日','送付方式','ステータス','管理担当者','提出日','Check担当者','備考'];
+  const rows = [...clients]
+    .sort((a,b)=>(a.client_no||'zzz').localeCompare(b.client_no||'zzz') || a.name.localeCompare(b.name))
+    .map(c => {
+      const b = bpRow(c.id) || {};
+      const inv = invMap[String(c.id)];
+      const an = users.find(u=>String(u.id)===String(b.assignee_user_id))?.name || '';
+      const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
+      return [c.name, c.client_no||'', inv?inv.amt:'', inv?inv.cnt:'', inv?inv.lastDate:'',
+        BP_SEND_LABEL[b.send_method||c.send_method]||'', BP_STATUS_LABEL[b.status||'todo'],
+        an, b.submitted_date||'', cn, b.note||''];
+    });
+  const csv = [headers, ...rows].map(r=>r.map(v=>{
+    const s = String(v??'');
+    return (s.includes('"')||s.includes(',')||s.includes('\n')) ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',')).join('\r\n');
+  const bom = new Uint8Array([0xEF,0xBB,0xBF]);
+  const blob = new Blob([bom, csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `請求送付管理_${month}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 /* ===== ④ 支払スケジュール ===== */
@@ -16011,7 +16230,8 @@ CREATE TABLE IF NOT EXISTS clients (
   closing_day text DEFAULT 'end', fee_rate numeric DEFAULT 0,
   zip text, address text,
   pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end',
-  invoice_no text, client_no text UNIQUE
+  invoice_no text, client_no text UNIQUE,
+  send_method text  -- 請求書の既定の送付方式（送付管理タブで毎月の既定値として使う）
 );
 
 -- 協力会社（ドライバーを供給している会社・仕事をくれる会社・車両リース会社のマスタ）
@@ -16153,6 +16373,29 @@ CREATE POLICY "tasks_select" ON tasks FOR SELECT TO authenticated USING ("curren
 CREATE POLICY "tasks_insert" ON tasks FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 CREATE POLICY "tasks_update" ON tasks FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 CREATE POLICY "tasks_delete" ON tasks FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+
+-- 請求書・支払明細書の月次送付進行管理（送付管理タブ。取引先×対象月で1行）
+-- 取引先マスタを毎月の行として自動で並べ、請求金額・請求日は invoices から自動集計するため、
+-- ここに保存するのは進行状況（送付方式の上書き・ステータス・担当者・提出日・備考）だけ
+CREATE TABLE IF NOT EXISTS billing_progress (
+  id bigserial PRIMARY KEY,
+  month text NOT NULL,                      -- 対象月 'YYYY-MM'
+  cli_id bigint NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'todo',      -- 'todo'=未着手 / 'done'=完了 / 'none'=取引なし
+  send_method text,                         -- 'mail'=メール / 'fax'=FAX / 'post'=郵送 / 'hand'=手渡し
+  assignee_user_id text REFERENCES users(id),
+  check_user_id text REFERENCES users(id),
+  submitted_date date,
+  note text,
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE (month, cli_id)
+);
+CREATE INDEX IF NOT EXISTS billing_progress_month_idx ON billing_progress(month);
+ALTER TABLE billing_progress ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "billing_progress_select" ON billing_progress FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "billing_progress_insert" ON billing_progress FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "billing_progress_update" ON billing_progress FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "billing_progress_delete" ON billing_progress FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
 -- 請求書・受注データ
 CREATE TABLE IF NOT EXISTS invoices (
