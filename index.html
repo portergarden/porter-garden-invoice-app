@@ -3372,30 +3372,60 @@ const nm=s=>(s||'').replace(/\s/g,'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>Stri
 // 車番→ドライバー・ID→ドライバーの索引（drvsが変わるたびinvalidateDriverIndexes()でnullに戻し、
 // 次回lkD/recDrv呼び出し時に再構築する）。件数が多いページ（明細一覧・ドライバー一覧等）で
 // 行ごとにdrvs.find()の線形探索を繰り返す(O(件数×ドライバー数))のを避け、体感速度を上げるため
-let _carDriverIndex = null, _idDriverIndex = null;
-function invalidateDriverIndexes() { _carDriverIndex = null; _idDriverIndex = null; }
+let _carDriverIndex = null, _idDriverIndex = null, _tailDrvIndex = null, _tailCarIndex = null;
+function invalidateDriverIndexes() { _carDriverIndex = null; _idDriverIndex = null; _tailDrvIndex = null; _tailCarIndex = null; }
+// フル表記車番（例: 仙台480あ2224）の末尾の一連指定番号（1〜4桁）を取り出す。
+// コムトラック等から取り込む実績は略式番号（2224）だけのことがあるため、突き合わせに使う
+const carTailNumber = car => { const m = nm(car).match(/(\d{1,4})$/); return m ? m[1] : null; };
 // 解約済みドライバーを除いた一覧。今後の選択・新規登録が不要な画面（月報・カレンダー・各種プルダウン等）で使う
 function activeDrvs() { return drvs.filter(d => d.status !== 'terminated'); }
 function driverIndexes() {
   if (!_carDriverIndex) {
     _carDriverIndex = new Map();
     _idDriverIndex = new Map();
+    _tailDrvIndex = new Map();  // 末尾番号 → ドライバー（複数の車・人で重複する場合はnull＝特定不能）
+    _tailCarIndex = new Map();  // 末尾番号 → フル表記車番（同上）
     drvs.forEach(d => {
       _idDriverIndex.set(d.id, d);
-      (d.cars||[]).forEach(c => { const n = nm(c); if (!_carDriverIndex.has(n)) _carDriverIndex.set(n, d); });
+      (d.cars||[]).forEach(c => {
+        const n = nm(c);
+        if (!_carDriverIndex.has(n)) _carDriverIndex.set(n, d);
+        // フル表記だけを登録している車を、略式番号の実績から引けるようにする。
+        // ただし末尾番号が他の車と重複する場合は誤って紐づけないようnullにして「特定不能」にする
+        if (!isFullPlateNumber(c)) return;
+        const t = carTailNumber(c);
+        if (!t) return;
+        if (_tailDrvIndex.has(t)) {
+          const pd = _tailDrvIndex.get(t), pc = _tailCarIndex.get(t);
+          if (pd && pd.id !== d.id) _tailDrvIndex.set(t, null);
+          if (pc && nm(pc) !== n) _tailCarIndex.set(t, null);
+        } else {
+          _tailDrvIndex.set(t, d);
+          _tailCarIndex.set(t, c);
+        }
+      });
     });
   }
-  return { car: _carDriverIndex, id: _idDriverIndex };
+  return { car: _carDriverIndex, id: _idDriverIndex, tailDrv: _tailDrvIndex, tailCar: _tailCarIndex };
 }
-const lkD=car=>{const n=nm(car);return driverIndexes().car.get(n)||null;};
+// 車番からドライバーを引く。完全一致で見つからず、かつ数字のみの略式番号なら、
+// フル表記車番の末尾番号とも突き合わせる（フル表記だけ登録している場合に対応）
+const lkD=car=>{
+  const n=nm(car);
+  const idx=driverIndexes();
+  const hit=idx.car.get(n);
+  if(hit) return hit;
+  return /^\d+$/.test(n) ? (idx.tailDrv.get(n)||null) : null;
+};
 // 略式車番（数字のみ）を、紐づくドライバーのフル表記車番に変換する（表示・集計の見た目をフル表記に統一するため）。
 // フル表記自体やフル表記が見つからない車（代車など）はそのまま返す
 const canonicalCar=car=>{
-  if(!car || !/^\d+$/.test(nm(car))) return car;
-  const d=lkD(car);
-  if(!d) return car;
-  const full=(d.cars||[]).find(c=>isFullPlateNumber(c));
-  return full||car;
+  if(!car) return car;
+  const n=nm(car);
+  if(!/^\d+$/.test(n)) return car;
+  // 末尾番号が一致するフル表記が一意に決まる場合だけ変換する。
+  // （旧実装はドライバーの「最初のフル表記車番」を返していたため、複数台持つドライバーで別の車に化けていた）
+  return driverIndexes().tailCar.get(n) || car;
 };
 const lkC=id=>clients.find(c=>c.id===id)||null;
 
@@ -3408,11 +3438,14 @@ function invalidateVehicleAssignIndex() { _vaCarIndex = null; }
 function vehicleAssignIndex() {
   if (!_vaCarIndex) {
     _vaCarIndex = new Map();
+    const push = (k, v) => { if (!_vaCarIndex.has(k)) _vaCarIndex.set(k, []); _vaCarIndex.get(k).push(v); };
     (vehicleAssignments||[]).forEach(v => {
       if (!v.car || v.driver_id == null) return;
       const k = nm(v.car);
-      if (!_vaCarIndex.has(k)) _vaCarIndex.set(k, []);
-      _vaCarIndex.get(k).push(v);
+      push(k, v);
+      // 履歴をフル表記で登録し、実績が略式番号（またはその逆）のケースでも引けるようにする
+      const t = carTailNumber(v.car);
+      if (t && t !== k) push(t, v);
     });
     // 期間が重なって登録されていた場合に備え、開始日が新しいものから評価する
     _vaCarIndex.forEach(list => list.sort((a,b)=>(b.start_date||'').localeCompare(a.start_date||'')));
@@ -3422,11 +3455,17 @@ function vehicleAssignIndex() {
 // その車番に、その日付時点で乗務していたドライバーを引く（end_date未設定＝現在も使用中）
 function lkDByAssign(car, date) {
   if (!car || !date) return null;
-  const list = vehicleAssignIndex().get(nm(car));
+  const idx = vehicleAssignIndex();
+  const n = nm(car);
+  let list = idx.get(n);
+  if (!list) { const t = carTailNumber(car); if (t) list = idx.get(t); }
   if (!list) return null;
   const d = String(date).slice(0,10);
-  const hit = list.find(v => (v.start_date||'') <= d && (!v.end_date || d <= v.end_date));
-  return hit ? (driverIndexes().id.get(hit.driver_id) || null) : null;
+  const hits = list.filter(v => (v.start_date||'') <= d && (!v.end_date || d <= v.end_date));
+  if (!hits.length) return null;
+  // 末尾番号の重複などで複数のドライバーが該当する場合は、誤判定を避けて特定しない
+  if (new Set(hits.map(h=>h.driver_id)).size > 1) return null;
+  return driverIndexes().id.get(hits[0].driver_id) || null;
 }
 // 同じ車両を複数人で稼働することがあるため、次の優先順位で判定する:
 // ① レコードのdrv_id（受注入力での手動選択）② 車両乗務履歴（代車・乗り換え）③ drivers.carsの登録車番
@@ -5531,6 +5570,8 @@ function renderPartners(){
   const grid = document.getElementById('partnerGrid');
   if (!grid) return;
   const canE = me && me.role !== 'viewer';
+  // リース会社カードに「所属している車番」を出すため、この描画で使う分をまとめて集計しておく
+  const leaseCarsByName = leaseCarsIndex();
   const kpiEl = document.getElementById('partnerKpi');
   if (kpiEl) {
     const suppliedDrvCnt = drvs.filter(d=>d.partner_id!=null).length;
@@ -5550,6 +5591,17 @@ function renderPartners(){
     return idA - idB;
   });
   const leaseBadge = p => p.is_lease ? ' <span title="車両リース会社" style="font-size:10.5px;font-weight:500;padding:1px 5px;background:var(--amber-bg);color:var(--amber-text);border-radius:99px">🚗 リース</span>' : '';
+  // リース会社カード・行に出す「所属車両」欄。車両管理側の登録（vehicles.lease_company）と自動で連動する
+  const leaseCarsLine = p => {
+    if (!p.is_lease) return '';
+    const cars = leaseCarsByName.get(nm(p.name)) || [];
+    const body = cars.length
+      ? `${escHtml(cars.slice(0,6).join('、'))}${cars.length>6?` 他${cars.length-6}台`:''}`
+      : '<span style="color:var(--amber-text)">未登録</span>';
+    return `<div style="font-size:11.5px;color:var(--text2);margin-top:2px;cursor:pointer" title="クリックで車両管理を開きます（この会社の車両で絞り込み）"
+      onclick="event.stopPropagation();jumpToVehiclesByLease('${escHtml(p.name).replace(/'/g,"\\'")}')" ondblclick="event.stopPropagation()">
+      🚗 所属車両${cars.length?`（${cars.length}台）`:''}: ${body}</div>`;
+  };
 
   if (partnerViewMode === 'card') {
     grid.className = 'cardgrid';
@@ -5575,6 +5627,7 @@ function renderPartners(){
         <div style="font-size:11.5px;color:var(--text2)">支払日: ${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`　支払手数料: ${p.pay_out_fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2)">入金日: ${partnerReceivableLabel(p)}${p.fee_rate?`　入金手数料: ${p.fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2);margin-top:2px">供給ドライバー: ${suppliedDrvs.length ? suppliedDrvs.map(d=>escHtml(d.name)).join('、') : 'なし'}</div>
+        ${leaseCarsLine(p)}
         ${linkedCli?`<div style="font-size:11.5px;color:var(--blue);margin-top:2px;cursor:pointer" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})" ondblclick="event.stopPropagation()">🔗 取引先: ${escHtml(linkedCli.name)}${linkedCli.client_no?`（ID:${escHtml(linkedCli.client_no)}）`:''}</div>`:''}
         ${p.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(p.note)}</div>`:''}
       </div>`;
@@ -5605,7 +5658,10 @@ function renderPartners(){
         <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:60px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${p.partner_no ? 'ID: '+escHtml(p.partner_no) : 'ID: —'}</div>
-          <div style="width:150px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${escHtml(p.name)}${p.is_lease?' <span title="車両リース会社" style="font-size:11px">🚗</span>':''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})" ondblclick="event.stopPropagation()">🔗</span>`:''}</div>
+          <div style="width:150px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${escHtml(p.name)}${p.is_lease?(()=>{
+            const cars = leaseCarsByName.get(nm(p.name)) || [];
+            return ` <span title="リース車両 ${cars.length?cars.join('、'):'未登録'}（クリックで車両管理へ）" style="font-size:11px;cursor:pointer;color:${cars.length?'var(--text2)':'var(--amber-text)'}" onclick="event.stopPropagation();jumpToVehiclesByLease('${escHtml(p.name).replace(/'/g,"\\'")}')" ondblclick="event.stopPropagation()">🚗${cars.length?cars.length:'0'}</span>`;
+          })():''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})" ondblclick="event.stopPropagation()">🔗</span>`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
@@ -5712,6 +5768,13 @@ async function savePartner(){
         if (leaseDrvs.length) {
           const { error: leaseErr } = await sb.from('drivers').update({ lease_company: data.name }).eq('lease_company', prevName);
           if (!leaseErr) leaseDrvs.forEach(d=>{ d.lease_company = data.name; });
+        }
+        // 車両管理側のリース会社名も同様に追随させる。
+        // ここを更新しないと、社名変更のたびに車両が旧名のまま取り残され、所属車両が0台になってしまう
+        const leaseVehs = (vehicles||[]).filter(v=>v.lease_company && nm(v.lease_company)===nm(prevName));
+        if (leaseVehs.length) {
+          const { error: vErr } = await sb.from('vehicles').update({ lease_company: data.name }).eq('lease_company', prevName);
+          if (!vErr) leaseVehs.forEach(v=>{ v.lease_company = data.name; });
         }
       }
       // 取引先としてもリンク登録されている場合、そちらの会社名も追随させる（重複データが名前だけズレるのを防ぐ）
@@ -6755,6 +6818,32 @@ function toggleVehicleMissingList() {
 function quickAddVehicle(car) {
   openVehicleM();
   document.getElementById('vCar').value = car;
+}
+
+/* ===== リース会社 ⇄ 所属車両の連動 =====
+   車両管理で「リース」種別＋リース会社名を設定した車両を、会社名でまとめて引けるようにする。
+   協力会社管理でリース会社に指定した会社のカードに、所属車番を自動表示するために使う
+   （別途の登録作業は不要で、車両管理の登録がそのまま反映される）。 */
+function leaseCarsIndex() {
+  const map = new Map();
+  (vehicles||[]).forEach(v => {
+    if (v.vehicle_type !== 'lease' || !v.lease_company || !v.car) return;
+    const k = nm(v.lease_company);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(v.car);
+  });
+  map.forEach(list => list.sort((a,b)=>nm(a).localeCompare(nm(b),'ja')));
+  return map;
+}
+// 協力会社カードの「所属車両」から車両管理タブへ飛び、その会社の車両で絞り込む
+function jumpToVehiclesByLease(name) {
+  goPage(26, document.getElementById('nt26'));
+  setTimeout(()=>{
+    const sel = document.getElementById('vehicleLeaseFilter');
+    if (!sel) return;
+    const target = `lease::${name}`;
+    if ([...sel.options].some(o=>o.value===target)) { sel.value = target; renderVehicles(); }
+  }, 0);
 }
 
 // リース会社フィルタの選択肢を、登録済み車両の内訳（持ち込み台数・リース会社ごとの台数）から再構築する
