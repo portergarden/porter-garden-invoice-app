@@ -2875,6 +2875,7 @@ try {
       </div>
       <div class="fld"><label>種別</label>
         <select id="vType" style="width:100%" onchange="onVehicleTypeChange()">
+          <option value="unclassified" disabled>未分類（要確認）</option>
           <option value="company">自社所有</option>
           <option value="brought">持ち込み（ドライバー所有）</option>
           <option value="lease">リース</option>
@@ -6847,8 +6848,9 @@ function populateVehicleLeaseFilter() {
   const sel = document.getElementById('vehicleLeaseFilter');
   if (!sel) return;
   const cur = sel.value;
-  const companyCount = vehicles.filter(v=>v.vehicle_type!=='lease' && v.vehicle_type!=='brought').length;
+  const companyCount = vehicles.filter(v=>v.vehicle_type!=='lease' && v.vehicle_type!=='brought' && v.vehicle_type!=='unclassified').length;
   const broughtCount = vehicles.filter(v=>v.vehicle_type==='brought').length;
+  const unclassifiedCount = vehicles.filter(v=>v.vehicle_type==='unclassified').length;
   const leaseGroups = {};
   vehicles.filter(v=>v.vehicle_type==='lease').forEach(v=>{
     const name = v.lease_company || '（リース会社未設定）';
@@ -6858,12 +6860,14 @@ function populateVehicleLeaseFilter() {
   sel.innerHTML = `<option value="">種別・リース会社: すべて（${vehicles.length}台）</option>`
     + `<option value="company">自社所有（${companyCount}台）</option>`
     + `<option value="brought">持ち込み（${broughtCount}台）</option>`
+    + (unclassifiedCount ? `<option value="unclassified">⚠ 未分類（${unclassifiedCount}台）</option>` : '')
     + leaseNames.map(n=>`<option value="lease::${escHtml(n)}">${escHtml(n)}（${leaseGroups[n]}台）</option>`).join('');
   sel.value = [...sel.options].some(o=>o.value===cur) ? cur : '';
 }
 function vehicleTypeLabel(v) {
   if (v.vehicle_type === 'lease') return 'リース';
   if (v.vehicle_type === 'brought') return '持ち込み';
+  if (v.vehicle_type === 'unclassified') return '未分類';
   return '自社所有'; // 'company'、および旧データ'own'（未分離だった頃の値）はここに含める
 }
 
@@ -6889,8 +6893,9 @@ function renderVehicles() {
   const leaseFilter = document.getElementById('vehicleLeaseFilter')?.value || '';
   const statusFilter = document.getElementById('vehicleStatusFilter')?.value ?? 'active';
   let filtered = q ? vehicles.filter(v=>nm(v.car).includes(q)) : vehicles;
-  if (leaseFilter === 'company') filtered = filtered.filter(v=>v.vehicle_type!=='lease' && v.vehicle_type!=='brought');
+  if (leaseFilter === 'company') filtered = filtered.filter(v=>v.vehicle_type!=='lease' && v.vehicle_type!=='brought' && v.vehicle_type!=='unclassified');
   else if (leaseFilter === 'brought') filtered = filtered.filter(v=>v.vehicle_type==='brought');
+  else if (leaseFilter === 'unclassified') filtered = filtered.filter(v=>v.vehicle_type==='unclassified');
   else if (leaseFilter.startsWith('lease::')) {
     const name = leaseFilter.slice(7);
     filtered = filtered.filter(v=>v.vehicle_type==='lease' && (v.lease_company||'（リース会社未設定）')===name);
@@ -6919,7 +6924,7 @@ function renderVehicles() {
       <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
         <div style="width:125px;font-weight:600;font-size:13px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
         <div style="width:100px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" ondblclick="event.stopPropagation()" title="クリックで乗務履歴を記録・確認">${drv?escHtml(drv.name):'未割当'}</div>
-        <div style="width:60px;font-size:11px;flex-shrink:0;color:var(--text2)">${vehicleTypeLabel(v)}</div>
+        <div style="width:60px;font-size:11px;flex-shrink:0;${v.vehicle_type==='unclassified'?'color:var(--amber-text);font-weight:600':'color:var(--text2)'}" title="${v.vehicle_type==='unclassified'?'ドライバーの書類提出から自動登録されたため種別が未確認です。編集して自社所有／持ち込み／リースのいずれかを選択してください':''}">${v.vehicle_type==='unclassified'?'⚠ ':''}${vehicleTypeLabel(v)}</div>
         <div style="width:115px;font-size:11px;flex-shrink:0;color:var(--text2);overflow-wrap:break-word;word-break:break-word;">${v.vehicle_type==='lease'?escHtml(v.lease_company||'（未設定）'):'—'}</div>
         ${!scrapped ? `
         <div style="width:110px;font-size:11px;flex-shrink:0;">${v.shaken_expiry||'—'} ${docStatusPill({expiry_date:v.shaken_expiry})}</div>
@@ -6997,7 +7002,9 @@ function editVehicle(id) {
   document.getElementById('vCar').value = v.car;
   document.getElementById('vStatus').value = v.status || 'active';
   // 旧データ(vehicle_type='own'。持ち込み・自社所有が未分離だった頃の値)は自社所有として編集フォームに出す。
-  // 保存すると新しい値'company'として書き込まれ、以後は分類済みになる
+  // 保存すると新しい値'company'として書き込まれ、以後は分類済みになる。
+  // 'unclassified'（ドライバーの書類提出から自動登録され未確認）はそのまま選択欄に表示し、
+  // 選択肢の中では選べない状態にすることで、必ずどれかへ選び直してもらう
   document.getElementById('vType').value = (!v.vehicle_type || v.vehicle_type === 'own') ? 'company' : v.vehicle_type;
   populateVehicleLeaseSel(v.lease_company || '');
   document.getElementById('vLeaseCompanyWrap').style.display = v.vehicle_type==='lease' ? '' : 'none';
@@ -11573,8 +11580,10 @@ async function syncVehicleExpiryFromDriverDoc(drvId, docType, expiry) {
     } else {
       const full = cars.filter(isFullPlateNumber);
       const car = full[0] || cars[0];
-      // ドライバー自身の書類提出から自動生成する車両なので、持ち込み（ドライバー所有）として登録する
-      const {data, error} = await sb.from('vehicles').insert({ car, vehicle_type: 'brought', [field]: expiry }).select().single();
+      // ドライバーが書類を提出したというだけでは、自社所有・持ち込み・リースのどれかは判断できない
+      // （リース車・自社の代車でも、乗っているドライバーが書類を提出することがあるため）。
+      // 誤った種別で確定登録してしまわないよう、未分類のまま登録し、事務所側での分類を促す
+      const {data, error} = await sb.from('vehicles').insert({ car, vehicle_type: 'unclassified', [field]: expiry }).select().single();
       if (error) throw error;
       vehicles.push(data);
     }
