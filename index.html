@@ -1405,11 +1405,15 @@ try {
         <select id="vehicleLeaseFilter" onchange="renderVehicles()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
           <option value="">種別・リース会社: すべて</option>
         </select>
+        <select id="vehicleStatusFilter" onchange="renderVehicles()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="active" selected>稼働中のみ</option>
+          <option value="scrapped">廃車のみ</option>
+          <option value="">すべて表示</option>
+        </select>
       </div>
       <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
     </div>
     <div id="vehicleKpi" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
-    <div id="vehicleMissingArea" style="padding:0 14px"></div>
     <div style="padding:10px 14px" id="vehicleList"></div>
   </div>
   <div id="pg4" class="hide">
@@ -6809,16 +6813,6 @@ function getUnregisteredCarNumbers() {
   });
   return [...missing].sort();
 }
-function toggleVehicleMissingList() {
-  const el = document.getElementById('vehicleMissingList');
-  if (!el) return;
-  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
-}
-// 警告一覧の車番をクリック→車両追加モーダルをその車番で開く（ドライバー管理で登録済みの車を車両管理へつなぐ導線）
-function quickAddVehicle(car) {
-  openVehicleM();
-  document.getElementById('vCar').value = car;
-}
 
 /* ===== リース会社 ⇄ 所属車両の連動 =====
    車両管理で「リース」種別＋リース会社名を設定した車両を、会社名でまとめて引けるようにする。
@@ -6882,26 +6876,18 @@ function renderVehicles() {
     `;
   }
   populateVehicleLeaseFilter();
-  const missingArea = document.getElementById('vehicleMissingArea');
-  if (missingArea) {
-    const missing = getUnregisteredCarNumbers();
-    missingArea.innerHTML = !missing.length ? '' : `
-      <div style="padding:8px 12px;margin-bottom:10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11.5px;color:var(--amber-text)">
-        <span style="cursor:pointer" onclick="toggleVehicleMissingList()">⚠ ドライバーには登録済みだが車両管理に未登録の車番が ${missing.length}件 あります（クリックで一覧表示）</span>
-        <div id="vehicleMissingList" style="display:none;flex-wrap:wrap;gap:4px;margin-top:8px">
-          ${missing.map(c=>`<span class="cpill" style="cursor:pointer" onclick="quickAddVehicle('${escHtml(c).replace(/'/g,"\\'")}')" title="クリックで車両管理に登録">🚙 ${escHtml(c)} ＋</span>`).join('')}
-        </div>
-      </div>`;
-  }
   if (!vehicles.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">車両が登録されていません</div>`; return; }
   const q = nm(document.getElementById('vehicleSearch')?.value||'');
   const leaseFilter = document.getElementById('vehicleLeaseFilter')?.value || '';
+  const statusFilter = document.getElementById('vehicleStatusFilter')?.value ?? 'active';
   let filtered = q ? vehicles.filter(v=>nm(v.car).includes(q)) : vehicles;
   if (leaseFilter === 'own') filtered = filtered.filter(v=>v.vehicle_type!=='lease');
   else if (leaseFilter.startsWith('lease::')) {
     const name = leaseFilter.slice(7);
     filtered = filtered.filter(v=>v.vehicle_type==='lease' && (v.lease_company||'（リース会社未設定）')===name);
   }
+  if (statusFilter === 'active') filtered = filtered.filter(v=>v.status!=='scrapped');
+  else if (statusFilter === 'scrapped') filtered = filtered.filter(v=>v.status==='scrapped');
   if (!filtered.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">該当する車両が見つかりません</div>`; return; }
   const canE = me && me.role !== 'viewer';
   const headerRow = `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 12px 6px;gap:12px;font-size:10.5px;color:var(--text2);font-weight:600">
