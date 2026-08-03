@@ -7181,6 +7181,7 @@ async function addVehicleAssignment() {
     document.getElementById('vhDrvId').value=''; document.getElementById('vhDrvText').value='';
     document.getElementById('vhRate').value=''; document.getElementById('vhNote').value='';
     renderVehicleHist();
+    renderVehicles(); // 背後の車両一覧「現在の使用者」列も即座に更新する
     showT('記録しました');
   } catch(e) {
     if (e.message.includes('does not exist')||e.message.includes('relation')) {
@@ -7203,6 +7204,7 @@ async function endVehicleAssignment(id) {
     const d = drvs.find(x=>x.id===v.driver_id);
     addLog('車両乗務履歴終了', `${v.car} ${d?.name||''} 〜${endDate}`);
     renderVehicleHist();
+    renderVehicles(); // 使用者が「なし」に変わるため車両一覧も更新する
     // 日額リースが設定されていれば、期間から金額を計算し「その他控除」への追加を提案する
     const calc = vhDaysAndAmount(v);
     if (calc && d) {
@@ -7234,6 +7236,7 @@ async function deleteVehicleAssignment(id) {
     vehicleAssignments = vehicleAssignments.filter(v=>v.id!==id);
     invalidateVehicleAssignIndex();
     renderVehicleHist();
+    renderVehicles(); // 履歴を消すと現在の使用者も変わるため車両一覧も更新する
     showT('削除しました');
   } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
 }
