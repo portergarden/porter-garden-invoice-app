@@ -7552,17 +7552,26 @@ function runAggPay() {
     const carCounts = {};
     rows.forEach(r => { if (r.car) { const c = canonicalCar(r.car); carCounts[c] = (carCounts[c]||0) + 1; } });
     const carsUsed = Object.keys(carCounts).sort((a,b) => carCounts[b]-carCounts[a]);
-    const carShort = carsUsed.length ? (carsUsed.length===1 ? carsUsed[0] : `${carsUsed[0]} 他${carsUsed.length-1}台…`) : ((d.cars||[])[0]||'');
-    const carFull = carsUsed.join('、');
     const carCellId = `payCarCell${safeKey}`;
+    // 車番はクリックで車両管理を開けるようにする（未登録なら車番入りで車両追加を開く）。
+    // 複数台ある場合は「他N台…」で全件表示に切り替えられ、展開後は各車番が個別にクリックできる
+    const carLinkHtml = c => `<span data-car="${escHtml(c)}" onclick="event.stopPropagation();jumpToVehicleByCar(this.dataset.car)" style="cursor:pointer;color:var(--blue);text-decoration:underline dotted" title="車両管理で開く">${escHtml(c)}</span>`;
+    const carToggleHtml = label => `<span onclick="event.stopPropagation();toggleCarCell('${carCellId}')" style="cursor:pointer;color:var(--text2);margin-left:4px" title="表示を切り替えます">${label}</span>`;
+    const fallbackCar = (d.cars||[])[0] || '';
+    const carShort = carsUsed.length
+      ? carLinkHtml(carsUsed[0]) + (carsUsed.length>1 ? carToggleHtml(`他${carsUsed.length-1}台…`) : '')
+      : (fallbackCar ? carLinkHtml(fallbackCar) : '—');
+    const carFull = carsUsed.length
+      ? carsUsed.map(carLinkHtml).join('、') + (carsUsed.length>1 ? carToggleHtml('閉じる') : '')
+      : carShort;
     // 実行日：ドライバー（協力会社優先）の支払日設定を反映する（ドライバーごとに異なりうる）
     const sortedRowsForDate = rows.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
     const execLabel = computePayExecDateLabel(d, sortedRowsForDate[sortedRowsForDate.length-1]?.date || to);
     return `<tr style="border-bottom:0.5px solid var(--border)">
       <td style="padding:6px 8px"><input type="checkbox" class="aggPayChk" value="${d.id}"></td>
       <td style="padding:6px 8px;color:var(--text2)">${d.supplier_id||'—'}</td>
-      <td id="${carCellId}" style="padding:6px 8px;${carsUsed.length>1?'cursor:pointer;color:var(--blue)':''}" data-short="${escHtml(carShort)}" data-full="${escHtml(carFull)}" data-state="short" ${carsUsed.length>1?`onclick="toggleCarCell('${carCellId}')" title="クリックで全件表示"`:''}>${carShort}</td>
-      <td style="padding:6px 8px">${d.name}${d.company?`<div style="font-size:9.5px;color:var(--text2)">${d.company}</div>`:''}</td>
+      <td id="${carCellId}" style="padding:6px 8px" data-short="${escHtml(carShort)}" data-full="${escHtml(carFull)}" data-state="short">${carShort}</td>
+      <td style="padding:6px 8px"><span onclick="jumpToDriverEdit(${g.drv.id})" style="cursor:pointer;color:var(--blue);text-decoration:underline dotted" title="ドライバー管理で開く">${escHtml(d.name)}</span>${d.company?`<div style="font-size:9.5px;color:var(--text2)">${escHtml(d.company)}</div>`:''}</td>
       <td style="padding:6px 8px;white-space:nowrap;color:var(--text2)">${execLabel}</td>
       <td style="padding:6px 8px;text-align:right">${cnt}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(grossTax)}</td>
@@ -7688,8 +7697,40 @@ function toggleCarCell(id) {
   const el = document.getElementById(id);
   if (!el) return;
   const showingFull = el.dataset.state === 'full';
-  el.textContent = showingFull ? el.dataset.short : el.dataset.full;
+  // 車番をクリックできるリンクとして描くため、テキストではなくHTMLを差し替える
+  el.innerHTML = showingFull ? el.dataset.short : el.dataset.full;
   el.dataset.state = showingFull ? 'short' : 'full';
+}
+
+/* ===== 集計表からマスタ登録画面への導線 =====
+   支払明細書（集計）の車番・ドライバー名から、そのまま車両管理・ドライバー管理を開けるようにする。
+   未登録の車番は「車両追加」を車番入りで開き、その場で登録できる。 */
+// 車番から車両マスタを探す。略式番号とフル表記が混在するため末尾番号でも突き合わせる
+function findVehicleByCar(car) {
+  if (!car) return null;
+  const n = nm(car);
+  let v = (vehicles||[]).find(x => nm(x.car) === n);
+  if (v) return v;
+  const t = carTailNumber(car);
+  if (!t) return null;
+  const cands = (vehicles||[]).filter(x => carTailNumber(x.car) === t);
+  return cands.length === 1 ? cands[0] : null;  // 末尾番号が重複する場合は特定しない
+}
+function jumpToVehicleByCar(car) {
+  if (!car) return;
+  goPage(26, document.getElementById('nt26'));
+  const v = findVehicleByCar(car);
+  if (v) { editVehicle(v.id); return; }
+  // 車両マスタ未登録：車番を入れた状態で追加モーダルを開く
+  openVehicleM();
+  document.getElementById('vCar').value = canonicalCar(car);
+  showT(`「${canonicalCar(car)}」は車両管理に未登録です。内容を確認して登録してください`, 'twa');
+}
+function jumpToDriverEdit(drvId) {
+  const d = drvs.find(x => x.id === drvId);
+  if (!d) { showT('ドライバーが見つかりませんでした', 'ter'); return; }
+  goPage(2, document.getElementById('nt2'));
+  editDrv(drvId);
 }
 
 // 集計（ドライバー別）タブでチェックしたドライバー分だけをCSV出力する
