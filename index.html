@@ -2875,7 +2875,8 @@ try {
       </div>
       <div class="fld"><label>種別</label>
         <select id="vType" style="width:100%" onchange="onVehicleTypeChange()">
-          <option value="own">持ち込み・自社所有</option>
+          <option value="company">自社所有</option>
+          <option value="brought">持ち込み（ドライバー所有）</option>
           <option value="lease">リース</option>
         </select>
       </div>
@@ -6840,12 +6841,14 @@ function jumpToVehiclesByLease(name) {
   }, 0);
 }
 
-// リース会社フィルタの選択肢を、登録済み車両の内訳（持ち込み台数・リース会社ごとの台数）から再構築する
+// 種別フィルタの選択肢を、登録済み車両の内訳（自社所有・持ち込み・リース会社ごとの台数）から再構築する。
+// 旧データ（vehicle_type='own'。持ち込み・自社所有が未分離だった頃の値）は自社所有として数える
 function populateVehicleLeaseFilter() {
   const sel = document.getElementById('vehicleLeaseFilter');
   if (!sel) return;
   const cur = sel.value;
-  const ownCount = vehicles.filter(v=>v.vehicle_type!=='lease').length;
+  const companyCount = vehicles.filter(v=>v.vehicle_type!=='lease' && v.vehicle_type!=='brought').length;
+  const broughtCount = vehicles.filter(v=>v.vehicle_type==='brought').length;
   const leaseGroups = {};
   vehicles.filter(v=>v.vehicle_type==='lease').forEach(v=>{
     const name = v.lease_company || '（リース会社未設定）';
@@ -6853,11 +6856,16 @@ function populateVehicleLeaseFilter() {
   });
   const leaseNames = Object.keys(leaseGroups).sort((a,b)=>nm(a).localeCompare(nm(b),'ja'));
   sel.innerHTML = `<option value="">種別・リース会社: すべて（${vehicles.length}台）</option>`
-    + `<option value="own">持ち込み・自社所有（${ownCount}台）</option>`
+    + `<option value="company">自社所有（${companyCount}台）</option>`
+    + `<option value="brought">持ち込み（${broughtCount}台）</option>`
     + leaseNames.map(n=>`<option value="lease::${escHtml(n)}">${escHtml(n)}（${leaseGroups[n]}台）</option>`).join('');
   sel.value = [...sel.options].some(o=>o.value===cur) ? cur : '';
 }
-function vehicleTypeLabel(v) { return v.vehicle_type==='lease' ? 'リース' : '持ち込み'; }
+function vehicleTypeLabel(v) {
+  if (v.vehicle_type === 'lease') return 'リース';
+  if (v.vehicle_type === 'brought') return '持ち込み';
+  return '自社所有'; // 'company'、および旧データ'own'（未分離だった頃の値）はここに含める
+}
 
 function renderVehicles() {
   const listEl = document.getElementById('vehicleList');
@@ -6881,7 +6889,8 @@ function renderVehicles() {
   const leaseFilter = document.getElementById('vehicleLeaseFilter')?.value || '';
   const statusFilter = document.getElementById('vehicleStatusFilter')?.value ?? 'active';
   let filtered = q ? vehicles.filter(v=>nm(v.car).includes(q)) : vehicles;
-  if (leaseFilter === 'own') filtered = filtered.filter(v=>v.vehicle_type!=='lease');
+  if (leaseFilter === 'company') filtered = filtered.filter(v=>v.vehicle_type!=='lease' && v.vehicle_type!=='brought');
+  else if (leaseFilter === 'brought') filtered = filtered.filter(v=>v.vehicle_type==='brought');
   else if (leaseFilter.startsWith('lease::')) {
     const name = leaseFilter.slice(7);
     filtered = filtered.filter(v=>v.vehicle_type==='lease' && (v.lease_company||'（リース会社未設定）')===name);
@@ -6971,7 +6980,7 @@ function openVehicleM() {
   document.getElementById('vCar').value = '';
   document.getElementById('vCarSuggestList').innerHTML = getUnregisteredCarNumbers().map(c=>`<option value="${escHtml(c)}">`).join('');
   document.getElementById('vStatus').value = 'active';
-  document.getElementById('vType').value = 'own';
+  document.getElementById('vType').value = 'company';
   populateVehicleLeaseSel('');
   document.getElementById('vLeaseCompanyWrap').style.display = 'none';
   document.getElementById('vDailyRate').value = '';
@@ -6987,7 +6996,9 @@ function editVehicle(id) {
   document.getElementById('mVehicleH').innerHTML = '車両編集 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
   document.getElementById('vCar').value = v.car;
   document.getElementById('vStatus').value = v.status || 'active';
-  document.getElementById('vType').value = v.vehicle_type || 'own';
+  // 旧データ(vehicle_type='own'。持ち込み・自社所有が未分離だった頃の値)は自社所有として編集フォームに出す。
+  // 保存すると新しい値'company'として書き込まれ、以後は分類済みになる
+  document.getElementById('vType').value = (!v.vehicle_type || v.vehicle_type === 'own') ? 'company' : v.vehicle_type;
   populateVehicleLeaseSel(v.lease_company || '');
   document.getElementById('vLeaseCompanyWrap').style.display = v.vehicle_type==='lease' ? '' : 'none';
   document.getElementById('vDailyRate').value = v.daily_rate ?? '';
@@ -11562,7 +11573,8 @@ async function syncVehicleExpiryFromDriverDoc(drvId, docType, expiry) {
     } else {
       const full = cars.filter(isFullPlateNumber);
       const car = full[0] || cars[0];
-      const {data, error} = await sb.from('vehicles').insert({ car, vehicle_type: 'own', [field]: expiry }).select().single();
+      // ドライバー自身の書類提出から自動生成する車両なので、持ち込み（ドライバー所有）として登録する
+      const {data, error} = await sb.from('vehicles').insert({ car, vehicle_type: 'brought', [field]: expiry }).select().single();
       if (error) throw error;
       vehicles.push(data);
     }
@@ -16597,7 +16609,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
   id bigserial PRIMARY KEY,
   car text NOT NULL UNIQUE,
   status text NOT NULL DEFAULT 'active', -- 'active' | 'scrapped'（廃車）
-  vehicle_type text NOT NULL DEFAULT 'own', -- 'own'（持ち込み・自社所有） | 'lease'（リース会社から借用）
+  vehicle_type text NOT NULL DEFAULT 'company', -- 'company'（自社所有） | 'brought'（持ち込み・ドライバー所有） | 'lease'（リース会社から借用）。'own'は旧値（持ち込み・自社所有が未分離だった頃）で、編集時に'company'へ移行される
   lease_company text,      -- vehicle_type='lease'の場合の借用元会社名（協力会社管理のリース会社と同名で紐づけ）
   shaken_expiry date,      -- 車検満了日（ドライバーの車検証提出と自動連動）
   jibai_expiry date,       -- 自賠責保険満了日（ドライバーの自賠責保険提出と自動連動）
