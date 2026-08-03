@@ -3398,8 +3398,39 @@ const canonicalCar=car=>{
   return full||car;
 };
 const lkC=id=>clients.find(c=>c.id===id)||null;
-// 同じ車両を複数人で稼働することがあるため、レコードにdrv_id（手動選択）があればそれを優先し、なければ車番から自動判定する
-const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkD(r.car);
+
+/* ===== 車両乗務履歴（vehicle_assignments）による日付つきのドライバー判定 =====
+   代車や車両の乗り換えのように「同じ車番でも時期によって乗務者が変わる」ケースに対応する。
+   drivers.cars（静的な登録車番）だけで判定すると、代車の売上が車両の本来の持ち主に付いたり、
+   どのドライバーにも紐づかず「未配車」になったりするため、車両管理タブの乗務履歴を優先して引く。 */
+let _vaCarIndex = null;
+function invalidateVehicleAssignIndex() { _vaCarIndex = null; }
+function vehicleAssignIndex() {
+  if (!_vaCarIndex) {
+    _vaCarIndex = new Map();
+    (vehicleAssignments||[]).forEach(v => {
+      if (!v.car || v.driver_id == null) return;
+      const k = nm(v.car);
+      if (!_vaCarIndex.has(k)) _vaCarIndex.set(k, []);
+      _vaCarIndex.get(k).push(v);
+    });
+    // 期間が重なって登録されていた場合に備え、開始日が新しいものから評価する
+    _vaCarIndex.forEach(list => list.sort((a,b)=>(b.start_date||'').localeCompare(a.start_date||'')));
+  }
+  return _vaCarIndex;
+}
+// その車番に、その日付時点で乗務していたドライバーを引く（end_date未設定＝現在も使用中）
+function lkDByAssign(car, date) {
+  if (!car || !date) return null;
+  const list = vehicleAssignIndex().get(nm(car));
+  if (!list) return null;
+  const d = String(date).slice(0,10);
+  const hit = list.find(v => (v.start_date||'') <= d && (!v.end_date || d <= v.end_date));
+  return hit ? (driverIndexes().id.get(hit.driver_id) || null) : null;
+}
+// 同じ車両を複数人で稼働することがあるため、次の優先順位で判定する:
+// ① レコードのdrv_id（受注入力での手動選択）② 車両乗務履歴（代車・乗り換え）③ drivers.carsの登録車番
+const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkDByAssign(r.car, r.date) || lkD(r.car);
 // 取引先ID・ドライバーIDの新規登録時の自動採番（既存の最大値+1。数値以外は無視）
 function nextIdFor(list, field) {
   const nums = list.map(x => parseInt(x[field], 10)).filter(n => !isNaN(n));
@@ -6982,6 +7013,7 @@ async function loadVehicleAssignments() {
       throw error;
     }
     vehicleAssignments = data || [];
+    invalidateVehicleAssignIndex();
   } catch(e) { console.warn('loadVehicleAssignments:', e.message); }
 }
 
@@ -7055,6 +7087,7 @@ async function addVehicleAssignment() {
     const {data, error} = await sb.from('vehicle_assignments').insert({car: vhCurrentCar, driver_id: driverId, start_date: startDate, daily_rate: dailyRate, note}).select().single();
     if (error) throw error;
     vehicleAssignments.push(data);
+    invalidateVehicleAssignIndex();
     addLog('車両乗務履歴登録', `${vhCurrentCar} → ${drvs.find(d=>d.id===driverId)?.name||''}（${startDate}〜）`);
     document.getElementById('vhDrvId').value=''; document.getElementById('vhDrvText').value='';
     document.getElementById('vhRate').value=''; document.getElementById('vhNote').value='';
@@ -7077,6 +7110,7 @@ async function endVehicleAssignment(id) {
     const {error} = await sb.from('vehicle_assignments').update({end_date: endDate}).eq('id', id);
     if (error) throw error;
     v.end_date = endDate;
+    invalidateVehicleAssignIndex();
     const d = drvs.find(x=>x.id===v.driver_id);
     addLog('車両乗務履歴終了', `${v.car} ${d?.name||''} 〜${endDate}`);
     renderVehicleHist();
@@ -7109,6 +7143,7 @@ async function deleteVehicleAssignment(id) {
     const {error} = await sb.from('vehicle_assignments').delete().eq('id', id);
     if (error) throw error;
     vehicleAssignments = vehicleAssignments.filter(v=>v.id!==id);
+    invalidateVehicleAssignIndex();
     renderVehicleHist();
     showT('削除しました');
   } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
