@@ -1460,7 +1460,7 @@ try {
       <div id="payMonthlyBreakdown" style="display:none;margin-top:6px;overflow-x:auto"></div>
     </div>
     <div class="totbar">
-      <div class="ti"><div class="tl">支払合計（全件）</div><div class="tv hi" id="tMainP">¥—</div></div>
+      <div class="ti"><div class="tl" id="totLblP">支払合計（全件）</div><div class="tv hi" id="tMainP">¥—</div></div>
       <div class="vd"></div>
       <div class="ti"><div class="tl">運賃</div><div class="tv" id="tFareP">¥—</div></div>
       <div class="ti"><div class="tl">高速</div><div class="tv" id="tHwP">¥—</div></div>
@@ -3867,7 +3867,12 @@ function buildStatementSheetData(side, rows) {
     const adminFee = d?.admin_fee ?? -10000;
     const vehRental = d?.vehicle_rental ?? -30000;
     const { bizFee, netSubtotal, netTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
-    const otherTotal = (d?.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0);
+    // 車両管理の乗務履歴（日額設定のある代車）から、この明細書の対象期間に重なる日数分のリース料を自動計算する。
+    // 対象期間は支払集計タブの集計期間ピッカーを使い、未設定なら選択した明細の実日付範囲にフォールバックする
+    const vhPeriodFrom = document.getElementById('aggPayFrom')?.value || sortedRows[0]?.date || '';
+    const vhPeriodTo = document.getElementById('aggPayTo')?.value || sortedRows[sortedRows.length-1]?.date || '';
+    const vhLease = d ? vehicleRentalForPeriod(d.id, vhPeriodFrom, vhPeriodTo) : {total:0, items:[]};
+    const otherTotal = (d?.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0) - vhLease.total;
     // 追加料金（高速代・立替・その他）。集計タブ(runAggPay)の支払合計と同じ計上方法で合計へ加算する
     const extraFeeTotal = sumRecsExtraFees(sortedRows, 'payment');
     const takeHome = netSubtotal+netTax+adminFee+vehRental+extraFeeTotal+otherTotal+nonTaxRows;
@@ -3887,6 +3892,7 @@ function buildStatementSheetData(side, rows) {
       ['事務手数料', adminFee],
       [d?.lease_company ? `車両リース代（${d.lease_company}）` : '車両リース代', vehRental],
       ...(d?.other_deductions||[]).map(od=>[od.name, Number(od.amount)||0]),
+      ...vhLease.items.map(it=>[`代車リース代（${it.car} ${it.from}〜${it.to}）`, -Math.abs(it.amt)]),
       ['支払合計金額', takeHome],
     ];
     // taxOnlyは「税込金額(taxedSummary)に含まれる消費税」＝手数料差引後の合計に対する消費税(netTax)。
@@ -4618,7 +4624,7 @@ function goPage(n,el){
   if(n===26)renderVehicles();
   if(n===4)loadLogs();
   if(n===5)renderUsr();
-  if(n===6){initAggPay();runAggPay();renderPayMets();}
+  if(n===6){initAggPay();runAggPay();}
   if(n===8){initCal();renderCal();}
   if(n===28){initStaffSched();loadStaffSchedules().then(()=>renderStaffSchedCal());}
   if(n===29){initBillingProgress();loadBillingProgress().then(()=>renderBillingProgress());}
@@ -4821,15 +4827,19 @@ function setSort(mode){
 }
 function toggleSort(){setSort(sortMode==='desc'?'asc':'desc');}
 function setTax(m){taxMode=m;document.getElementById('bInc').classList.toggle('on',m==='inc');document.getElementById('bExc').classList.toggle('on',m==='exc');document.getElementById('bIncP')?.classList.toggle('on',m==='inc');document.getElementById('bExcP')?.classList.toggle('on',m==='exc');renderInv();}
-// 支払明細書作成タブ（pg6）用のKPIサマリー。請求側(renderInv)と同じ「全件」集計方針で、pay_fare等を優先して計算する
+// 支払明細書作成タブ（pg6）用のKPIサマリー。請求側(renderInv)と同様、集計期間・種別・取引先・
+// ドライバー検索の絞り込みを反映する（以前は絞り込みを無視してrecs全件を合計してしまっていた）
 function renderPayMets(){
   if(!document.getElementById('mTotP'))return;
   updatePayMetCards();
-  const tF=recs.reduce((a,r)=>a+fareBySide(r,'payment'),0);
-  const bAll=recs.reduce((a,r)=>{const b=feeBreakdown(r,'payment');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other};},{hw:0,oth:0,other:0});
-  const tS=tF+recs.reduce((a,r)=>a+hwRawBySide(r,'payment')+othRawBySide(r,'payment'),0);
-  const tT=recs.reduce((a,r)=>a+rtaxBySide(r,'payment'),0);
-  const tExtra=sumRecsExtraFees(recs,'payment');
+  const rows=aggPayFilteredRecs();
+  const isF=rows.length!==recs.length;
+  document.getElementById('totLblP').textContent=isF?'支払合計（絞り込み中）':'支払合計（全件）';
+  const tF=rows.reduce((a,r)=>a+fareBySide(r,'payment'),0);
+  const bAll=rows.reduce((a,r)=>{const b=feeBreakdown(r,'payment');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other};},{hw:0,oth:0,other:0});
+  const tS=tF+rows.reduce((a,r)=>a+hwRawBySide(r,'payment')+othRawBySide(r,'payment'),0);
+  const tT=rows.reduce((a,r)=>a+rtaxBySide(r,'payment'),0);
+  const tExtra=sumRecsExtraFees(rows,'payment');
   document.getElementById('tMainP').textContent=yen(taxMode==='inc'?tS+tT+tExtra:tS);
   document.getElementById('tFareP').textContent=yen(tF);
   document.getElementById('tHwP').textContent=yen(bAll.hw);
@@ -7209,28 +7219,34 @@ async function endVehicleAssignment(id) {
     addLog('車両乗務履歴終了', `${v.car} ${d?.name||''} 〜${endDate}`);
     renderVehicleHist();
     renderVehicles(); // 使用者が「なし」に変わるため車両一覧も更新する
-    // 日額リースが設定されていれば、期間から金額を計算し「その他控除」への追加を提案する
-    const calc = vhDaysAndAmount(v);
-    if (calc && d) {
-      if (confirm(`${d.name}さんの期間中リース代: ${calc.days}日 × ${yen(v.daily_rate)} = ${yen(calc.amt)}\nこの金額を「その他控除」に追加しますか？（次回以降の支払明細に反映されます）`)) {
-        await addLeaseDeductionToDriver(d.id, v.car, v.start_date, endDate, calc.amt);
-      }
-    }
-    showT('終了しました');
+    // 日額リース料は支払集計(runAggPay)・支払明細書作成時にvehicleRentalForPeriod()が
+    // この乗務履歴から対象期間分を自動計算するため、ここで控除を確定登録する必要はない
+    showT(vhDaysAndAmount(v) ? '終了しました（対象期間の支払集計に日額リース料が自動反映されます）' : '終了しました');
   } catch(e) { showT('更新エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
-async function addLeaseDeductionToDriver(driverId, car, startDate, endDate, amt) {
-  const d = drvs.find(x=>x.id===driverId);
-  if (!d) return;
-  const deductions = [...(d.other_deductions||[]), { name: `${car} リース代（${startDate}〜${endDate}）`, amount: -Math.abs(amt) }];
-  try {
-    const {error} = await sb.from('drivers').update({other_deductions: deductions}).eq('id', driverId);
-    if (error) throw error;
-    d.other_deductions = deductions;
-    renderDrv();
-    showT('その他控除に追加しました');
-  } catch(e) { showT('反映エラー: '+e.message, 'ter'); }
+// 車両乗務履歴（日額設定のある代車の貸し出し記録）から、指定した支払集計期間に重なる日数分の
+// リース料を自動計算する。ドライバーが今も使用中（end_date未設定）の場合は「今日まで」を仮の終了日として概算する。
+// 「終了する」操作を待たずに、対象期間に含まれる日数分がそのまま支払集計・支払明細書に反映される。
+function vehicleRentalForPeriod(driverId, from, to) {
+  const todayStr = fmtLocalDate(new Date());
+  const periodFrom = from || '0000-01-01';
+  const periodTo = to || todayStr;
+  let total = 0;
+  const items = [];
+  (vehicleAssignments||[]).forEach(v => {
+    if (v.driver_id !== driverId || !v.daily_rate) return;
+    const assignEnd = v.end_date || todayStr; // 使用中は今日までの分を概算計上する
+    const overlapFrom = v.start_date > periodFrom ? v.start_date : periodFrom;
+    const overlapTo = assignEnd < periodTo ? assignEnd : periodTo;
+    if (overlapFrom > overlapTo) return; // この期間と重ならない
+    const days = Math.round((new Date(overlapTo) - new Date(overlapFrom)) / 86400000) + 1;
+    if (days <= 0) return;
+    const amt = days * v.daily_rate;
+    total += amt;
+    items.push({ car: v.car, days, rate: v.daily_rate, amt, ongoing: !v.end_date, from: overlapFrom, to: overlapTo });
+  });
+  return { total, items };
 }
 async function deleteVehicleAssignment(id) {
   if (!confirm('この履歴を削除しますか？')) return;
@@ -7484,26 +7500,40 @@ function updatePayMetCards() {
   document.getElementById('mUnP').textContent=metRecsP.filter(r=>!recDrv(r)).length;
   if (document.getElementById('payMonthlyBreakdown')?.style.display !== 'none') renderMonthlyBreakdownTable('payMonthlyBreakdown');
 }
+// pg6（支払明細書作成）の集計期間・種別・取引先・ドライバー検索の絞り込みを反映したrecsを返す。
+// 上部の合計バー(renderPayMets)と下の集計テーブル(runAggPay)で条件を一致させるための共通ロジック
+// （ドライバー検索が入っている場合のみ、ドライバーが特定できない行=未配車を除外する。
+// 　検索が空の場合は、期間・種別・取引先だけで絞り込んだ「その範囲の全件」を返す）
+function aggPayFilteredRecs() {
+  const from = document.getElementById('aggPayFrom')?.value || '';
+  const to = document.getElementById('aggPayTo')?.value || '';
+  const drvSearch = nm(document.getElementById('aggPayDrvSearch')?.value||'');
+  const cliFilterArr = getMSelValues('aggPayCli');
+  return recs.filter(r => r.date && (!from || r.date >= from) && (!to || r.date <= to))
+    .filter(r => matchesTypeFilter(r, aggPayTypeFilter))
+    .filter(r => !cliFilterArr.length || cliFilterArr.includes(r.cli))
+    .filter(r => {
+      if (!drvSearch) return true;
+      const d = recDrv(r);
+      return !!d && (nm(d.name).includes(drvSearch) || nm(d.company||'').includes(drvSearch));
+    });
+}
 function runAggPay() {
-  updatePayMetCards();
+  renderPayMets(); // KPIカード(updatePayMetCards)と合計バーの両方をここで一括更新する
   const tbody = document.getElementById('aggPayTbody');
   const tfoot = document.getElementById('aggPayTfoot');
   const summary = document.getElementById('aggPaySummary');
   if (!tbody) return;
   const from = document.getElementById('aggPayFrom')?.value || '';
   const to = document.getElementById('aggPayTo')?.value || '';
-  const drvSearch = nm(document.getElementById('aggPayDrvSearch')?.value||'');
   const cliFilterArr = getMSelValues('aggPayCli');
 
-  // ドライバーの車番にひもづくrecsを集計期間で絞り込み、ドライバー単位でグループ化
+  // ドライバーの車番にひもづくrecsを集計期間・種別・取引先・ドライバー検索で絞り込み、ドライバー単位でグループ化
+  // （フィルタ条件そのものはaggPayFilteredRecs()に集約し、上部の合計バーと一致させている）
   const groups = {};
-  recs.filter(r => r.date && (!from || r.date >= from) && (!to || r.date <= to))
-    .filter(r => matchesTypeFilter(r, aggPayTypeFilter))
-    .filter(r => !cliFilterArr.length || cliFilterArr.includes(r.cli))
-    .forEach(r => {
+  aggPayFilteredRecs().forEach(r => {
     const d = recDrv(r);
     if (!d) return; // マスタ未登録車番は対象外（明細一覧タブで確認可）
-    if (drvSearch && !nm(d.name).includes(drvSearch) && !nm(d.company||'').includes(drvSearch)) return;
     if (!groups[d.id]) groups[d.id] = { drv: d, rows: [] };
     groups[d.id].rows.push(r);
   });
@@ -7547,7 +7577,9 @@ function runAggPay() {
     const { bizFee, netSubtotal, netTax, bizFeeWithTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
     const netIncl = netSubtotal + netTax; // 差引合計(税込)＝（税別金額−業務手数料）＋消費税10%
     const extraFeeTotal = sumRecsExtraFees(rows, 'payment'); // 受注入力の追加料金（支払／両方指定分）
-    const otherTotal = (d.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0); // その他控除（保険料・家賃など）
+    // 車両管理の乗務履歴（日額設定のある代車）から、この集計期間に重なる日数分のリース料を自動計算する
+    const vhLease = vehicleRentalForPeriod(d.id, from, to);
+    const otherTotal = (d.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0) - vhLease.total; // その他控除（保険料・家賃など＋代車リース代）
     const takeHome = grossTax+bizFeeWithTax+adminFee+vehRental+extraFeeTotal+otherTotal; // 支払合計金額（お支払い金額）
     gCnt+=cnt; gGrossTax+=grossTax; gTaxAmt+=taxAmt; gTakeHome+=takeHome;
     gBizFee+=bizFee; gNetIncl+=netIncl; gAdminFee+=adminFee; gVehRental+=vehRental; gAdvHw+=advHwSum; gNonTax+=nonTaxSum; gOther+=otherTotal; gGross+=gross;
@@ -7589,7 +7621,7 @@ function runAggPay() {
       <td style="padding:6px 8px;text-align:right">${yen(advHwSum)}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${adminFee<0?'#e05b5b':'inherit'}">${yen(adminFee)}</td>
       <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}${d.lease_company?`<div style="font-size:9.5px;color:var(--text2);font-weight:400">${escHtml(d.lease_company)}</div>`:''}</td>
-      <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="その他控除${nonTaxSum?'＋非課税分'+yen(nonTaxSum):''}">${yen(nonTaxSum + otherTotal)}</td>
+      <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="その他控除${nonTaxSum?'＋非課税分'+yen(nonTaxSum):''}${vhLease.items.length?'\n代車リース代: '+vhLease.items.map(it=>`${it.car} ${it.days}日×${yen(it.rate)}=${yen(it.amt)}${it.ongoing?'（使用中・今日まで概算）':''}`).join('\n'):''}">${yen(nonTaxSum + otherTotal)}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--blue);border-left:0.5px solid var(--border)">${yen(takeHome)}</td>
       <td style="padding:6px 8px;white-space:nowrap">
         <button class="btn sml" onclick="openAggDetailFull('payment','${safeKey}')">明細</button>
