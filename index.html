@@ -2957,9 +2957,9 @@ try {
       </div>
       <div class="fld"><label>権限</label><select id="uRo" onchange="onUsrRoleChange()"><option value="admin">管理者</option><option value="editor">編集者</option><option value="viewer">閲覧者</option><option value="driver">ドライバー</option></select></div>
     </div>
-    <div class="fld" id="uDrvFld" style="display:none"><label>紐づけるドライバー <span style="color:var(--red)">*</span></label>
+    <div class="fld" id="uDrvFld" style="display:none"><label>紐づけるドライバー <span id="uDrvRequiredMark" style="color:var(--red)">*</span></label>
       <select id="uDrvSel" style="width:100%"><option value="">選択してください</option></select>
-      <div style="font-size:10px;color:var(--text2);margin-top:3px">このアカウントでログインすると、選択したドライバーのポータル（日報・月報・支払明細書・書類提出）が表示されます</div>
+      <div id="uDrvFldHint" style="font-size:10px;color:var(--text2);margin-top:3px">このアカウントでログインすると、選択したドライバーのポータル（日報・月報・支払明細書・書類提出）が表示されます</div>
     </div>
     <div class="mfoot"><button class="btn" onclick="closeM('mUsr')">キャンセル</button><button class="btn pri" onclick="saveUsr()">保存</button></div>
   </div>
@@ -6094,9 +6094,18 @@ function renderUsr(){
   }).join('');
 }
 function onUsrRoleChange(){
-  const isDrv=document.getElementById('uRo').value==='driver';
-  document.getElementById('uDrvFld').style.display=isDrv?'block':'none';
-  if(isDrv)populateUsrDrvSel();
+  const role=document.getElementById('uRo').value;
+  const isDrv=role==='driver';
+  // 管理者アカウントにもドライバーを任意で紐づけられるようにする（本人も乗務する場合に、
+  // 日報入力で自分の車両をすぐ選べるようにするため）。管理者権限はそのまま維持され、
+  // ドライバーポータルには切り替わらない（proceedAfterLogin側のrole判定は変わらないため）
+  const isAdmin=role==='admin';
+  document.getElementById('uDrvFld').style.display=(isDrv||isAdmin)?'block':'none';
+  document.getElementById('uDrvRequiredMark').style.display=isDrv?'inline':'none';
+  document.getElementById('uDrvFldHint').textContent=isDrv
+    ? 'このアカウントでログインすると、選択したドライバーのポータル（日報・月報・支払明細書・書類提出）が表示されます'
+    : '任意：本人も乗務する場合に紐づけると、日報入力で自分の車両がすぐ選べるようになります（管理者としての画面表示は変わりません）';
+  if(isDrv||isAdmin)populateUsrDrvSel();
   // 新規ドライバーアカウントは初期パスワードをランダム生成して欄に入れておく（管理者が確認・変更可能）。初回ログイン時の変更を促す
   const pwEl=document.getElementById('uPw');
   const isNew=eUsrId===null;
@@ -6109,7 +6118,7 @@ function populateUsrDrvSel(cur){
   if(cur)sel.value=cur;
 }
 function openUsrM(){eUsrId=null;['uId','uNm','uPw'].forEach(id=>document.getElementById(id).value='');document.getElementById('uRo').value='editor';onUsrRoleChange();document.getElementById('mUsrH').innerHTML='ユーザー追加 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
-function editUsr(id){const u=users.find(x=>x.id===id);if(!u)return;eUsrId=id;document.getElementById('uId').value=u.id;document.getElementById('uNm').value=u.name;document.getElementById('uPw').value='';document.getElementById('uRo').value=u.role;onUsrRoleChange();if(u.role==='driver')populateUsrDrvSel(u.driver_id);document.getElementById('mUsrH').innerHTML='ユーザー編集 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
+function editUsr(id){const u=users.find(x=>x.id===id);if(!u)return;eUsrId=id;document.getElementById('uId').value=u.id;document.getElementById('uNm').value=u.name;document.getElementById('uPw').value='';document.getElementById('uRo').value=u.role;onUsrRoleChange();if(u.role==='driver'||u.role==='admin')populateUsrDrvSel(u.driver_id);document.getElementById('mUsrH').innerHTML='ユーザー編集 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
 async function delUsr(id){
   if(id===me?.id){alert('自分自身は削除できません');return;}if(!confirm('削除しますか？'))return;
   try{
@@ -6131,7 +6140,8 @@ async function saveUsr(){
   if(!id||!n){alert('IDと名前は必須です');return;}
   // 編集時はパスワード空欄=変更なし、新規時は必須
   if(!eUsrId&&!pw){alert('パスワードを入力してください');return;}
-  const driverId = role==='driver' ? (+document.getElementById('uDrvSel').value||null) : null;
+  // 管理者は任意（本人も乗務する場合に日報入力を楽にするための紐づけ）、ドライバーは必須
+  const driverId = (role==='driver'||role==='admin') ? (+document.getElementById('uDrvSel').value||null) : null;
   if(role==='driver'&&!driverId){alert('紐づけるドライバーを選択してください');return;}
   showLoad(true);
   try{
@@ -10054,7 +10064,12 @@ async function initDailyForm(reportId=null) {
       return d && !allCars.some(x=>nm(x.car)===nm(v.car)) ? {car:v.car, name:d.name, drvId:d.id} : null;
     }).filter(Boolean);
     const allCarsWithAssigned = [...allCars, ...assignedCars];
+    // 管理者アカウント自身にドライバーが紐づけられている場合（本人も乗務するケース）、
+    // 自分の車両を「自分の車両」として先頭にまとめて出す（全ドライバー分の一覧はそのまま維持する）
+    const myDrv = me?.driver_id ? drvs.find(d=>d.id===me.driver_id) : null;
+    const myCars = myDrv ? allCarsWithAssigned.filter(x=>x.drvId===myDrv.id).map(x=>x.car) : [];
     carSel.innerHTML = '<option value="">選択してください</option>' +
+      (myCars.length ? `<optgroup label="自分の車両（${escHtml(myDrv.name)}）">${myCars.map(c => `<option value="${c}">${c}</option>`).join('')}</optgroup>` : '') +
       allCarsWithAssigned.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
   }
   carCustom.style.display = 'none';
@@ -10291,17 +10306,24 @@ async function submitDailyReport() {
   if (cliInput && !cliMatch) {
     if (!confirm(`⚠ 取引先「${cliInput}」が登録済みの取引先名と一致しませんでした。取引先を未設定のまま提出しますか？`)) return;
   }
-  // 車番も同様にチェックする。ドライバー本人は自分の登録車両としか比較できない（RLSで他ドライバーの車両は見えないため）
-  const knownCars = (me?.role === 'driver') ? (me.driver_data?.cars || []) : drvs.flatMap(d => d.cars || []);
-  if (car && !knownCars.some(c => nm(c) === nm(car))) {
-    if (!confirm(`⚠ 車番「${car}」は登録車両と一致しませんでした（代車など）。このまま提出しますか？`)) return;
+  // 車番も同様にチェックする。ドライバー本人は自分の登録車両としか比較できない（RLSで他ドライバーの車両は見えないため）。
+  // 車両プルダウンの候補（登録車両＋乗務履歴で割り当て中の代車）から選んだ場合は、
+  // 手入力(__custom__)でない限りここでの警告は出さない（プルダウン自体が既に妥当な候補のみを出しているため）
+  const carFromDropdown = car && [...document.getElementById('drCar').options].some(o => o.value === car && o.value !== '__custom__');
+  if (car && !carFromDropdown) {
+    const knownCars = (me?.role === 'driver') ? (me.driver_data?.cars || []) : drvs.flatMap(d => d.cars || []);
+    if (!knownCars.some(c => nm(c) === nm(car))) {
+      if (!confirm(`⚠ 車番「${car}」は登録車両と一致しませんでした（代車など）。このまま提出しますか？`)) return;
+    }
   }
 
   // drv_id: RLSで「自分の日報だけ見える」を成立させるための紐付け。
   // ドライバー本人の提出は、共有車両（車番の所有者が別ドライバー）でも必ず本人IDに紐づける
   // （車番所有者に紐づけると本人が自分の日報を見られず、RLSのINSERT本人チェックにも弾かれるため）。
-  // 管理者・編集者が代理入力する場合のみ、車番から所有ドライバーを解決する。
-  const resolvedDrvId = (me?.role === 'driver') ? me.driver_id : (lkD(car)?.id ?? null);
+  // 管理者・編集者が代理入力する場合のみ、車番から所有ドライバーを解決する
+  // （恒久登録車両はlkD、乗務履歴で割り当て中の代車はlkDByAssignで解決。車番プルダウンに
+  // 両方の車両が候補として出るようになったため、代車を選んだ場合も正しく紐づける）。
+  const resolvedDrvId = (me?.role === 'driver') ? me.driver_id : (lkDByAssign(car, date)?.id ?? lkD(car)?.id ?? null);
 
   const obj = {
     date,
