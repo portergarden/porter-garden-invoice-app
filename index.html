@@ -4767,9 +4767,28 @@ function renderMonthlyBreakdownTable(containerId) {
     </tbody>
   </table>`;
 }
+// 請求合計（totbar）を更新する。KPIカード・集計エリアと同じ「集計期間」に連動させている
+// （一覧の検索欄の日付(sd1/sd2)とは別軸。支払明細書作成タブの支払合計と同じ考え方に揃えている）。
+// runAggInv()から集計期間変更のたびに呼ばれるほか、renderInv()の初回描画時にも呼ばれる
+function renderInvTotalBar(){
+  if (!document.getElementById('totLbl')) return;
+  const totRows=aggInvFilteredRecs();
+  const isF=totRows.length!==recs.length;
+  document.getElementById('totLbl').textContent=isF?'請求合計（絞り込み中）':'請求合計（全件）';
+  const tF=totRows.reduce((a,r)=>a+(r.fare||0),0);
+  const bAll=totRows.reduce((a,r)=>{const b=feeBreakdown(r,'billing');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other};},{hw:0,oth:0,other:0});
+  const tS=tF+totRows.reduce((a,r)=>a+(r.hw||0)+(r.oth||0),0),tT=totRows.reduce((a,r)=>a+rtax(r),0);
+  const tExtra=sumRecsExtraFees(totRows,'billing'); // 受注入力の追加料金（請求／両方指定分、税込ベース）
+  document.getElementById('tMain').textContent=yen(taxMode==='inc'?tS+tT+tExtra:tS);
+  document.getElementById('tFare').textContent=yen(tF);document.getElementById('tHw').textContent=yen(bAll.hw);document.getElementById('tOth').textContent=yen(bAll.oth);
+  document.getElementById('tExtraOther').textContent=yen(bAll.other);
+  document.getElementById('tSub').textContent=yen(tS);document.getElementById('tTax').textContent=yen(tT);
+  document.getElementById('thTot').textContent='合計('+(taxMode==='inc'?'税込':'税別')+')';
+}
 let _aggInvInitialized = false; // 集計期間の初回リセット制御（以前は削除済みのサブタブボタンのonクラスで判定していた）
 function renderInv(){
-  // pg0集計エリア初期化（受注入力はpg18に移動済みのため集計のみ）
+  // pg0集計エリア初期化（受注入力はpg18に移動済みのため集計のみ）。
+  // どちらの経路でもrunAggInv()が呼ばれ、その中でrenderInvTotalBar()も更新される
   if (!_aggInvInitialized && typeof switchP0Tab === 'function') {
     _aggInvInitialized = true;
     switchP0Tab(1); // 初回のみ：集計期間を前月にリセットして集計
@@ -4778,17 +4797,6 @@ function renderInv(){
   }
   const rows=filt();
   updateInvMetCards();
-  const isF=rows.length!==recs.length;
-  document.getElementById('totLbl').textContent=isF?'請求合計（絞り込み中）':'請求合計（全件）';
-  const tF=rows.reduce((a,r)=>a+(r.fare||0),0);
-  const bAll=rows.reduce((a,r)=>{const b=feeBreakdown(r,'billing');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other};},{hw:0,oth:0,other:0});
-  const tS=tF+rows.reduce((a,r)=>a+(r.hw||0)+(r.oth||0),0),tT=rows.reduce((a,r)=>a+rtax(r),0);
-  const tExtra=sumRecsExtraFees(rows,'billing'); // 受注入力の追加料金（請求／両方指定分、税込ベース）
-  document.getElementById('tMain').textContent=yen(taxMode==='inc'?tS+tT+tExtra:tS);
-  document.getElementById('tFare').textContent=yen(tF);document.getElementById('tHw').textContent=yen(bAll.hw);document.getElementById('tOth').textContent=yen(bAll.oth);
-  document.getElementById('tExtraOther').textContent=yen(bAll.other);
-  document.getElementById('tSub').textContent=yen(tS);document.getElementById('tTax').textContent=yen(tT);
-  document.getElementById('thTot').textContent='合計('+(taxMode==='inc'?'税込':'税別')+')';
   renderPayMets();
   const ua=document.getElementById('uAlert');
   const unCars=[...new Set(recs.filter(r=>!recDrv(r)).map(r=>r.car))];
@@ -15210,8 +15218,22 @@ function updateInvMetCards() {
   document.getElementById('mUn').textContent=metRecs.filter(r=>!recDrv(r)).length;
   if (document.getElementById('invMonthlyBreakdown')?.style.display !== 'none') renderMonthlyBreakdownTable('invMonthlyBreakdown');
 }
+// pg0（請求明細書作成）の集計期間・種別・取引先・ドライバー検索の絞り込みを反映したrecsを返す。
+// 上部の合計バー(renderInvの請求合計)と集計テーブル(runAggInv)で条件を一致させるための共通ロジック
+// （検索欄の日付(sd1/sd2)など一覧表示側の絞り込みとは別軸。請求合計は集計エリアの期間に連動させる）
+function aggInvFilteredRecs() {
+  const from = document.getElementById('aggInvFrom')?.value || '';
+  const to = document.getElementById('aggInvTo')?.value || '';
+  const cliFilterArr = getMSelValues('aggInvCli');
+  const drvSearch = nm(document.getElementById('aggInvDrvSearch')?.value||'');
+  return recs.filter(r => (!from || r.date >= from) && (!to || r.date <= to))
+    .filter(r => matchesTypeFilter(r, aggInvTypeFilter))
+    .filter(r => !cliFilterArr.length || cliFilterArr.includes(r.cli))
+    .filter(r => !drvSearch || nm(recDrv(r)?.name||'').includes(drvSearch));
+}
 function runAggInv() {
   updateInvMetCards();
+  renderInvTotalBar(); // 集計期間などの変更のたびに、上部の請求合計もあわせて更新する
   const from = document.getElementById('aggInvFrom').value;
   const to = document.getElementById('aggInvTo').value;
   const cliFilterArr = getMSelValues('aggInvCli');
