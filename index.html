@@ -3579,42 +3579,42 @@ function feeBreakdown(r, side, taxRatePct){
    それ以外の項目は表示項目パネルから任意に追加できる（既定は非表示） */
 const AGG_DETAIL_COLS = [
   {key:'salesDate', label:'売計上日', default:true, get:r=>r.sales_date||r.date||''},
-  {key:'driverCar', label:'ドライバー/車番', default:true, twoLine:true, equalLines:true, get:r=>({top:(recDrv(r)?.name)||'—', bottom:r.car||''})},
+  {key:'driverCar', label:'ドライバー/車番', default:true, twoLine:true, equalLines:true, get:r=>({top:escHtml((recDrv(r)?.name)||'—'), bottom:escHtml(r.car||'')})},
   {key:'cli', label:'取引先', default:true, get:r=>{const c=lkC(r.cli);return c?`<span style="cursor:pointer;color:var(--blue);text-decoration:underline dotted" onclick="event.stopPropagation();editCli(${c.id})" title="取引先管理で開く">${escHtml(c.name)}</span>`:'';}},
-  {key:'pickupLoc', label:'引取先', default:true, get:r=>r.pickup_location||''},
-  {key:'deliveryLoc', label:'配送先', default:true, get:r=>r.delivery_location||''},
-  {key:'taskName', label:'作業名', default:true, get:r=>r.task_name||''},
-  {key:'distTime', label:'距/時', default:true, get:r=>r.distance_time||''},
+  {key:'pickupLoc', label:'引取先', default:true, get:r=>escHtml(r.pickup_location||'')},
+  {key:'deliveryLoc', label:'配送先', default:true, get:r=>escHtml(r.delivery_location||'')},
+  {key:'taskName', label:'作業名', default:true, get:r=>escHtml(r.task_name||'')},
+  {key:'distTime', label:'距/時', default:true, get:r=>escHtml(r.distance_time||'')},
   {key:'unitPrice', label:'単価', default:true, num:true, get:(r,side)=>{const q=r.qty||1;const fare=fareBySide(r,side),oth=othRawBySide(r,side);const base=fare>0?fare:oth;return Math.round(base/q);}},
   {key:'qty', label:'数量', default:true, right:true, get:r=>r.qty!=null?r.qty:1},
   {key:'hw', label:'高速代', default:true, num:true, get:(r,side)=>feeBreakdown(r,side).hw},
   {key:'oth', label:'立替代', default:true, twoLine:true, right:true, get:(r,side)=>{
     const fb = feeBreakdown(r,side);
     const names = (r.extra_fees||[]).filter(f=>(f.applies===side||f.applies==='both')&&f.tax==='advance'&&!(f.name||'').includes('高速')).map(f=>f.name);
-    return { top: names.join('、')||'—', bottom: yen(fb.oth) };
+    return { top: escHtml(names.join('、'))||'—', bottom: yen(fb.oth) };
   }},
   {key:'other', label:'追加料金(他)', default:true, twoLine:true, right:true, get:(r,side)=>{
     const fb = feeBreakdown(r,side);
     const names = (r.extra_fees||[]).filter(f=>(f.applies===side||f.applies==='both')&&f.tax!=='advance'&&!(f.name||'').includes('高速')).map(f=>f.name);
-    return { top: names.join('、')||'—', bottom: yen(fb.other) };
+    return { top: escHtml(names.join('、'))||'—', bottom: yen(fb.other) };
   }},
   {key:'total', label:'金額', default:true, num:true, get:(r,side)=>{const fb=feeBreakdown(r,side);return fareBySide(r,side)+fb.total+rtaxBySide(r,side);}},
   {key:'date', label:'配送日', default:false, get:r=>r.date||''},
-  {key:'car', label:'車番', default:false, get:r=>r.car||''},
-  {key:'driver', label:'ドライバー', default:false, get:r=>{const d=recDrv(r);return d?d.name:'';}},
+  {key:'car', label:'車番', default:false, get:r=>escHtml(r.car||'')},
+  {key:'driver', label:'ドライバー', default:false, get:r=>{const d=recDrv(r);return d?escHtml(d.name):'';}},
   {key:'type', label:'種別', default:false, get:r=>typeShort(r.type)},
   {key:'fare', label:'運賃', default:false, num:true, get:(r,side)=>fareBySide(r,side)},
-  {key:'feeList', label:'追加料金内訳', default:false, get:(r,side)=>(r.extra_fees||[]).filter(f=>f.applies===side||f.applies==='both').map(f=>`${f.name} ${yen(f.amount||0)}`).join('、')},
+  {key:'feeList', label:'追加料金内訳', default:false, get:(r,side)=>(r.extra_fees||[]).filter(f=>f.applies===side||f.applies==='both').map(f=>`${escHtml(f.name)} ${yen(f.amount||0)}`).join('、')},
   {key:'tax', label:'消費税', default:false, num:true, get:(r,side)=>rtaxBySide(r,side)},
   {key:'pickupDate', label:'引取日', default:false, get:r=>r.pickup_date||''},
-  {key:'pickupTime', label:'引取時間', default:false, get:r=>r.pickup_time||''},
+  {key:'pickupTime', label:'引取時間', default:false, get:r=>escHtml(r.pickup_time||'')},
   {key:'pickupDone', label:'引取済', default:false, get:r=>r.pickup_done?'済':''},
-  {key:'deliveryTime', label:'配送時間', default:false, get:r=>r.delivery_time||''},
+  {key:'deliveryTime', label:'配送時間', default:false, get:r=>escHtml(r.delivery_time||'')},
   {key:'deliveryDone', label:'配送済', default:false, get:r=>r.delivery_done?'済':''},
-  {key:'driverNote', label:'Dr連絡', default:false, get:r=>r.driver_note||''},
+  {key:'driverNote', label:'Dr連絡', default:false, get:r=>escHtml(r.driver_note||'')},
   {key:'invPayDate', label:'支払日', default:false, get:r=>r.invoice_payment_date||''},
   {key:'status', label:'ステータス', default:true, get:r=>stLbl(r.st)?`<span class="bdg ${stCls(r.st)}">${stLbl(r.st)}</span>`:''},
-  {key:'note', label:'備考', default:false, get:r=>r.note||''},
+  {key:'note', label:'備考', default:false, get:r=>escHtml(r.note||'')},
 ];
 
 function loadAggDetailCols() {
