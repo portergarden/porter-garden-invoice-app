@@ -1414,6 +1414,7 @@ try {
       <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
     </div>
     <div id="vehicleKpi" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+    <div id="vehicleMismatchArea" style="padding:0 14px"></div>
     <div style="padding:10px 14px" id="vehicleList"></div>
   </div>
   <div id="pg4" class="hide">
@@ -4622,7 +4623,7 @@ function goPage(n,el){
   if(n===2){renderDrv();const needDocs=!driverDocs.length;Promise.all([needDocs?loadDriverDocs():Promise.resolve(),loadDriverChatUnread()]).then(()=>renderDrv());}
   if(n===3)renderCli();
   if(n===25)renderPartners();
-  if(n===26)renderVehicles();
+  if(n===26){renderVehicles();loadDailyReportVehicleMismatches().then(()=>renderVehicles());}
   if(n===4)loadLogs();
   if(n===5)renderUsr();
   if(n===6){initAggPay();runAggPay();}
@@ -6891,6 +6892,65 @@ function vehicleTypeLabel(v) {
   return '自社所有'; // 'company'、および旧データ'own'（未分離だった頃の値）はここに含める
 }
 
+/* ===== 日報×車両乗務履歴の不一致検知 =====
+   日報で実際に使われた車番のうち、その日を乗務履歴（vehicle_assignments）でカバーできていない
+   ものを検出する。自動では乗務履歴を作成しない（日額リース設定のある車だと、日報の入力ミスで
+   勝手に控除が発生してしまうため）。あくまで事務所が気づいて手動登録するための通知にとどめる。 */
+let vehicleMismatches = [];
+async function loadDailyReportVehicleMismatches() {
+  if (!sb) { vehicleMismatches = []; return; }
+  const since = fmtLocalDate(new Date(Date.now() - 60*86400000)); // 直近60日分のみ対象（重すぎず、実務上意味のある範囲）
+  try {
+    const { data, error } = await sb.from('daily_reports').select('car,date,drv_id').gte('date', since).not('drv_id', 'is', null);
+    if (error) throw error;
+    const grouped = {};
+    (data||[]).forEach(r => {
+      if (!r.car || !r.date) return;
+      const d = driverIndexes().id.get(r.drv_id);
+      if (!d) return;
+      if ((d.cars||[]).some(c => nm(c)===nm(r.car))) return; // 恒久登録車両は対象外
+      const covered = (vehicleAssignments||[]).some(v => v.driver_id===d.id && nm(v.car)===nm(r.car) && v.start_date<=r.date && (!v.end_date || r.date<=v.end_date));
+      if (covered) return;
+      const k = `${nm(r.car)}__${d.id}`;
+      if (!grouped[k]) grouped[k] = { car:r.car, drvId:d.id, drvName:d.name, dates:[] };
+      grouped[k].dates.push(r.date);
+    });
+    vehicleMismatches = Object.values(grouped).map(g => {
+      const dates = g.dates.sort();
+      return { ...g, count:dates.length, minDate:dates[0], maxDate:dates[dates.length-1] };
+    });
+  } catch(e) { console.warn('loadDailyReportVehicleMismatches:', e.message); vehicleMismatches = []; }
+}
+function toggleVehicleMismatchList() {
+  const el = document.getElementById('vehicleMismatchList');
+  if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+// 不一致一覧から「乗務履歴に登録」を押した時、車両乗務履歴モーダルをその内容で開く
+function quickRegisterVehicleMismatch(car, drvId, minDate) {
+  openVehicleHistM(car);
+  const d = drvs.find(x=>x.id===drvId);
+  if (d) {
+    document.getElementById('vhDrvId').value = d.id;
+    document.getElementById('vhDrvText').value = q0DrvOverrideLabel(d);
+  }
+  document.getElementById('vhStart').value = minDate;
+}
+function renderVehicleMismatchPanel() {
+  const el = document.getElementById('vehicleMismatchArea');
+  if (!el) return;
+  if (!vehicleMismatches.length) { el.innerHTML = ''; return; }
+  const totalCnt = vehicleMismatches.length;
+  el.innerHTML = `
+    <div style="padding:8px 12px;margin-bottom:10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11.5px;color:var(--amber-text)">
+      <span style="cursor:pointer" onclick="toggleVehicleMismatchList()">⚠ 乗務履歴の登録がない車番で日報が提出されています（${totalCnt}件・直近60日）（クリックで一覧表示）</span>
+      <div id="vehicleMismatchList" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
+        ${vehicleMismatches.map(m => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:var(--radius);padding:5px 8px">
+          <span>🚙 ${escHtml(m.car)}　${escHtml(m.drvName)}　${m.minDate}${m.maxDate!==m.minDate?`〜${m.maxDate}`:''}（${m.count}日分）</span>
+          <button class="btn sml" onclick="quickRegisterVehicleMismatch('${escHtml(m.car).replace(/'/g,"\\'")}',${m.drvId},'${m.minDate}')">乗務履歴に登録</button>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
 function renderVehicles() {
   const listEl = document.getElementById('vehicleList');
   if (!listEl) return;
@@ -6907,6 +6967,7 @@ function renderVehicles() {
       <div class="kpi-card"><div class="kpi-label">廃車</div><div class="kpi-val">${vehicles.filter(v=>v.status==='scrapped').length}台</div></div>
     `;
   }
+  renderVehicleMismatchPanel();
   populateVehicleLeaseFilter();
   if (!vehicles.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">車両が登録されていません</div>`; return; }
   const q = nm(document.getElementById('vehicleSearch')?.value||'');
