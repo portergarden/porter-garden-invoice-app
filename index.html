@@ -5330,6 +5330,7 @@ async function saveDrv(){
       }
     }
     closeM('mDrv');renderDrv();renderInv();
+    refreshPayAggIfVisible(); // 支払明細書作成タブから開いた場合、その場で集計テーブルにも反映する
     if(createLogin && createdInitialPw && users.find(u=>u.id===loginId)){showT('ドライバーとログインを登録しました');showLoginCreatedInfo(loginId,createdInitialPw);}
     else showT('ドライバーを登録しました');
   }catch(e){showT(e.code==='23505'?`ドライバーID「${supId}」は既に使用されています`:'保存エラー: '+e.message,'ter');}
@@ -7077,6 +7078,7 @@ async function saveVehicle() {
     }
     closeM('mVehicle');
     renderVehicles();
+    refreshPayAggIfVisible(); // 支払明細書作成タブから開いた場合、その場で集計テーブルにも反映する
     showT('保存しました');
   } catch(e) {
     if (e.message.includes('does not exist')||e.message.includes('relation')) {
@@ -7095,9 +7097,15 @@ async function deleteVehicle(id) {
     vehicles = vehicles.filter(x=>x.id!==id);
     addLog('車両削除', v.car);
     renderVehicles();
+    refreshPayAggIfVisible();
     showT('削除しました');
   } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
   showLoad(false);
+}
+// 支払明細書作成タブ（集計）の車番・ドライバー名リンクから車両・ドライバーをその場で編集した際、
+// 裏で開いたままのpg6の集計テーブルにも即座に反映させる（タブを切り替えずに済むようにしたための追随処理）
+function refreshPayAggIfVisible() {
+  if (!document.getElementById('pg6')?.classList.contains('hide') && document.getElementById('aggPayTbody')) runAggPay();
 }
 
 /* ===== 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録） =====
@@ -7755,9 +7763,10 @@ function findVehicleByCar(car) {
   const cands = (vehicles||[]).filter(x => carTailNumber(x.car) === t);
   return cands.length === 1 ? cands[0] : null;  // 末尾番号が重複する場合は特定しない
 }
+// モーダルは他のページの上にも重ねて表示できるため、あえてタブを切り替えない。
+// 支払明細書作成タブなどを見ながらその場で車両・ドライバー情報を訂正し、閉じれば元の画面に戻れるようにする
 function jumpToVehicleByCar(car) {
   if (!car) return;
-  goPage(26, document.getElementById('nt26'));
   const v = findVehicleByCar(car);
   if (v) { editVehicle(v.id); return; }
   // 車両マスタ未登録：車番を入れた状態で追加モーダルを開く
@@ -7768,7 +7777,6 @@ function jumpToVehicleByCar(car) {
 function jumpToDriverEdit(drvId) {
   const d = drvs.find(x => x.id === drvId);
   if (!d) { showT('ドライバーが見つかりませんでした', 'ter'); return; }
-  goPage(2, document.getElementById('nt2'));
   editDrv(drvId);
 }
 
