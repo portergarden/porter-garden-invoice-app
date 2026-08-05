@@ -2914,8 +2914,9 @@ try {
         </div>
         <div class="g2">
           <div class="fld"><label>開始日</label><input type="date" id="vhStart" style="width:100%"></div>
-          <div class="fld"><label>日額リース料（円・任意。自社の代車など）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
+          <div class="fld"><label>終了日（任意・分かっていれば）</label><input type="date" id="vhEnd" style="width:100%"></div>
         </div>
+        <div class="fld"><label>日額リース料（円・任意。自社の代車など）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
         <div class="fld"><label>備考（任意）</label><input type="text" id="vhNote" style="width:100%"></div>
         <button class="btn pri sml" onclick="addVehicleAssignment()">＋ 記録する</button>
       </div>
@@ -4816,7 +4817,7 @@ function renderInv(){
       <td>${r.date}</td>
       <td style="font-weight:500;max-width:96px;overflow:hidden;text-overflow:ellipsis">${escHtml(canonicalCar(r.car))}</td>
       <td style="max-width:76px;overflow:hidden;text-overflow:ellipsis">${d?escHtml(d.name):`<span class="bdg un">未配車</span>`}</td>
-      <td style="max-width:78px;overflow:hidden;text-overflow:ellipsis">${c?`<span style="font-size:11px">${escHtml(c.short||c.name)}</span>`:'<span class="dim">—</span>'}</td>
+      <td style="max-width:78px;overflow:hidden;text-overflow:ellipsis">${c?`<span style="font-size:11px;cursor:pointer;color:var(--blue);text-decoration:underline dotted" onclick="editCli(${c.id})" title="取引先管理で開く">${escHtml(c.short||c.name)}</span>`:'<span class="dim">—</span>'}</td>
       <td><span class="bdg ${typeBadge(r.type)}">${typeShort(r.type)}</span></td>
       ${nz(r.fare)}${nz(fb.hw)}${nz(fb.oth)}
       <td class="r" style="font-weight:500">${yen(tot_)}<div style="font-size:9px;color:var(--text2)">${r.tax===0?'非課税':r.tax+'%'}</div></td>
@@ -7142,6 +7143,7 @@ function openVehicleHistM(car) {
   document.getElementById('vhDrvId').value = '';
   document.getElementById('vhDrvText').value = '';
   document.getElementById('vhStart').value = fmtLocalDate(new Date());
+  document.getElementById('vhEnd').value = '';
   // 車両管理タブに日額リース料が登録済みならデフォルト値として入れておく（変更可）
   const vMaster = vehicles.find(v => nm(v.car) === nm(car));
   document.getElementById('vhRate').value = vMaster?.daily_rate ?? '';
@@ -7191,6 +7193,8 @@ async function addVehicleAssignment() {
   if (!driverId) { alert('候補からドライバーを選択してください'); return; }
   const startDate = document.getElementById('vhStart').value;
   if (!startDate) { alert('開始日を入力してください'); return; }
+  const endDate = document.getElementById('vhEnd').value || null;
+  if (endDate && endDate < startDate) { alert('終了日は開始日より後の日付にしてください'); return; }
   const rateVal = document.getElementById('vhRate').value;
   const dailyRate = rateVal === '' ? null : +rateVal;
   const note = document.getElementById('vhNote').value.trim();
@@ -7203,12 +7207,14 @@ async function addVehicleAssignment() {
       const {error: uErr} = await sb.from('vehicle_assignments').update({end_date: prevEnd}).eq('id', o.id);
       if (!uErr) o.end_date = prevEnd;
     }
-    const {data, error} = await sb.from('vehicle_assignments').insert({car: vhCurrentCar, driver_id: driverId, start_date: startDate, daily_rate: dailyRate, note}).select().single();
+    // 終了日まで分かっている場合（短期の貸出予定など）は、その場で終了済みとして記録できる
+    const {data, error} = await sb.from('vehicle_assignments').insert({car: vhCurrentCar, driver_id: driverId, start_date: startDate, end_date: endDate, daily_rate: dailyRate, note}).select().single();
     if (error) throw error;
     vehicleAssignments.push(data);
     invalidateVehicleAssignIndex();
-    addLog('車両乗務履歴登録', `${vhCurrentCar} → ${drvs.find(d=>d.id===driverId)?.name||''}（${startDate}〜）`);
+    addLog('車両乗務履歴登録', `${vhCurrentCar} → ${drvs.find(d=>d.id===driverId)?.name||''}（${startDate}〜${endDate||''}）`);
     document.getElementById('vhDrvId').value=''; document.getElementById('vhDrvText').value='';
+    document.getElementById('vhEnd').value='';
     document.getElementById('vhRate').value=''; document.getElementById('vhNote').value='';
     renderVehicleHist();
     renderVehicles(); // 背後の車両一覧「現在の使用者」列も即座に更新する
@@ -9965,17 +9971,30 @@ async function initDailyForm(reportId=null) {
   const carCustom = document.getElementById('drCarCustom');
   const isDriver = me?.role === 'driver';
   if (isDriver) {
-    // ドライバー本人には自分の登録車両のみを表示（他ドライバーの車番は見せない）。
-    // フルの車両番号のみ表示し、4桁だけの略式登録は非表示にする。
-    // 代車など未登録車両は「その他（手入力）」で入力できるようにする
+    // ドライバー本人には自分の登録車両に加え、車両管理の乗務履歴で現在割り当てられている
+    // 代車（登録車両にない場合もある）も選択肢に出す（他ドライバーの車番は見せない）。
+    // 登録車両はフル表記のみ表示し、4桁だけの略式登録は非表示にする。
+    // それ以外の未登録車両は「その他（手入力）」で入力できるようにする
     const ownCars = (me.driver_data?.cars || []).filter(isFullPlateNumber);
+    let assignedCars = [];
+    try {
+      const {data} = await sb.from('vehicle_assignments').select('car').eq('driver_id', me.driver_id).is('end_date', null);
+      assignedCars = [...new Set((data||[]).map(v=>v.car).filter(c=>c && !ownCars.some(oc=>nm(oc)===nm(c))))];
+    } catch(e) {}
     carSel.innerHTML = '<option value="">選択してください</option>' +
       ownCars.map(c => `<option value="${c}">${c}</option>`).join('') +
+      (assignedCars.length ? `<optgroup label="現在割り当て中の代車">${assignedCars.map(c => `<option value="${c}">${c}</option>`).join('')}</optgroup>` : '') +
       '<option value="__custom__">＋ その他の車両（手入力）</option>';
   } else {
     const allCars = drvs.flatMap(d => (d.cars||[]).filter(isFullPlateNumber).map(c => ({car:c, name:d.name, drvId:d.id})));
+    // 車両管理の乗務履歴で現在使用中の代車も候補に加える（登録車両にない場合があるため）
+    const assignedCars = (vehicleAssignments||[]).filter(v=>!v.end_date).map(v => {
+      const d = drvs.find(x=>x.id===v.driver_id);
+      return d && !allCars.some(x=>nm(x.car)===nm(v.car)) ? {car:v.car, name:d.name, drvId:d.id} : null;
+    }).filter(Boolean);
+    const allCarsWithAssigned = [...allCars, ...assignedCars];
     carSel.innerHTML = '<option value="">選択してください</option>' +
-      allCars.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
+      allCarsWithAssigned.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
   }
   carCustom.style.display = 'none';
   carCustom.value = '';
@@ -17141,10 +17160,10 @@ CREATE POLICY "partner_companies_update" ON partner_companies FOR UPDATE TO auth
 DROP POLICY IF EXISTS "partner_companies_delete" ON partner_companies;
 CREATE POLICY "partner_companies_delete" ON partner_companies FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
--- 車両乗務履歴: 社内のみ閲覧・編集可（ドライバー本人には見せない内部管理台帳）
+-- 車両乗務履歴: 社内は全件、ドライバーは自分の行のみ閲覧可（日報入力で自分が使用中の代車を選択肢に出すため）。編集は社内のみ
 ALTER TABLE vehicle_assignments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "vehicle_assignments_select" ON vehicle_assignments;
-CREATE POLICY "vehicle_assignments_select" ON vehicle_assignments FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "vehicle_assignments_select" ON vehicle_assignments FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR driver_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));
 DROP POLICY IF EXISTS "vehicle_assignments_insert" ON vehicle_assignments;
 CREATE POLICY "vehicle_assignments_insert" ON vehicle_assignments FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "vehicle_assignments_update" ON vehicle_assignments;
