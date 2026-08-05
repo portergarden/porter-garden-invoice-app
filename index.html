@@ -3580,7 +3580,7 @@ function feeBreakdown(r, side, taxRatePct){
 const AGG_DETAIL_COLS = [
   {key:'salesDate', label:'売計上日', default:true, get:r=>r.sales_date||r.date||''},
   {key:'driverCar', label:'ドライバー/車番', default:true, twoLine:true, equalLines:true, get:r=>({top:(recDrv(r)?.name)||'—', bottom:r.car||''})},
-  {key:'cli', label:'取引先', default:true, get:r=>{const c=lkC(r.cli);return c?c.name:'';}},
+  {key:'cli', label:'取引先', default:true, get:r=>{const c=lkC(r.cli);return c?`<span style="cursor:pointer;color:var(--blue);text-decoration:underline dotted" onclick="event.stopPropagation();editCli(${c.id})" title="取引先管理で開く">${escHtml(c.name)}</span>`:'';}},
   {key:'pickupLoc', label:'引取先', default:true, get:r=>r.pickup_location||''},
   {key:'deliveryLoc', label:'配送先', default:true, get:r=>r.delivery_location||''},
   {key:'taskName', label:'作業名', default:true, get:r=>r.task_name||''},
