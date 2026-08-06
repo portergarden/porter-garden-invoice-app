@@ -1908,6 +1908,7 @@ try {
       <select id="mrDrvSel" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderMonthlyReport()">
         <option value="">全ドライバー</option>
       </select>
+      <button class="btn sml" id="mrShowAllBtn" onclick="toggleMrShowAll()" title="既定では対象期間に日報の提出があるドライバーのみ表示します">提出者のみ表示</button>
       <button class="btn sml" onclick="exportMonthlyCsv()">⬇ CSV</button>
       <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4縦1枚）を作成して印刷します">🖨 印刷（ドライバー別）</button>
     </div>
@@ -7086,6 +7087,15 @@ function renderVehicles() {
   if (statusFilter === 'active') filtered = filtered.filter(v=>v.status!=='scrapped');
   else if (statusFilter === 'scrapped') filtered = filtered.filter(v=>v.status==='scrapped');
   if (!filtered.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">該当する車両が見つかりません</div>`; return; }
+  // 並び順: 現在の使用者のドライバーID順（未割当は車番順で末尾に）
+  filtered = [...filtered].sort((a,b) => {
+    const ida = currentVehicleDriver(a.car)?.supplier_id;
+    const idb = currentVehicleDriver(b.car)?.supplier_id;
+    if (ida && idb) return ida.localeCompare(idb, 'ja', {numeric:true}) || nm(a.car).localeCompare(nm(b.car));
+    if (ida) return -1;
+    if (idb) return 1;
+    return nm(a.car).localeCompare(nm(b.car));
+  });
   const canE = me && me.role !== 'viewer';
   const headerRow = `<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 12px 6px;gap:12px;font-size:10.5px;color:var(--text2);font-weight:600">
     <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
@@ -11074,6 +11084,14 @@ function initMonthlyReport() {
   ensureMonthRangeDefault('mrFrom', 'mrTo');
   populateMrDrvSel();
 }
+// 月報の「提出者のみ表示／全員表示」切替。既定は提出者のみ（未提出のドライバーはカードを出さない）
+let mrShowAll = false;
+function toggleMrShowAll() {
+  mrShowAll = !mrShowAll;
+  const btn = document.getElementById('mrShowAllBtn');
+  if (btn) { btn.textContent = mrShowAll ? '全員表示中' : '提出者のみ表示'; btn.classList.toggle('pri', mrShowAll); }
+  renderMonthlyReport();
+}
 // 月報タブのドライバー選択プルダウンを更新する（登録ドライバーの追加・削除に追随させるため
 // 画面表示のたびに呼び出す。選択中の値は維持する）
 function populateMrDrvSel() {
@@ -11121,9 +11139,14 @@ async function renderMonthlyReport() {
   // 日報がどのドライバーにもマッチせず月報から丸ごと抜け落ちていた
   populateMrDrvSel();
   const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
-  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : activeDrvs();
+  let targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : activeDrvs();
   if (mrDrvId) {
     drReports = drReports.filter(r => recDrv(r)?.id === mrDrvId);
+  } else if (!mrShowAll) {
+    // 既定では対象期間に日報の提出があるドライバーのみを表示する（未提出者はカード一覧から省く）。
+    // 「全員表示」ボタンで切り替えられる
+    const submittedIds = new Set(drReports.map(r => recDrv(r)?.id).filter(id => id != null));
+    targetDrvs = targetDrvs.filter(d => submittedIds.has(d.id));
   }
 
   /* ──── 全体KPI ──── */
@@ -11143,7 +11166,9 @@ async function renderMonthlyReport() {
 
   /* ──── ドライバー別集計 ──── */
   if (!targetDrvs.length) {
-    bodyEl.innerHTML = '<div style="color:var(--text2);padding:20px;text-align:center">ドライバー未登録</div>';
+    bodyEl.innerHTML = (!mrDrvId && !mrShowAll && drvs.length)
+      ? '<div style="color:var(--text2);padding:20px;text-align:center">この期間に日報の提出がありません（「提出者のみ表示」ボタンで全ドライバー表示に切り替えられます）</div>'
+      : '<div style="color:var(--text2);padding:20px;text-align:center">ドライバー未登録</div>';
     return;
   }
 
@@ -11368,8 +11393,7 @@ async function printMonthlyReportA4() {
   const pages = targetDrvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
     .map(d => {
-      const dCars = d.cars || [];
-      const dReports = drReports.filter(r => dCars.some(c => nm(c)===nm(r.car)));
+      const dReports = drReports.filter(r => recDrv(r)?.id === d.id);
       if (!dReports.length) return null; // その月の日報が1件もないドライバーは出力対象外
       const byDate = {};
       dReports.forEach(r => { byDate[r.date] = r; }); // 同日複数件は最後の1件を優先
@@ -11473,8 +11497,7 @@ function exportMonthlyCsv() {
     '宅配便','ポスト便','チャーター便','その他','Alc前','Alc後','体調(前)','状態','備考'];
   const rows = [];
   drvs.forEach(d => {
-    const dCars = d.cars||[];
-    const dReps = drReports_local.filter(r=>dCars.some(c=>nm(c)===nm(r.car)));
+    const dReps = drReports_local.filter(r=>recDrv(r)?.id===d.id);
     dReps.forEach(r => {
       rows.push([
         d.name, d.supplier_id||'', r.date,
