@@ -11016,13 +11016,15 @@ async function renderMonthlyReport() {
   // 請求書データ（invoices）から当月分
   const invMonth = recs.filter(r => r.date && r.date >= from && r.date <= to);
 
-  // ドライバー個別選択（未選択なら全ドライバー対象のまま）。KPI・カード一覧の両方に反映する
+  // ドライバー個別選択（未選択なら全ドライバー対象のまま）。KPI・カード一覧の両方に反映する。
+  // ドライバーの特定はrecDrv()で行う（drv_id優先→乗務履歴の代車→登録車両の順）。
+  // 以前は登録車両(d.cars)の文字列一致だけで絞り込んでおり、代車（乗務履歴）を使った日の
+  // 日報がどのドライバーにもマッチせず月報から丸ごと抜け落ちていた
   populateMrDrvSel();
   const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
   const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : activeDrvs();
   if (mrDrvId) {
-    const selCars = targetDrvs.flatMap(d=>d.cars||[]);
-    drReports = drReports.filter(r => selCars.some(c=>nm(c)===nm(r.car)));
+    drReports = drReports.filter(r => recDrv(r)?.id === mrDrvId);
   }
 
   /* ──── 全体KPI ──── */
@@ -11051,10 +11053,12 @@ async function renderMonthlyReport() {
   const cards = targetDrvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
     .map(d => {
-      const dCars = d.cars || [];
-
-      // 日報からの集計
-      const dReports = drReports.filter(r => dCars.some(c => nm(c)===nm(r.car)));
+      // 日報・請求書ともドライバーの特定はrecDrv()で行う（drv_id優先→乗務履歴の代車→登録車両）。
+      // 登録車両(d.cars)の文字列一致だけだと、代車を使った日の分が抜け落ちるため。
+      // 同じ日に複数枚提出されることがあるため、日付→乗務開始時刻の順で時系列に並べる
+      // （日付だけのDB側ソートでは同日内の順序が保証されないため）
+      const dReports = drReports.filter(r => recDrv(r)?.id === d.id)
+        .sort((a,b) => (a.date||'').localeCompare(b.date||'') || (a.start_time||'').localeCompare(b.start_time||''));
       const drWorkDays = new Set(dReports.map(r=>r.date)).size;
       const drKm  = dReports.reduce((a,r)=>a+(+r.distance_km||0),0);
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
@@ -11064,7 +11068,7 @@ async function renderMonthlyReport() {
       const drHealthBad= dReports.filter(r=>r.health_before==='bad'||r.health_after==='bad');
 
       // 請求書（invoices）からの集計
-      const invRecs = invMonth.filter(r => dCars.some(c=>nm(c)===nm(r.car)));
+      const invRecs = invMonth.filter(r => recDrv(r)?.id === d.id);
       const invTotal= invRecs.reduce((a,r)=>a+totR(r,'inc'),0);
       const invDays = new Set(invRecs.map(r=>r.date)).size;
 
