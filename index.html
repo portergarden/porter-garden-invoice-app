@@ -3510,6 +3510,94 @@ function debounce(fn, wait) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
 }
+/* ===== 選択肢の多いプルダウンを「入力して絞り込み」できるようにする =====
+   ドライバー・取引先・協力会社など数十〜数百件になりうるselectだけを対象にする
+   （ステータスや税区分など数択の固定項目は素のselectのままにする）。
+   既存のselect要素はDOM上に残したまま非表示にし、その場で見た目そっくりの
+   検索入力欄を重ねて表示する。既存コードのonchangeハンドラ・.value取得/設定は
+   一切変更せずそのまま動く（selが「本体」であることは変えていないため）。
+   selのoptionsが後から動的に書き換えられる（populate関数の再実行）ケースが
+   ほとんどのため、呼び出し側は再描画のたびにこの関数を呼び直せばよい
+   （dataset.searchEnhancedで二重ラップを防いでいるので、既にラップ済みなら
+   何もしない）。 */
+function enhanceSelectSearchable(selectId) {
+  const sel = typeof selectId === 'string' ? document.getElementById(selectId) : selectId;
+  if (!sel || sel.tagName !== 'SELECT' || sel.multiple) return;
+  if (sel.dataset.searchEnhanced) { sel._syncSearchInput?.(); return; }
+  sel.dataset.searchEnhanced = '1';
+
+  // 幅はCSSのcascade任せにせず、置き換え前のselectの実測幅(px)をそのまま引き継ぐ。
+  // flexコンテナ内など「100%」が意図通りに解決しない文脈が多く、% 指定だと極端に潰れることがあるため
+  const measuredWidth = sel.offsetWidth || parseInt(sel.style.width, 10) || 140;
+  // display:noneにする前に元のstyle文字列を保持しておく（後でinputへコピーするため。
+  // 先に非表示にしてからコピーすると「display: none」ごとinputに引き継がれ、
+  // inputまで一緒に消えてしまう不具合があった）
+  const selStyle = sel.getAttribute('style') || '';
+  const wrap = document.createElement('span');
+  wrap.style.cssText = `position:relative;display:inline-block;vertical-align:middle;width:${measuredWidth}px`;
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  sel.style.display = 'none';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.autocomplete = 'off';
+  input.placeholder = '入力して絞り込み…';
+  // 元のselectと見た目を揃える（枠線・余白・背景など既存のCSSクラス/styleをそのまま流用）。
+  // display:を末尾で明示的に上書きし、コピー元に何が入っていても必ず表示されるようにする
+  input.className = sel.className;
+  input.setAttribute('style', selStyle + ';width:100%;box-sizing:border-box;cursor:text;display:inline-block');
+  wrap.appendChild(input);
+
+  const list = document.createElement('div');
+  list.style.cssText = 'display:none;position:absolute;top:100%;left:0;right:0;z-index:60;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);max-height:240px;overflow-y:auto;box-shadow:0 2px 8px rgba(0,0,0,0.18);margin-top:2px';
+  wrap.appendChild(list);
+
+  const optData = () => [...sel.options].map((o,i) => ({value:o.value, text:o.textContent, disabled:o.disabled, idx:i}));
+  const syncInput = () => { const o = sel.options[sel.selectedIndex]; input.value = o ? o.textContent : ''; };
+  sel._syncSearchInput = syncInput;
+
+  function renderList(filterText) {
+    const q = nm(filterText || '');
+    const items = optData().filter(o => !o.disabled && (!q || nm(o.text).includes(q)));
+    if (!items.length) { list.innerHTML = '<div style="padding:6px 8px;font-size:12px;color:var(--text2)">該当なし</div>'; list.style.display = 'block'; return; }
+    list.innerHTML = items.slice(0, 300).map(o =>
+      `<div data-idx="${o.idx}" style="padding:6px 8px;font-size:12px;cursor:pointer;${o.idx===sel.selectedIndex?'background:var(--blue-bg)':''}">${escHtml(o.text)}</div>`
+    ).join('');
+    list.style.display = 'block';
+  }
+  function choose(idx) {
+    sel.selectedIndex = idx;
+    syncInput();
+    list.style.display = 'none';
+    sel.dispatchEvent(new Event('change', {bubbles:true}));
+  }
+  input.addEventListener('focus', () => { input.select(); renderList(''); });
+  input.addEventListener('input', () => renderList(input.value));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { list.style.display = 'none'; syncInput(); input.blur(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = list.querySelector('[data-idx]');
+      if (first) choose(+first.dataset.idx);
+    }
+  });
+  input.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; syncInput(); }, 150));
+  list.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('[data-idx]');
+    if (!item) return;
+    e.preventDefault();
+    choose(+item.dataset.idx);
+  });
+  // 元のselectに対して他コードがsel.value='x'のように直接代入した場合も表示に反映させる
+  const nativeDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  Object.defineProperty(sel, 'value', {
+    configurable: true,
+    get() { return nativeDesc.get.call(sel); },
+    set(v) { nativeDesc.set.call(sel, v); syncInput(); }
+  });
+  syncInput();
+}
 const renderInvDebounced = debounce(() => renderInv(), 200);
 const renderPayTableDebounced = debounce(() => renderPayTable(), 200);
 const renderDrvDebounced = debounce(() => renderDrv(), 200);
@@ -4676,9 +4764,9 @@ document.querySelectorAll('.overlay').forEach(overlay => {
 
 function rebuildCliFilter(){
   const sel=document.getElementById('scli');
-  if(sel)sel.innerHTML='<option value="">全取引先</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(sel){sel.innerHTML='<option value="">全取引先</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('scli');}
   const fm=document.getElementById('fCli');
-  if(fm)fm.innerHTML='<option value="">未設定</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(fm){fm.innerHTML='<option value="">未設定</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('fCli');}
 }
 /* ===== INVOICE LIST ===== */
 // 締日フィルタの選択肢を、登録済み取引先の締日（重複なし）から再構築する
@@ -5181,6 +5269,7 @@ function populatePartnerSel(selectedId){
   sel.innerHTML = '<option value="">（未設定・自社所属）</option>'
     + [...partnerCompanies].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja')).map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')
     + '<option value="__new__">＋ 新しい協力会社を追加...</option>';
+  enhanceSelectSearchable('dPartnerSel');
   sel.value = selectedId ? String(selectedId) : '';
 }
 // プルダウンで「＋ 新しい協力会社を追加...」を選んだ場合、名前だけ入力してその場でpartner_companiesに登録する
@@ -5211,6 +5300,7 @@ function populateLeaseCompanyList(selected){
   sel.innerHTML = '<option value="">（未設定）</option>'
     + companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')
     + '<option value="__new__">＋ 新しいリース会社を追加...</option>';
+  enhanceSelectSearchable('dLeaseCompany');
   sel.value = selected || '';
 }
 async function onLeaseCompanySelChange(){
@@ -5855,6 +5945,7 @@ function renderPartnerClientLinkArea(partnerId) {
         </select>
         <button type="button" class="btn sml" onclick="linkExistingClientToPartner(${partnerId})">リンク</button>
       </div>`;
+    enhanceSelectSearchable('pnClientLinkSel');
   }
 }
 // 協力会社の情報（会社名・住所・電話番号など）をそのままコピーして取引先を新規作成し、リンクする
@@ -6115,6 +6206,7 @@ function onUsrRoleChange(){
 function populateUsrDrvSel(cur){
   const sel=document.getElementById('uDrvSel');
   sel.innerHTML='<option value="">選択してください</option>'+[...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999)).map(d=>`<option value="${d.id}">${d.name}${d.supplier_id?`（ID:${d.supplier_id}）`:''}</option>`).join('');
+  enhanceSelectSearchable('uDrvSel');
   if(cur)sel.value=cur;
 }
 function openUsrM(){eUsrId=null;['uId','uNm','uPw'].forEach(id=>document.getElementById(id).value='');document.getElementById('uRo').value='editor';onUsrRoleChange();document.getElementById('mUsrH').innerHTML='ユーザー追加 <button class="ibtn" onclick="closeM(\'mUsr\')">✕</button>';document.getElementById('mUsr').classList.add('on');}
@@ -6410,7 +6502,7 @@ function executeCsvExport(){
 function openPdfM(){
   parsedPdf=[];document.getElementById('pPv').innerHTML='';document.getElementById('pSt').textContent='';document.getElementById('pImp').classList.add('hide');document.getElementById('pFi').value='';
   const sel=document.getElementById('pdfCli');
-  if(sel)sel.innerHTML='<option value="">選択してください</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(sel){sel.innerHTML='<option value="">選択してください</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('pdfCli');}
   document.getElementById('mPdf').classList.add('on');
 }
 async function handlePdf(file){
@@ -6453,7 +6545,7 @@ async function importPdf(){
 function openCsvM(){
   parsedCsv=[];document.getElementById('cPv').innerHTML='';document.getElementById('cDups').innerHTML='';document.getElementById('cSt').textContent='';document.getElementById('cImp').classList.add('hide');document.getElementById('cFi').value='';
   const sel=document.getElementById('csvCli');
-  if(sel) sel.innerHTML='<option value="">自動判定（通常CSVの取引先名列を使用）</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  if(sel){sel.innerHTML='<option value="">自動判定（通常CSVの取引先名列を使用）</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('csvCli');}
   const taxRoundSel=document.getElementById('csvTaxRound');
   if(taxRoundSel) taxRoundSel.value='round';
   const hwAdvanceChk=document.getElementById('csvHwAsAdvance');
@@ -7040,6 +7132,7 @@ function populateVehicleLeaseSel(selected) {
   sel.innerHTML = '<option value="">（未設定）</option>'
     + companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')
     + '<option value="__new__">＋ 新しいリース会社を追加...</option>';
+  enhanceSelectSearchable('vLeaseCompany');
   sel.value = selected || '';
 }
 // 種別（持ち込み/リース）切り替えでリース会社欄の表示を切り替える
@@ -9129,6 +9222,7 @@ function initCal() {
   const cur = sel.value;
   sel.innerHTML = '<option value="">全員</option>' +
     activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
+  enhanceSelectSearchable('calDrvSel');
 }
 
 function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderCal(); }
@@ -9812,6 +9906,7 @@ function exportBillingProgressCsv() {
 function openSchedM() {
   const sel = document.getElementById('scDrv');
   sel.innerHTML = '<option value="">選択</option>' + activeDrvs().map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+  enhanceSelectSearchable('scDrv');
   const now = new Date();
   document.getElementById('scDate').value = '';
   document.getElementById('scAmt').value = '';
@@ -10056,6 +10151,7 @@ async function initDailyForm(reportId=null) {
       ownCars.map(c => `<option value="${c}">${c}</option>`).join('') +
       (assignedCars.length ? `<optgroup label="現在割り当て中の代車">${assignedCars.map(c => `<option value="${c}">${c}</option>`).join('')}</optgroup>` : '') +
       '<option value="__custom__">＋ その他の車両（手入力）</option>';
+    enhanceSelectSearchable('drCar');
   } else {
     const allCars = drvs.flatMap(d => (d.cars||[]).filter(isFullPlateNumber).map(c => ({car:c, name:d.name, drvId:d.id})));
     // 車両管理の乗務履歴で現在使用中の代車も候補に加える（登録車両にない場合があるため）
@@ -10071,6 +10167,7 @@ async function initDailyForm(reportId=null) {
     carSel.innerHTML = '<option value="">選択してください</option>' +
       (myCars.length ? `<optgroup label="自分の車両（${escHtml(myDrv.name)}）">${myCars.map(c => `<option value="${c}">${c}</option>`).join('')}</optgroup>` : '') +
       allCarsWithAssigned.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
+    enhanceSelectSearchable('drCar');
   }
   carCustom.style.display = 'none';
   carCustom.value = '';
@@ -10490,6 +10587,7 @@ function renderDailyList() {
     const cur = drvSel.value;
     drvSel.innerHTML = '<option value="">全ドライバー</option>' +
       activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
+    enhanceSelectSearchable('drListDrv');
     drvSel.value = cur;
   }
 
@@ -10985,6 +11083,7 @@ function populateMrDrvSel() {
   sel.innerHTML = '<option value="">全ドライバー</option>' +
     [...activeDrvs()].sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
       .map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${d.supplier_id}）`:''}</option>`).join('');
+  enhanceSelectSearchable('mrDrvSel');
   if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
 }
 
@@ -13075,7 +13174,7 @@ function openBoardPost() {
   document.getElementById('boardRecurUnit').value = 'week';
   document.getElementById('boardRecurEndCount').value = '4';
   const cliSel = document.getElementById('boardTargetClientSel');
-  if (cliSel) cliSel.innerHTML = '<option value="">取引先を選択</option>' + [...clients].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja')).map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+  if (cliSel) { cliSel.innerHTML = '<option value="">取引先を選択</option>' + [...clients].sort((a,b)=>nm(a.name).localeCompare(nm(b.name),'ja')).map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join(''); enhanceSelectSearchable('boardTargetClientSel'); }
   pendBoardTargetIds = new Set();
   renderBoardTargetDrvList();
   document.getElementById('mBoard').classList.add('on');
@@ -14376,6 +14475,7 @@ async function scheduleLoadAll(table) {
 function openReceiptSchedM() {
   const sel = document.getElementById('rscCli');
   sel.innerHTML = '<option value="">選択</option>' + clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  enhanceSelectSearchable('rscCli');
   const now = new Date();
   document.getElementById('rscDate').value = '';
   document.getElementById('rscAmt').value = '';
@@ -15809,6 +15909,7 @@ function initF0Form() {
   const cur = sel.value;
   sel.innerHTML = '<option value="">選択してください</option>' +
     clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  enhanceSelectSearchable('f0Cli');
   if (cur) sel.value = cur;
 }
 
@@ -18081,6 +18182,7 @@ function openPaymentInM() {
   document.getElementById('piTargetMonth').value = (document.getElementById('piFrom')?.value||'').slice(0,7);
   const sel = document.getElementById('piCli');
   sel.innerHTML = '<option value="">選択</option>' + clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  enhanceSelectSearchable('piCli');
   document.getElementById('mPaymentIn').classList.add('on');
 }
 
