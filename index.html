@@ -15525,7 +15525,7 @@ function runAggInv() {
     return `<tr style="border-bottom:0.5px solid var(--border)">
       <td style="padding:6px 8px">${g.cli?`<input type="checkbox" class="aggInvChk" value="${g.cli}">`:''}</td>
       <td style="padding:6px 8px;color:var(--text2)">${cliObj?.client_no||'—'}</td>
-      <td style="padding:6px 8px">${cliName}</td>
+      <td style="padding:6px 8px">${g.cli?`<span style="cursor:pointer;color:var(--blue);text-decoration:underline dotted" onclick="event.stopPropagation();editCli(${g.cli})" title="取引先管理で開く">${escHtml(cliName)}</span>`:escHtml(cliName)}</td>
       <td style="padding:6px 8px;color:var(--text2)">締日: ${dueLabel}</td>
       <td style="padding:6px 8px;text-align:right">${cnt}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">${yen(taxedTotal)}</td>
