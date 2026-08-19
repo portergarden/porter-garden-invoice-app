@@ -2589,7 +2589,10 @@ try {
     <div class="mh" id="mStaffSchedH">予定 追加 <button class="ibtn" onclick="closeM('mStaffSched')">✕</button></div>
     <div class="fld"><label>担当者</label><select id="ssUser" style="width:100%"><option value="">選択</option></select></div>
     <div class="fld"><label>タイトル</label><input type="text" id="ssTitle" placeholder="例: 〇〇様 打ち合わせ"></div>
-    <div class="fld"><label>日付</label><input type="date" id="ssDate"></div>
+    <div class="g2">
+      <div class="fld"><label>開始日</label><input type="date" id="ssDate"></div>
+      <div class="fld"><label>終了日（複数日にまたがる場合）</label><input type="date" id="ssEndDate"></div>
+    </div>
     <div class="g2">
       <div class="fld"><label>開始時刻</label><input type="time" id="ssStart"></div>
       <div class="fld"><label>終了時刻</label><input type="time" id="ssEnd"></div>
@@ -9418,12 +9421,19 @@ function renderStaffSchedCal() {
   let items = staffSchedules;
   if (userId) items = items.filter(s=>String(s.user_id)===String(userId));
 
+  // 終了日(end_date)が開始日より後なら、その範囲の日付すべてにこの予定を表示する（月をまたぐ場合も含む）
   const dayMap = {};
   items.forEach(s => {
     if (!s.date) return;
-    const d = new Date(s.date);
-    if (d.getFullYear()===staffSchedYear && d.getMonth()===staffSchedMonth) {
-      (dayMap[s.date] = dayMap[s.date] || []).push(s);
+    const endDate = (s.end_date && s.end_date > s.date) ? s.end_date : s.date;
+    let cur = new Date(s.date+'T00:00:00');
+    const endD = new Date(endDate+'T00:00:00');
+    while (cur <= endD) {
+      if (cur.getFullYear()===staffSchedYear && cur.getMonth()===staffSchedMonth) {
+        const ds = fmtLocalDate(cur);
+        (dayMap[ds] = dayMap[ds] || []).push(s);
+      }
+      cur.setDate(cur.getDate()+1);
     }
   });
 
@@ -9447,7 +9457,10 @@ function renderStaffSchedCal() {
       <div class="cal-dn">${day}</div>
       ${dayItems.map(s=>{
         const u = users.find(x=>x.id===s.user_id);
-        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:11.5px;background:var(--blue-bg);color:var(--blue-text);border-radius:3px;padding:2px 4px;margin:2px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.start_time?escHtml(s.start_time)+' ':''}${escHtml(s.title)}${u?'（'+escHtml(u.name)+'）':''}</div>`;
+        const isSpan = s.end_date && s.end_date > s.date;
+        const isStartDay = dateStr === s.date;
+        const titleHtml = (isSpan && !isStartDay ? '▸ ' : '') + escHtml(s.title) + (isSpan && isStartDay ? `〜${s.end_date.slice(5).replace('-','/')}` : '');
+        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:11.5px;background:var(--blue-bg);color:var(--blue-text);border-radius:3px;padding:2px 4px;margin:2px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isStartDay&&s.start_time?escHtml(s.start_time)+' ':''}${titleHtml}${u?'（'+escHtml(u.name)+'）':''}</div>`;
       }).join('')}
     </div>`;
   }
@@ -9469,6 +9482,7 @@ function openStaffSchedM(id, presetDate) {
     sel.value = s.user_id || '';
     document.getElementById('ssTitle').value = s.title || '';
     document.getElementById('ssDate').value = s.date || '';
+    document.getElementById('ssEndDate').value = (s.end_date && s.end_date !== s.date) ? s.end_date : '';
     document.getElementById('ssStart').value = s.start_time || '';
     document.getElementById('ssEnd').value = s.end_time || '';
     document.getElementById('ssNote').value = s.note || '';
@@ -9478,6 +9492,7 @@ function openStaffSchedM(id, presetDate) {
     sel.value = document.getElementById('staffSchedUserSel')?.value || '';
     document.getElementById('ssTitle').value = '';
     document.getElementById('ssDate').value = presetDate || fmtLocalDate(new Date());
+    document.getElementById('ssEndDate').value = '';
     document.getElementById('ssStart').value = '';
     document.getElementById('ssEnd').value = '';
     document.getElementById('ssNote').value = '';
@@ -9489,10 +9504,13 @@ function openStaffSchedM(id, presetDate) {
 async function saveStaffSched() {
   const title = document.getElementById('ssTitle').value.trim();
   const date = document.getElementById('ssDate').value;
-  if (!title || !date) { alert('タイトルと日付は必須です'); return; }
+  const endDateRaw = document.getElementById('ssEndDate').value;
+  if (!title || !date) { alert('タイトルと開始日は必須です'); return; }
+  if (endDateRaw && endDateRaw < date) { alert('終了日は開始日以降にしてください'); return; }
   const row = {
     user_id: document.getElementById('ssUser').value || null,
     title, date,
+    end_date: endDateRaw || null,
     start_time: document.getElementById('ssStart').value || null,
     end_time: document.getElementById('ssEnd').value || null,
     note: document.getElementById('ssNote').value.trim() || null,
