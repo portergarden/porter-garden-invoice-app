@@ -3533,6 +3533,42 @@ function lkDByCarInfo(carVal) {
   const { carNum, drvName } = splitCarInfoCell(carVal);
   return lkD(carNum) || (drvName ? drvs.find(d => nm(d.name) === nm(drvName)) : null) || null;
 }
+// 氏名の異体字を代表字に寄せる（北﨑→北崎、髙橋→高橋 など）。
+// 支払明細書の宛名とドライバー登録名で異体字が食い違うことがあるため、氏名照合の最終手段に使う
+const KANJI_VARIANTS = {'﨑':'崎','嵜':'崎','髙':'高','濵':'浜','濱':'浜','邊':'辺','邉':'辺','齋':'斎','齊':'斎','斉':'斎','冨':'富','廣':'広','惠':'恵','槇':'槙','瀨':'瀬','德':'徳','栁':'柳','眞':'真','曾':'曽'};
+const nmv = s => nm(s).replace(/[﨑嵜髙濵濱邊邉齋齊斉冨廣惠槇瀨德栁眞曾]/g, c => KANJI_VARIANTS[c] || c);
+const isCorpName = s => /株式会社|有限会社|合同会社|（株）|\(株\)/.test(s || '');
+// 支払明細書の宛名からドライバーを特定する。
+// 宛名は「大沼　凌」だけでなく「グリーンドライブ株式会社（中野　圭）」「D-FORS株式会社　工藤将真」
+// 「杉浦　芙美子(岩手支社)Logi TreX」のように会社名・支社名が併記されることがあるため、
+// 登録名が宛名に含まれるドライバーを探し、会社名より個人名を優先する。
+// 車番は同じ番号が複数人に登録されていたり実際の乗務車両と食い違ったりするのに対し、
+// 宛名は明細書1枚につき1人で確実なため、取込時のドライバー特定はこちらを最優先にする
+function lkDByName(text) {
+  if (!text) return null;
+  for (const norm of [nm, nmv]) {
+    const t = norm(text);
+    if (!t) continue;
+    const cands = [];
+    drvs.forEach(d => {
+      const n = norm(d.name);
+      if (!n) return;
+      const pos = t.indexOf(n);
+      if (pos >= 0) cands.push({ d, n, pos });
+    });
+    if (!cands.length) continue;
+    cands.sort((a, b) =>
+      ((b.n === t) - (a.n === t))                                            // 宛名そのものと完全一致
+      || ((isCorpName(a.d.name) ? 1 : 0) - (isCorpName(b.d.name) ? 1 : 0))   // 会社名より個人名
+      || (a.pos - b.pos)                                                     // 宛名の先頭に近い方
+      || (b.n.length - a.n.length)                                           // 長い（＝具体的な）名前
+      || ((a.d.status === 'terminated') - (b.d.status === 'terminated'))     // 稼働中を優先
+      || (a.d.id - b.d.id)
+    );
+    return cands[0].d;
+  }
+  return null;
+}
 
 /* ===== 車両乗務履歴（vehicle_assignments）による日付つきのドライバー判定 =====
    代車や車両の乗り換えのように「同じ車番でも時期によって乗務者が変わる」ケースに対応する。
@@ -8379,6 +8415,23 @@ async function slipLoad(file, appendMode=false) {
       }
       if (paymentDate && !globalPaymentDate) globalPaymentDate = paymentDate;
 
+      // 宛名（B列の「〜様」「〜御中」の行）を取り出す。この明細書1枚分のドライバー特定に使う。
+      // 宛名が長いと2行に折り返されることがあるため（例:「石原」＋「宏美 （名古屋支社）　様」）、
+      // 直前行に数字が含まれない＝住所・電話番号・登録番号ではない場合だけ連結する
+      let addressee = '';
+      let addrRow = -1;
+      for (let ri = startRow; ri <= endRow; ri++) {
+        const v = cs('B', ri);
+        if (/(様|御中)$/.test(v)) { addressee = v; addrRow = ri; break; }
+      }
+      if (addrRow > startRow) {
+        const prev = cs('B', addrRow - 1);
+        if (prev && !/\d/.test(prev) && !/(様|御中)$/.test(prev)) addressee = prev + addressee;
+      }
+      addressee = addressee.replace(/[\s　]*(様|御中)$/, '');
+      // 明細書1枚につきドライバーは1人のため、宛名からの特定はブロック単位で1回だけ行う
+      const blockDrv = lkDByName(addressee);
+
       let dataStart = -1;
       for (let ri = startRow; ri <= endRow; ri++) {
         if (cs('BF', ri) === '数量') { dataStart = ri + 1; break; }
@@ -8467,9 +8520,11 @@ async function slipLoad(file, appendMode=false) {
         const highway = typeof hwRaw === 'number' ? hwRaw : 0;
         const distance = distRaw != null ? String(distRaw) : '';
 
-        // 車番・氏名の分割と照合は共通関数に統一する（区切りスペースの有無を問わず切り出し、
-        // 車番はlkD()＝完全一致優先・末尾一致は候補が一意のときのみ、で照合する）
-        const drv = lkDByCarInfo(carVal);
+        // ドライバー特定は「宛名の氏名」を最優先にする。
+        // 車番は同じ番号が複数人に登録されていたり、登録車両と実際の乗務車両が入れ替わっていたりして
+        // 別人に紐づくことがあるが、宛名は明細書1枚につき1人で確実なため。
+        // 宛名で特定できない場合のみ、従来どおり車番＋氏名セルから照合する
+        const drv = blockDrv || lkDByCarInfo(carVal);
 
         const feeRate = calcFeeRate ?? (drv ? (drvPay(drv).fee_rate ?? -0.15) : -0.15);
 
@@ -8480,6 +8535,8 @@ async function slipLoad(file, appendMode=false) {
 
         dataRows.push({
           supplier_id:      suppId,
+          drv_id:           drv?.id ?? null,  // 特定済みドライバーを保持し、集計時に車番から引き直さないようにする
+          addressee,                          // 未照合時にどの明細書か分かるよう宛名も保持する
           fee_rate:         feeRate,
           note_col:         '',
           admin_fee:        adminFeeFound      ? adminFee      : (drv?.admin_fee      ?? -10000),
@@ -8511,14 +8568,15 @@ async function slipLoad(file, appendMode=false) {
       if (pd) pd.value = globalPaymentDate;
     }
 
+    // 未照合＝宛名でも車番でもドライバーを特定できなかった明細。宛名を出した方が誰の分か分かりやすい
     const unmatched = [...new Set(
-      dataRows.filter(r => !lkDByCarInfo(r.car_info)).map(r => splitCarInfoCell(r.car_info).carNum)
-    )];
+      dataRows.filter(r => r.drv_id == null).map(r => r.addressee || splitCarInfoCell(r.car_info).carNum)
+    )].filter(Boolean);
 
     const invoiceCount = blockStarts.length;
     const totalRows = appendMode ? payRows.length : dataRows.length; // appendMode時は合計件数
     if (unmatched.length > 0) {
-      setSlipStatus(`⚠️ ${invoiceCount}枚・${dataRows.length}件読み込み（累計${totalRows}件）。未照合の車番: ${unmatched.join(' / ')}`, 'warn');
+      setSlipStatus(`⚠️ ${invoiceCount}枚・${dataRows.length}件読み込み（累計${totalRows}件）。未照合: ${unmatched.join(' / ')}`, 'warn');
     } else {
       setSlipStatus(`✓ ${invoiceCount}枚・${dataRows.length}件読み込み（累計${totalRows}件）。全ドライバー照合済み`, 'ok');
     }
