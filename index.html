@@ -9471,18 +9471,24 @@ function renderStaffSchedCal() {
   const startDow = firstDay.getDay();
 
   let html = '<div class="cal-grid">';
-  ['日','月','火','水','木','金','土'].forEach(d => { html += `<div class="cal-head">${d}</div>`; });
+  ['日','月','火','水','木','金','土'].forEach((d,i) => {
+    const style = i===0 ? 'color:var(--red)' : i===6 ? 'color:var(--blue)' : '';
+    html += `<div class="cal-head" style="${style}">${d}</div>`;
+  });
   for (let i=0; i<startDow; i++) html += '<div class="cal-day other"></div>';
 
   for (let day=1; day<=lastDay.getDate(); day++) {
     const dateStr = `${staffSchedYear}-${String(staffSchedMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const dayItems = dayMap[dateStr] || [];
     const isToday = dateStr === todayStr;
+    const dow = new Date(dateStr+'T00:00:00').getDay();
+    const holName = jpHolidayName(dateStr);
+    // 背景は色分けされた予定バッジで判別できるため、セル自体は白背景のまま。土日祝は日付の文字色だけ赤・青にする
+    const dnColor = (dow===0 || holName) ? 'var(--red)' : dow===6 ? 'var(--blue)' : '';
     let cls = 'cal-day';
     if (isToday) cls += ' today';
-    else if (dayItems.length) cls += ' has-work';
     html += `<div class="${cls}" style="cursor:pointer" onclick="openStaffSchedM(null,'${dateStr}')">
-      <div class="cal-dn">${day}</div>
+      <div class="cal-dn"${dnColor?` style="color:${dnColor}"`:''}${holName?` title="${escHtml(holName)}"`:''}>${day}</div>
       ${dayItems.map(s=>{
         const u = users.find(x=>x.id===s.user_id);
         const isSpan = s.end_date && s.end_date > s.date;
