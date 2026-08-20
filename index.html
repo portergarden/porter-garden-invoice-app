@@ -3509,6 +3509,30 @@ const canonicalCar=car=>{
   return driverIndexes().tailCar.get(n) || car;
 };
 const lkC=id=>clients.find(c=>c.id===id)||null;
+// コムトラック等の「車番＋氏名」が1セルに入った値を車番と氏名に分ける。
+// 帳票によって「8467 大沼凌」のようにスペース区切りのものと、「9117山本健太郎」のように
+// 区切りが無いものが混在するため、スペースだけに頼らず車番の形からも切り出す。
+// （スペース無しの場合に全体を車番とみなしてしまい、どのドライバーにも照合できず
+//   仕入先IDが請求書Noにフォールバックしてしまう不具合があったため）
+function splitCarInfoCell(carVal) {
+  const s = String(carVal || '').trim();
+  if (!s) return { carNum: '', drvName: '' };
+  // ① スペース区切りがあればそれを優先（例:「8467 大沼凌」「仙台480り9567 佐藤」）
+  const sp = s.match(/^([^\s　]+)[\s　]+(.*)$/);
+  if (sp) return { carNum: sp[1], drvName: sp[2].trim() };
+  // ② 区切り無しでフル表記車番が先頭にある場合（例:「仙台480り9117山本健太郎」）
+  const full = s.match(/^(\D{1,5}\d{1,3}[ぁ-んァ-ヶ]\d{1,4})(.+)$/);
+  if (full) return { carNum: full[1], drvName: full[2].trim() };
+  // ③ 区切り無しで略式車番（数字）が先頭にある場合（例:「9117山本健太郎」）
+  const lead = s.match(/^(\d{1,4})(\D.*)$/);
+  if (lead) return { carNum: lead[1], drvName: lead[2].trim() };
+  return { carNum: s, drvName: '' };
+}
+// 「車番＋氏名」セルからドライバーを特定する（車番照合→氏名照合の順）
+function lkDByCarInfo(carVal) {
+  const { carNum, drvName } = splitCarInfoCell(carVal);
+  return lkD(carNum) || (drvName ? drvs.find(d => nm(d.name) === nm(drvName)) : null) || null;
+}
 
 /* ===== 車両乗務履歴（vehicle_assignments）による日付つきのドライバー判定 =====
    代車や車両の乗り換えのように「同じ車番でも時期によって乗務者が変わる」ケースに対応する。
@@ -8443,18 +8467,9 @@ async function slipLoad(file, appendMode=false) {
         const highway = typeof hwRaw === 'number' ? hwRaw : 0;
         const distance = distRaw != null ? String(distRaw) : '';
 
-        // 車番・名前の分割（全角・半角スペース両対応）
-        const carNum = carVal.replace(/[\s\u3000].+/, '').trim();
-        const drvName = carVal.replace(/^[^\s\u3000]+[\s\u3000]*/, '').trim();
-        // 車番照合はlkD()に統一する（完全一致を優先し、末尾一致は完全一致が無い場合のみ・かつ
-        // 複数ドライバーで末尾が重複する場合は自動でnullになる安全な実装のため。
-        // 以前は独自にendsWith判定していたため、末尾だけ偶然一致する別ドライバーの方が
-        // 配列内で先に見つかると誤って照合されることがあった）
-        let drv = lkD(carNum);
-        // 車番照合失敗時は氏名フォールバック
-        if (!drv && drvName) {
-          drv = drvs.find(d => nm(d.name) === nm(drvName));
-        }
+        // 車番・氏名の分割と照合は共通関数に統一する（区切りスペースの有無を問わず切り出し、
+        // 車番はlkD()＝完全一致優先・末尾一致は候補が一意のときのみ、で照合する）
+        const drv = lkDByCarInfo(carVal);
 
         const feeRate = calcFeeRate ?? (drv ? (drvPay(drv).fee_rate ?? -0.15) : -0.15);
 
@@ -8497,7 +8512,7 @@ async function slipLoad(file, appendMode=false) {
     }
 
     const unmatched = [...new Set(
-      dataRows.filter(r => !lkD(r.car_info.replace(/[\s　].+/,'').trim())).map(r => r.car_info.split(/\s/)[0])
+      dataRows.filter(r => !lkDByCarInfo(r.car_info)).map(r => splitCarInfoCell(r.car_info).carNum)
     )];
 
     const invoiceCount = blockStarts.length;
@@ -8760,17 +8775,12 @@ function groupPayRowsByDriver(indexed) {
   const groups = {};
   const order = [];
   const idIdx = driverIndexes().id;
-  // car_infoの車番と完全一致するドライバーの索引を1回だけ作っておく（大半の行はこれで解決するため、
-  // 行ごとにdrvs全件を線形探索するO(件数×ドライバー数)を避けられる。完全一致がない場合だけ、
-  // 元のロジック通りendsWithによる部分一致へフォールバックする）
-  const carExactIdx = new Map();
-  drvs.forEach(d => (d.cars||[]).forEach(c => { const nc = nm(c); if (!carExactIdx.has(nc)) carExactIdx.set(nc, d); }));
+  // 車番の照合はlkD()（完全一致優先・末尾一致は候補が一意のときのみ）に統一する。
+  // 以前はendsWithによる部分一致で、末尾だけ偶然一致する別ドライバーに誤って紐づくことがあった
   indexed.forEach(item => {
-    const carNum = (item.r.car_info||'').replace(/[\s　].+/, '').trim();
-    const nn = nm(carNum);
+    const carNum = splitCarInfoCell(item.r.car_info).carNum;
     const drv = (item.r.drv_id != null ? idIdx.get(item.r.drv_id) : null)
-      || carExactIdx.get(nn)
-      || drvs.find(d => (d.cars||[]).some(c => nm(c).endsWith(nn)));
+      || lkDByCarInfo(item.r.car_info);
     const key = drv ? 'd'+drv.id : (item.r.supplier_id ? 'sup'+item.r.supplier_id : 'u'+(carNum||'unknown'));
     const label = drv ? drv.name : (item.r.supplier_id ? `未登録（ドライバーID:${item.r.supplier_id}）` : (carNum || '車番未照合'));
     if (!groups[key]) { groups[key] = {key, label, rows:[]}; order.push(key); }
