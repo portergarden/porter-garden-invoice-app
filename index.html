@@ -1296,6 +1296,7 @@ try {
         <button class="btn sml grn" onclick="openStaffSchedM()">＋ 予定を追加</button>
       </div>
     </div>
+    <div id="staffSchedLegend" style="display:flex;gap:10px;flex-wrap:wrap;padding:6px 14px;border-bottom:0.5px solid var(--border)"></div>
     <div class="cal-wrap"><div id="staffSchedGrid"></div></div>
   </div>
   <!-- ===== pg29: タスク管理 ===== -->
@@ -9394,6 +9395,32 @@ let eStaffSchedId = null;
 
 function staffMembers() { return users.filter(u => u.role !== 'driver'); }
 
+// 予定管理カレンダーの担当者ごとの色分け。担当者一覧（staffMembers()の並び順）に固定のパレットを順番に割り当てる
+const STAFF_SCHED_COLORS = [
+  {bg:'var(--blue-bg)', text:'var(--blue-text)'},
+  {bg:'var(--green-bg)', text:'var(--green-text)'},
+  {bg:'var(--amber-bg)', text:'var(--amber-text)'},
+  {bg:'var(--purple-bg)', text:'var(--purple-text)'},
+  {bg:'var(--red-bg)', text:'var(--red-text)'},
+];
+const STAFF_SCHED_UNASSIGNED_COLOR = {bg:'var(--gray-bg)', text:'var(--gray-text)'};
+function staffSchedColorFor(userId) {
+  if (!userId) return STAFF_SCHED_UNASSIGNED_COLOR;
+  const idx = staffMembers().findIndex(u=>String(u.id)===String(userId));
+  return idx>=0 ? STAFF_SCHED_COLORS[idx % STAFF_SCHED_COLORS.length] : STAFF_SCHED_UNASSIGNED_COLOR;
+}
+function renderStaffSchedLegend() {
+  const el = document.getElementById('staffSchedLegend');
+  if (!el) return;
+  const members = staffMembers();
+  if (!members.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = members.map(u => {
+    const c = staffSchedColorFor(u.id);
+    return `<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2)"><span style="width:10px;height:10px;border-radius:50%;background:${c.bg};display:inline-block"></span>${escHtml(u.name)}</span>`;
+  }).join('');
+}
+
 async function loadStaffSchedules() {
   if (!sb) return;
   try {
@@ -9408,6 +9435,7 @@ function initStaffSched() {
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">全員</option>' + staffMembers().map(u=>`<option value="${u.id}" ${u.id==cur?'selected':''}>${escHtml(u.name)}</option>`).join('');
+  renderStaffSchedLegend();
 }
 
 function staffSchedPrev() { staffSchedMonth--; if(staffSchedMonth<0){staffSchedMonth=11;staffSchedYear--;} renderStaffSchedCal(); }
@@ -9460,7 +9488,8 @@ function renderStaffSchedCal() {
         const isSpan = s.end_date && s.end_date > s.date;
         const isStartDay = dateStr === s.date;
         const titleHtml = (isSpan && !isStartDay ? '▸ ' : '') + escHtml(s.title) + (isSpan && isStartDay ? `〜${s.end_date.slice(5).replace('-','/')}` : '');
-        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:11.5px;background:var(--blue-bg);color:var(--blue-text);border-radius:3px;padding:2px 4px;margin:2px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isStartDay&&s.start_time?escHtml(s.start_time)+' ':''}${titleHtml}${u?'（'+escHtml(u.name)+'）':''}</div>`;
+        const c = staffSchedColorFor(s.user_id);
+        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:11.5px;background:${c.bg};color:${c.text};border-radius:3px;padding:2px 4px;margin:2px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isStartDay&&s.start_time?escHtml(s.start_time)+' ':''}${titleHtml}${u?'（'+escHtml(u.name)+'）':''}</div>`;
       }).join('')}
     </div>`;
   }
