@@ -9479,7 +9479,8 @@ function renderStaffSchedCal() {
 
   for (let day=1; day<=lastDay.getDate(); day++) {
     const dateStr = `${staffSchedYear}-${String(staffSchedMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const dayItems = dayMap[dateStr] || [];
+    // 開始時刻が早い順に表示する（時刻未設定は先頭）
+    const dayItems = (dayMap[dateStr] || []).slice().sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
     const isToday = dateStr === todayStr;
     const dow = new Date(dateStr+'T00:00:00').getDay();
     const holName = jpHolidayName(dateStr);
