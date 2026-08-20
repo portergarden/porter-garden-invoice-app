@@ -3535,6 +3535,30 @@ function lkDByCarCellName(carVal) {
   const { drvName } = splitCarInfoCell(carVal);
   return drvName ? lkDByName(drvName) : null;
 }
+// 入力された車番が他のドライバーにも登録されていないか確認する（管理側のドライバー登録・編集用）。
+// 同じ車番が複数人に付いていると車番からドライバーを特定できなくなるため注意を促すが、
+// 1台を交代で使う運用が実在するので保存自体は止めず、続行するかを選べるようにする。
+// 続行してよければtrueを返す
+function confirmDuplicateCars(cars, selfId) {
+  const hits = [];
+  (cars || []).forEach(c => {
+    const nc = nm(c);
+    if (!nc || nc.includes('----')) return; // プレースホルダー車番は対象外
+    drvs.forEach(d => {
+      if (d.id === selfId) return;
+      if ((d.cars || []).some(x => nm(x) === nc)) {
+        hits.push(`・${c} → ${d.name}（ID:${d.supplier_id || '未設定'}${d.status === 'terminated' ? '・解約済み' : ''}）`);
+      }
+    });
+  });
+  if (!hits.length) return true;
+  return confirm(
+    `次の車番は既に他のドライバーに登録されています。\n\n${hits.join('\n')}\n\n` +
+    `1台を交代で使用している場合はこのまま保存できます。\n` +
+    `解約したドライバーの登録が残っている場合は、そちらの車番を外してください。\n\n` +
+    `このまま保存しますか？`
+  );
+}
 // 氏名の異体字を代表字に寄せる（北﨑→北崎、髙橋→高橋 など）。
 // 支払明細書の宛名とドライバー登録名で異体字が食い違うことがあるため、氏名照合の最終手段に使う
 const KANJI_VARIANTS = {'﨑':'崎','嵜':'崎','髙':'高','濵':'浜','濱':'浜','邊':'辺','邉':'辺','齋':'斎','齊':'斎','斉':'斎','冨':'富','廣':'広','惠':'恵','槇':'槙','瀨':'瀬','德':'徳','栁':'柳','眞':'真','曾':'曽'};
@@ -5528,6 +5552,10 @@ async function saveDrv(){
   const name=document.getElementById('dN').value.trim();if(!name){alert('名前は必須です');return;}
   const supId=document.getElementById('dSup').value.trim();
   if(supId){const dup=drvs.find(d=>d.supplier_id===supId&&d.id!==eDrvId);if(dup){alert(`ドライバーID「${supId}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
+  // 車番が他のドライバーにも登録されていないか確認する。
+  // 同じ車番が複数人に登録されていると車番からドライバーを特定できなくなるため。
+  // ただし1台を交代で使う運用が実在するので、保存は止めずに確認だけ行う
+  if(!confirmDuplicateCars(pendTags, eDrvId)) return;
   // 協力会社はプルダウンでpartner_companiesをIDで直接選ぶため表記ゆれは起きない。
   // companyテキストは各種表示・集計・グルーピング処理の互換のため、選択した協力会社名をそのまま複製して保持する
   const partnerIdVal = document.getElementById('dPartnerSel').value;
@@ -6586,6 +6614,21 @@ async function submitDriverSelfRegistration(){
   if (!name) { errEl.textContent = 'お名前を入力してください'; return; }
   if (!tel) { errEl.textContent = '電話番号を入力してください'; return; }
   if (!pendTags.length) { errEl.textContent = '担当車番を1台以上追加してください'; return; }
+  // 入力された車番が既に登録済みでないか確認する（入力ミス防止）。
+  // 誰に登録されているかは本人には見せず、車番が使用済みであることだけを伝える。
+  // 1台を交代で使う場合は正しい入力なので、続行できるようにする
+  try {
+    const { data: dupCars, error: dupErr } = await sb.rpc('check_cars_registered', { p_token: currentInviteToken, p_cars: pendTags });
+    if (!dupErr && dupCars && dupCars.length) {
+      const ok = confirm(
+        `次の車番は既に登録されています。\n\n${dupCars.map(c => '・' + c).join('\n')}\n\n` +
+        `1台を交代で使用している場合はこのまま進めてください。\n` +
+        `入力間違いの場合は「キャンセル」を押して車番を修正してください。\n\n` +
+        `このまま登録しますか？`
+      );
+      if (!ok) return;
+    }
+  } catch(e) { console.warn('check_cars_registered:', e.message); } // 確認に失敗しても登録自体は続行する
   showLoad(true);
   try{
     const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel, p_cars: pendTags, p_partner_name: partner||null });
@@ -17973,8 +18016,38 @@ BEGIN
 END;
 $function$;
 
+-- ドライバー本人の登録画面用: 入力された車番のうち、既に登録済みのものを返す。
+-- 匿名ユーザーが呼ぶため、誰に登録されているか（氏名など）は返さず、入力された車番自体だけを返す。
+-- 有効な招待トークンを持つ場合のみ実行できる
+CREATE OR REPLACE FUNCTION public.check_cars_registered(p_token text, p_cars text[])
+RETURNS text[]
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE
+  v_row public.driver_invites%rowtype;
+  v_dups text[] := '{}';
+  v_car text;
+BEGIN
+  SELECT * INTO v_row FROM public.driver_invites WHERE token = p_token;
+  IF NOT FOUND OR v_row.used_at IS NOT NULL OR v_row.expires_at < now() THEN
+    RAISE EXCEPTION 'invalid_token';
+  END IF;
+  IF p_cars IS NULL THEN RETURN v_dups; END IF;
+  FOR v_car IN SELECT unnest(p_cars) LOOP
+    CONTINUE WHEN v_car IS NULL OR length(trim(v_car)) = 0;
+    IF EXISTS (
+      SELECT 1 FROM public.drivers d, unnest(d.cars) c
+      WHERE regexp_replace(c, '\s', '', 'g') = regexp_replace(trim(v_car), '\s', '', 'g')
+    ) THEN
+      v_dups := array_append(v_dups, trim(v_car));
+    END IF;
+  END LOOP;
+  RETURN v_dups;
+END;
+$function$;
+
 GRANT EXECUTE ON FUNCTION public.check_driver_invite(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.submit_driver_registration(text, text, text, text[]) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_cars_registered(text, text[]) TO anon, authenticated;
 
 -- ============================================================
 -- 3. RLS有効化＋ポリシー（allow_allではなく役割ベースの安全な制御）
