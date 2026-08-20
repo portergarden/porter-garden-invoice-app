@@ -3528,10 +3528,12 @@ function splitCarInfoCell(carVal) {
   if (lead) return { carNum: lead[1], drvName: lead[2].trim() };
   return { carNum: s, drvName: '' };
 }
-// 「車番＋氏名」セルからドライバーを特定する（車番照合→氏名照合の順）
-function lkDByCarInfo(carVal) {
-  const { carNum, drvName } = splitCarInfoCell(carVal);
-  return lkD(carNum) || (drvName ? drvs.find(d => nm(d.name) === nm(drvName)) : null) || null;
+// 「車番＋氏名」セルの氏名部分からドライバーを特定する。
+// 車番では引かない（コムトラックから引き継いだ車番は解約者分も残っていて同じ車番が複数人に
+// 登録されているため、車番で引くと別人に紐づいてしまう）
+function lkDByCarCellName(carVal) {
+  const { drvName } = splitCarInfoCell(carVal);
+  return drvName ? lkDByName(drvName) : null;
 }
 // 氏名の異体字を代表字に寄せる（北﨑→北崎、髙橋→高橋 など）。
 // 支払明細書の宛名とドライバー登録名で異体字が食い違うことがあるため、氏名照合の最終手段に使う
@@ -8520,11 +8522,11 @@ async function slipLoad(file, appendMode=false) {
         const highway = typeof hwRaw === 'number' ? hwRaw : 0;
         const distance = distRaw != null ? String(distRaw) : '';
 
-        // ドライバー特定は「宛名の氏名」を最優先にする。
-        // 車番は同じ番号が複数人に登録されていたり、登録車両と実際の乗務車両が入れ替わっていたりして
-        // 別人に紐づくことがあるが、宛名は明細書1枚につき1人で確実なため。
-        // 宛名で特定できない場合のみ、従来どおり車番＋氏名セルから照合する
-        const drv = blockDrv || lkDByCarInfo(carVal);
+        // ドライバー特定は氏名のみで行う（車番では引かない）。
+        // コムトラックから車番データを丸ごと引き継いでおり解約者分の登録が残っているため、
+        // 同じ車番が複数人に紐づいていて車番からは乗務者を一意に決められない。
+        // 宛名は明細書1枚につき1人で確実なため宛名を最優先し、次に車番セル内の氏名を使う
+        const drv = blockDrv || lkDByCarCellName(carVal);
 
         const feeRate = calcFeeRate ?? (drv ? (drvPay(drv).fee_rate ?? -0.15) : -0.15);
 
@@ -8833,12 +8835,12 @@ function groupPayRowsByDriver(indexed) {
   const groups = {};
   const order = [];
   const idIdx = driverIndexes().id;
-  // 車番の照合はlkD()（完全一致優先・末尾一致は候補が一意のときのみ）に統一する。
-  // 以前はendsWithによる部分一致で、末尾だけ偶然一致する別ドライバーに誤って紐づくことがあった
+  // 取込済みのdrv_id（宛名から特定済み）を最優先し、無ければ車番セル内の氏名で引く。
+  // 車番では引かない（解約者分の登録が残っていて同じ車番が複数人に紐づいているため）
   indexed.forEach(item => {
     const carNum = splitCarInfoCell(item.r.car_info).carNum;
     const drv = (item.r.drv_id != null ? idIdx.get(item.r.drv_id) : null)
-      || lkDByCarInfo(item.r.car_info);
+      || lkDByCarCellName(item.r.car_info);
     const key = drv ? 'd'+drv.id : (item.r.supplier_id ? 'sup'+item.r.supplier_id : 'u'+(carNum||'unknown'));
     const label = drv ? drv.name : (item.r.supplier_id ? `未登録（ドライバーID:${item.r.supplier_id}）` : (carNum || '車番未照合'));
     if (!groups[key]) { groups[key] = {key, label, rows:[]}; order.push(key); }
