@@ -8446,10 +8446,11 @@ async function slipLoad(file, appendMode=false) {
         // 車番・名前の分割（全角・半角スペース両対応）
         const carNum = carVal.replace(/[\s\u3000].+/, '').trim();
         const drvName = carVal.replace(/^[^\s\u3000]+[\s\u3000]*/, '').trim();
-        let drv = drvs.find(d => (d.cars||[]).some(c => {
-          const nc = nm(c), nn = nm(carNum);
-          return nc === nn || nc.endsWith(nn);
-        }));
+        // 車番照合はlkD()に統一する（完全一致を優先し、末尾一致は完全一致が無い場合のみ・かつ
+        // 複数ドライバーで末尾が重複する場合は自動でnullになる安全な実装のため。
+        // 以前は独自にendsWith判定していたため、末尾だけ偶然一致する別ドライバーの方が
+        // 配列内で先に見つかると誤って照合されることがあった）
+        let drv = lkD(carNum);
         // 車番照合失敗時は氏名フォールバック
         if (!drv && drvName) {
           drv = drvs.find(d => nm(d.name) === nm(drvName));
@@ -8496,10 +8497,7 @@ async function slipLoad(file, appendMode=false) {
     }
 
     const unmatched = [...new Set(
-      dataRows.filter(r => !drvs.some(d => (d.cars||[]).some(c => {
-        const nc = nm(c), nn = nm(r.car_info.replace(/\s.+/,'').trim());
-        return nc === nn || nc.endsWith(nn);
-      }))).map(r => r.car_info.split(/\s/)[0])
+      dataRows.filter(r => !lkD(r.car_info.replace(/[\s　].+/,'').trim())).map(r => r.car_info.split(/\s/)[0])
     )];
 
     const invoiceCount = blockStarts.length;
