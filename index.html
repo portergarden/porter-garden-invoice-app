@@ -592,6 +592,7 @@ try {
     <div class="topbar-r">
       <span class="conn-dot ok" title="Supabase接続中"></span>
       <span id="tbName"></span><span id="tbBdg"></span>
+      <button class="ibtn" onclick="openChangePwM()" title="パスワードを変更">🔑</button>
       <button class="ibtn" id="themeToggleBtn" onclick="toggleTheme()" title="ダーク/ライトモード切替"></button>
       <button class="btn sml" onclick="logout()">ログアウト</button>
     </div>
@@ -2171,6 +2172,7 @@ try {
     <div style="display:flex;align-items:center;gap:8px">
       <span id="drvPortalName" style="font-size:11px;color:var(--text2)"></span>
       <span id="drvPortalBdg" class="bdg drv" style="font-size:10px"></span>
+      <button class="ibtn" onclick="openChangePwM()" title="パスワードを変更">🔑</button>
       <button class="ibtn" id="themeToggleBtnDrv" onclick="toggleTheme()" title="ダーク/ライトモード切替"></button>
       <button class="ibtn" onclick="logout()" title="ログアウト">⏏</button>
     </div>
@@ -3060,6 +3062,17 @@ try {
   </div>
 </div>
 
+<!-- モーダル: パスワード変更（本人が任意のタイミングで変更する場合。強制変更(mForcePw)とは別で、閉じるボタンあり） -->
+<div class="overlay" id="mChangePw">
+  <div class="modal" style="width:360px">
+    <div class="mh">🔑 パスワードを変更 <button class="ibtn" onclick="closeM('mChangePw')">✕</button></div>
+    <div class="fld"><label>新しいパスワード（8文字以上）</label><input type="password" id="cpwNew" autocomplete="new-password"></div>
+    <div class="fld"><label>新しいパスワード（確認）</label><input type="password" id="cpwConfirm" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitChangePw()"></div>
+    <div id="cpwErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
+    <div class="mfoot"><button class="btn" onclick="closeM('mChangePw')">キャンセル</button><button class="btn pri" onclick="submitChangePw()">変更する</button></div>
+  </div>
+</div>
+
 <!-- PDF -->
 <div class="overlay" id="mPdf">
   <div class="modal">
@@ -3289,6 +3302,33 @@ async function submitForcePwChange() {
     document.getElementById('fpwConfirm').value = '';
     showT('パスワードを変更しました');
     proceedAfterLogin();
+  } catch(e) { errEl.textContent = '変更エラー: ' + e.message; }
+  showLoad(false);
+}
+
+// 本人が任意のタイミングでパスワードを変更する（強制変更モーダルと異なり閉じてキャンセルできる）。
+// 管理者以外（編集者・閲覧者・ドライバー）も含め全ロールが対象。ユーザー管理は自分の行の編集ボタンを
+// あえて非表示にしているため（誤操作で自分のIDや権限を変えてしまう事故を防ぐ目的）、
+// パスワードだけを変更する経路がユーザー管理タブ以外に無かった
+function openChangePwM() {
+  document.getElementById('cpwNew').value = '';
+  document.getElementById('cpwConfirm').value = '';
+  document.getElementById('cpwErr').textContent = '';
+  document.getElementById('mChangePw').classList.add('on');
+}
+async function submitChangePw() {
+  const pw1 = document.getElementById('cpwNew').value;
+  const pw2 = document.getElementById('cpwConfirm').value;
+  const errEl = document.getElementById('cpwErr');
+  errEl.textContent = '';
+  if (pw1.length < 8) { errEl.textContent = '8文字以上で入力してください'; return; }
+  if (pw1 !== pw2) { errEl.textContent = 'パスワードが一致しません'; return; }
+  showLoad(true);
+  try {
+    const { error } = await sb.auth.updateUser({ password: pw1 });
+    if (error) throw error;
+    closeM('mChangePw');
+    showT('パスワードを変更しました');
   } catch(e) { errEl.textContent = '変更エラー: ' + e.message; }
   showLoad(false);
 }
