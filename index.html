@@ -18214,10 +18214,17 @@ CREATE POLICY "drivers_update" ON drivers FOR UPDATE TO authenticated USING ("cu
 DROP POLICY IF EXISTS "drivers_delete" ON drivers;
 CREATE POLICY "drivers_delete" ON drivers FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
--- ユーザー: 自分の行、またはadminのみ閲覧・編集可（他人の情報には一切アクセス不可）
+-- ユーザー: 編集・削除はadminのみ。
+-- 閲覧は「自分の行」に加えて、社内メンバー(admin/editor/viewer)は社内ユーザーの行も読める。
+-- 以前は自分の行しか読めず、予定管理の色分け凡例・担当者プルダウンやタスク管理の担当者選択に
+-- 自分しか出てこなかったため。ドライバーのログインアカウントは業務上参照しないのでadminのみに限定する
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "users_select" ON users;
-CREATE POLICY "users_select" ON users FOR SELECT TO authenticated USING (auth_uid = auth.uid() OR "current_role"() = 'admin');
+CREATE POLICY "users_select" ON users FOR SELECT TO authenticated USING (
+  auth_uid = auth.uid()
+  OR "current_role"() = 'admin'
+  OR ("current_role"() = ANY(ARRAY['editor','viewer']) AND role <> 'driver')
+);
 DROP POLICY IF EXISTS "users_insert" ON users;
 CREATE POLICY "users_insert" ON users FOR INSERT TO authenticated WITH CHECK ("current_role"() = 'admin');
 DROP POLICY IF EXISTS "users_update" ON users;
@@ -18238,9 +18245,10 @@ CREATE POLICY "invoices_delete" ON invoices FOR DELETE TO authenticated USING ("
 
 -- 監査ログ: 社内のみ閲覧・追記可（更新・削除は不可＝改ざん防止）
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
--- 閲覧はadmin/editor/viewerのみ（ドライバーを含む全員が閲覧可能だった重大な設定ミスを修正）
+-- 閲覧はadminのみ。操作ログタブ(nt4)が画面上も管理者専用のため、権限設定をそれに揃えている
+-- （以前はeditor/viewerも読める設定で、画面には出ないがAPIからは取得できる状態だった）
 DROP POLICY IF EXISTS "audit_logs_select" ON audit_logs;
-CREATE POLICY "audit_logs_select" ON audit_logs FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "audit_logs_select" ON audit_logs FOR SELECT TO authenticated USING ("current_role"() = 'admin');
 -- 書き込みは add_audit_log RPC 経由に一本化（who/roleをサーバ側でauth.uid()から確定し偽装を防止）。
 -- クライアントからの直接INSERTは許可しない（INSERTポリシーを置かない）。
 DROP POLICY IF EXISTS "audit_logs_insert" ON audit_logs;
