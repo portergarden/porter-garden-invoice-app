@@ -216,6 +216,10 @@ let parsedPayCsv = [];
   --amber-bg:#FAEEDA;--amber-text:#633806;--amber-border:#EF9F27;
   --purple-bg:#CECBF6;--purple-text:#3C3489;
   --gray-bg:#E8E7E0;--gray-text:#555;
+  --teal-bg:#B7E3DC;--teal-text:#12554C;
+  --pink-bg:#F7C9DF;--pink-text:#8A2354;
+  /* 予定管理カレンダーの土日祝。通常の--red/--blueより濃く出して見分けやすくする */
+  --cal-sun:#B01818;--cal-sat:#0B4C93;
   --radius:5px;--radius-lg:8px;
 }
 /* ダークモードの色定義。既定はOS設定(prefers-color-scheme)に従い、
@@ -231,6 +235,9 @@ let parsedPayCsv = [];
     --amber-bg:#4A3A14;--amber-text:#F5C451;--amber-border:#8A6D1F;
     --purple-bg:#332F5C;--purple-text:#B8B3F0;
     --gray-bg:#3A3A38;--gray-text:#C4C4BE;
+    --teal-bg:#13403B;--teal-text:#7FD6C8;
+    --pink-bg:#4A1F33;--pink-text:#F2A3C4;
+    --cal-sun:#FF7373;--cal-sat:#7FB8F5;
   }
 }
 :root[data-theme="dark"]{
@@ -243,6 +250,9 @@ let parsedPayCsv = [];
   --amber-bg:#4A3A14;--amber-text:#F5C451;--amber-border:#8A6D1F;
   --purple-bg:#332F5C;--purple-text:#B8B3F0;
   --gray-bg:#3A3A38;--gray-text:#C4C4BE;
+  --teal-bg:#13403B;--teal-text:#7FD6C8;
+  --pink-bg:#4A1F33;--pink-text:#F2A3C4;
+  --cal-sun:#FF7373;--cal-sat:#7FB8F5;
 }
 html{overflow-x:hidden}
 body{font-family:"Hiragino Sans","Meiryo",sans-serif;font-size:13px;color:var(--text);background:var(--bg);min-height:100vh;overflow-x:hidden;max-width:100vw}
@@ -9506,19 +9516,27 @@ let eStaffSchedId = null;
 
 function staffMembers() { return users.filter(u => u.role !== 'driver'); }
 
-// 予定管理カレンダーの担当者ごとの色分け。担当者一覧（staffMembers()の並び順）に固定のパレットを順番に割り当てる
-const STAFF_SCHED_COLORS = [
-  {bg:'var(--blue-bg)', text:'var(--blue-text)'},
-  {bg:'var(--green-bg)', text:'var(--green-text)'},
-  {bg:'var(--amber-bg)', text:'var(--amber-text)'},
-  {bg:'var(--purple-bg)', text:'var(--purple-text)'},
-  {bg:'var(--red-bg)', text:'var(--red-text)'},
-];
+// 予定管理カレンダーの担当者ごとの色分け。
+// 色は生の色コードではなくパレットのキーで持ち、CSS変数を通すことでライト/ダーク両方で読める配色にする
+const STAFF_SCHED_PALETTE = {
+  blue:   {label:'ブルー',   bg:'var(--blue-bg)',   text:'var(--blue-text)'},
+  green:  {label:'グリーン', bg:'var(--green-bg)',  text:'var(--green-text)'},
+  amber:  {label:'イエロー', bg:'var(--amber-bg)',  text:'var(--amber-text)'},
+  purple: {label:'パープル', bg:'var(--purple-bg)', text:'var(--purple-text)'},
+  red:    {label:'レッド',   bg:'var(--red-bg)',    text:'var(--red-text)'},
+  teal:   {label:'ティール', bg:'var(--teal-bg)',   text:'var(--teal-text)'},
+  pink:   {label:'ピンク',   bg:'var(--pink-bg)',   text:'var(--pink-text)'},
+};
+// 自分で色を選んでいない担当者に順番に割り当てる既定の並び
+const STAFF_SCHED_DEFAULT_ORDER = ['blue','green','amber','purple','red','teal','pink'];
 const STAFF_SCHED_UNASSIGNED_COLOR = {bg:'var(--gray-bg)', text:'var(--gray-text)'};
 function staffSchedColorFor(userId) {
   if (!userId) return STAFF_SCHED_UNASSIGNED_COLOR;
-  const idx = staffMembers().findIndex(u=>String(u.id)===String(userId));
-  return idx>=0 ? STAFF_SCHED_COLORS[idx % STAFF_SCHED_COLORS.length] : STAFF_SCHED_UNASSIGNED_COLOR;
+  const u = users.find(x=>String(x.id)===String(userId));
+  // 本人が選んだ色があればそれを優先し、未選択なら担当者一覧の並び順で自動割り当てする
+  if (u?.schedule_color && STAFF_SCHED_PALETTE[u.schedule_color]) return STAFF_SCHED_PALETTE[u.schedule_color];
+  const idx = staffMembers().findIndex(x=>String(x.id)===String(userId));
+  return idx>=0 ? STAFF_SCHED_PALETTE[STAFF_SCHED_DEFAULT_ORDER[idx % STAFF_SCHED_DEFAULT_ORDER.length]] : STAFF_SCHED_UNASSIGNED_COLOR;
 }
 function renderStaffSchedLegend() {
   const el = document.getElementById('staffSchedLegend');
@@ -9528,8 +9546,30 @@ function renderStaffSchedLegend() {
   el.style.display = 'flex';
   el.innerHTML = members.map(u => {
     const c = staffSchedColorFor(u.id);
-    return `<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2)"><span style="width:10px;height:10px;border-radius:50%;background:${c.bg};display:inline-block"></span>${escHtml(u.name)}</span>`;
+    const mine = me && String(u.id) === String(me.id);
+    return `<span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2)"><span style="width:10px;height:10px;border-radius:50%;background:${c.bg};border:0.5px solid var(--border2);display:inline-block"></span>${escHtml(u.name)}${mine?'（自分）':''}</span>`;
   }).join('');
+  // 自分の色を選ぶプルダウンを凡例の右端に出す（社内メンバーとしてログインしている場合のみ）
+  if (me && members.some(u => String(u.id) === String(me.id))) {
+    const cur = users.find(u=>String(u.id)===String(me.id))?.schedule_color || '';
+    el.innerHTML += `<span style="display:flex;align-items:center;gap:5px;margin-left:auto;font-size:11px;color:var(--text2)">自分の色:
+      <select id="staffSchedMyColor" onchange="saveMyScheduleColor(this.value)" style="padding:2px 6px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        <option value="">自動</option>
+        ${Object.entries(STAFF_SCHED_PALETTE).map(([k,v])=>`<option value="${k}" ${cur===k?'selected':''}>${v.label}</option>`).join('')}
+      </select></span>`;
+  }
+}
+// 自分の表示色を保存する。usersテーブルの更新は管理者のみに制限されているためRPC経由で行う
+async function saveMyScheduleColor(color) {
+  if (!me) return;
+  try {
+    const { error } = await sb.rpc('set_my_schedule_color', { p_color: color || null });
+    if (error) throw error;
+    const u = users.find(x=>String(x.id)===String(me.id));
+    if (u) u.schedule_color = color || null;
+    renderStaffSchedCal();
+    showT(color ? `自分の色を「${STAFF_SCHED_PALETTE[color].label}」にしました` : '自分の色を自動に戻しました');
+  } catch(e) { showT('色の保存に失敗しました: '+e.message, 'ter'); }
 }
 
 async function loadStaffSchedules() {
@@ -9555,6 +9595,7 @@ function staffSchedNext() { staffSchedMonth++; if(staffSchedMonth>11){staffSched
 function renderStaffSchedCal() {
   const title = document.getElementById('staffSchedTitle');
   if (title) title.textContent = `${staffSchedYear}年${staffSchedMonth+1}月`;
+  renderStaffSchedLegend(); // 色の変更をカレンダーと凡例で同時に反映させる
 
   const userId = document.getElementById('staffSchedUserSel')?.value || '';
   let items = staffSchedules;
@@ -9583,7 +9624,7 @@ function renderStaffSchedCal() {
 
   let html = '<div class="cal-grid">';
   ['日','月','火','水','木','金','土'].forEach((d,i) => {
-    const style = i===0 ? 'color:var(--red)' : i===6 ? 'color:var(--blue)' : '';
+    const style = i===0 ? 'color:var(--cal-sun);font-weight:700' : i===6 ? 'color:var(--cal-sat);font-weight:700' : '';
     html += `<div class="cal-head" style="${style}">${d}</div>`;
   });
   for (let i=0; i<startDow; i++) html += '<div class="cal-day other"></div>';
@@ -9595,12 +9636,13 @@ function renderStaffSchedCal() {
     const isToday = dateStr === todayStr;
     const dow = new Date(dateStr+'T00:00:00').getDay();
     const holName = jpHolidayName(dateStr);
-    // 背景は色分けされた予定バッジで判別できるため、セル自体は白背景のまま。土日祝は日付の文字色だけ赤・青にする
-    const dnColor = (dow===0 || holName) ? 'var(--red)' : dow===6 ? 'var(--blue)' : '';
+    // 背景は色分けされた予定バッジで判別できるため、セル自体は白背景のまま。
+    // 土日祝は日付の文字色を専用の濃い赤・青にし、太字にして見分けやすくする
+    const dnColor = (dow===0 || holName) ? 'var(--cal-sun)' : dow===6 ? 'var(--cal-sat)' : '';
     let cls = 'cal-day';
     if (isToday) cls += ' today';
     html += `<div class="${cls}" style="cursor:pointer" onclick="openStaffSchedM(null,'${dateStr}')">
-      <div class="cal-dn"${dnColor?` style="color:${dnColor}"`:''}${holName?` title="${escHtml(holName)}"`:''}>${day}</div>
+      <div class="cal-dn"${dnColor?` style="color:${dnColor};font-weight:700"`:''}${holName?` title="${escHtml(holName)}"`:''}>${day}</div>
       ${dayItems.map(s=>{
         const u = users.find(x=>x.id===s.user_id);
         const isSpan = s.end_date && s.end_date > s.date;
