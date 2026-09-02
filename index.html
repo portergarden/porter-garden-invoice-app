@@ -619,7 +619,10 @@ try {
     <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先分析</div>
     <div class="ntab" id="nt24" onclick="goPage(24,this)">🚚 ドライバー分析</div>
     <div class="ntab" id="nt28" onclick="goPage(28,this)">🗓 予定管理</div>
-    <div class="ntab" id="nt29" onclick="goPage(29,this)">✅ タスク管理</div>
+    <div class="ntab" id="nt31" onclick="goPage(31,this)">🏠 タスクTOP</div>
+    <div class="ntab" id="nt29" onclick="goPage(29,this)">✅ 請求書発行</div>
+    <div class="ntab" id="nt32" onclick="goPage(32,this)">💴 支払明細書発行</div>
+    <div class="ntab" id="nt33" onclick="goPage(33,this)">👤 個人タスク</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 日別売上管理</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
@@ -1344,6 +1347,70 @@ try {
     <div id="bpSummary" style="padding:8px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2)"></div>
     <div style="padding:0 14px 14px;overflow-x:auto" id="bpArea"></div>
   </div>
+  <!-- ===== pg31: タスクTOP（請求書・支払明細書・個人タスクの当月状況をまとめて見る） ===== -->
+  <div id="pg31" class="hide">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:500">🏠 タスクTOP</span>
+        <button class="btn sml" onclick="taskTopShiftMonth(-1)">◀</button>
+        <input type="month" id="ttMonth" onchange="initTaskTop()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        <button class="btn sml" onclick="taskTopShiftMonth(1)">▶</button>
+      </div>
+      <span id="ttWho" style="font-size:11px;color:var(--text2)"></span>
+    </div>
+    <div id="ttBody" style="padding:10px 14px 20px"></div>
+  </div>
+
+  <!-- ===== pg32: 支払明細書発行（ドライバー・協力会社向けの進捗） ===== -->
+  <div id="pg32" class="hide">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:500">💴 支払明細書発行</span>
+        <button class="btn sml" onclick="dpShiftMonth(-1)">◀</button>
+        <input type="month" id="dpMonth" onchange="onDpMonthChange()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        <button class="btn sml" onclick="dpShiftMonth(1)">▶</button>
+        <select id="dpDataFilter" onchange="renderDriverProgress()" title="その月の支払実績が無いドライバーを一覧に出すかどうか" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="hasdata" selected>実績ありのみ</option>
+          <option value="">実績なしも表示</option>
+        </select>
+        <select id="dpStatusFilter" onchange="renderDriverProgress()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">すべて表示</option>
+          <option value="open">未完了のみ</option>
+          <option value="overdue">期限超過のみ</option>
+          <option value="unsent">未送付のみ</option>
+          <option value="done">完了のみ</option>
+          <option value="none">当月対象外のみ</option>
+        </select>
+        <input type="text" id="dpSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderDriverProgressDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:170px">
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn sml grn hide" id="dpAddBtn" onclick="openDpAddM()" title="支払実績が無いドライバーも一覧に追加できます">＋ ドライバーを追加</button>
+        <button class="btn sml" onclick="exportDriverProgressCsv()">↓ CSV</button>
+      </div>
+    </div>
+    <div id="dpSummary" style="padding:8px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2)"></div>
+    <div style="padding:0 14px 14px;overflow-x:auto" id="dpArea"></div>
+  </div>
+
+  <!-- ===== pg33: 個人タスク（会社共通業務とは別に、担当者・依頼者・期限で管理する） ===== -->
+  <div id="pg33" class="hide">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:500">👤 個人タスク</span>
+        <select id="ptMode" onchange="renderPersonalTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="assigned" selected>自分が担当</option>
+          <option value="requested">自分が依頼</option>
+          <option value="all">すべて</option>
+        </select>
+        <select id="ptUser" onchange="renderPersonalTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></select>
+        <input type="text" id="ptSearch" placeholder="🔍 タスク名で検索…" oninput="renderPersonalTasksDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:180px">
+      </div>
+      <button class="btn sml grn hide" id="ptAddBtn" onclick="openPtM()">＋ タスクを追加</button>
+    </div>
+    <div id="ptSummary" style="padding:8px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2)"></div>
+    <div style="padding:0 14px 14px;overflow-x:auto" id="ptArea"></div>
+  </div>
+
   <div id="pg2" class="hide">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:8px;">
      <div style="display:flex;align-items:center;gap:12px;">
@@ -2743,6 +2810,25 @@ try {
       <div class="fld"><label>車両リース代（円）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1"></div>
       <div class="fld"><label>リース会社（任意・車両代の支払先を集計する際に使用）</label><select id="dLeaseCompany" onchange="onLeaseCompanySelChange()"><option value="">（未設定）</option></select></div>
       <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dHideStatement" style="width:auto"> 支払明細書をドライバーポータルに表示しない（協力会社経由で支払う場合など）</label></div>
+      <div style="border-top:0.5px solid var(--border2);margin:10px 0;padding-top:10px">
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">タスク管理の提出ルール（支払明細書発行の期限を毎月自動計算します）</div>
+        <div class="g2">
+          <div class="fld"><label>提出期限</label>
+            <select id="dSubmitRuleType" style="width:100%" onchange="onDrvSubmitRuleChange()">
+              <option value="none">期限なし</option>
+              <option value="day">毎月N日</option>
+              <option value="month_end">月末</option>
+              <option value="next_month_day">翌月N日</option>
+            </select>
+          </div>
+          <div class="fld" id="dSubmitRuleDayWrap" style="display:none"><label>日にち</label>
+            <input type="number" id="dSubmitRuleDay" min="1" max="31" placeholder="例: 10" title="その月に無い日（31日など）は月末に丸められます">
+          </div>
+        </div>
+        <div class="fld"><label>送付メモ（任意）</label>
+          <input type="text" id="dSendMemo" placeholder="例: PDFをメール送付後、原本も郵送" title="支払明細書発行の一覧に表示されます">
+        </div>
+      </div>
       <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dIsCompany" style="width:auto"> この登録は個人ではなく会社（法人）を支払先とする<br><span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:22px">支払明細書の宛名が「様」ではなく「御中」になります</span></label></div>
       <div class="fld">
         <label>その他の控除項目（保険料・家賃など、複数追加可）</label>
@@ -2803,6 +2889,9 @@ try {
           <button type="button" class="btn sml" onclick="regenCliKana()" title="取引先名から読みを再生成します">自動</button>
         </div>
         <div style="font-size:10px;color:var(--text2);margin-top:3px" id="cNameKanaHint">漢字の読みは推定のため、違っていればこの欄を直してください</div>
+      </div>
+      <div class="fld"><label>親会社（任意・支店や営業所の場合に選びます）</label>
+        <select id="cParent" style="width:100%" title="設定するとタスク管理で親会社ごとにまとめて表示されます"><option value="">なし（親会社として扱う）</option></select>
       </div>
       <div class="g2">
         <div class="fld"><label>担当者名（任意）</label><input type="text" id="cPerson"></div>
@@ -3104,6 +3193,49 @@ try {
     <div class="mfoot">
       <button class="btn" onclick="closeM('mBpAdd')">キャンセル</button>
       <button class="btn pri" onclick="submitBpAdd()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 支払明細書発行の一覧にドライバーを手動で追加 -->
+<div class="overlay" id="mDpAdd">
+  <div class="modal" style="width:400px">
+    <div class="mh">＋ 支払明細書発行にドライバーを追加 <button class="ibtn" onclick="closeM('mDpAdd')">✕</button></div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">支払実績が無いドライバーを、この月の一覧に追加します。</div>
+    <input type="text" id="dpAddSearch" placeholder="🔍 ドライバー名で絞り込み…" oninput="renderDpAddList()" style="width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);margin-bottom:6px">
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <button class="btn sml" onclick="toggleDpAddAll(true)">全て選択</button>
+      <button class="btn sml" onclick="toggleDpAddAll(false)">全て解除</button>
+      <span id="dpAddCount" style="margin-left:auto;font-size:11px;color:var(--text2);align-self:center"></span>
+    </div>
+    <div id="dpAddList" style="max-height:260px;overflow-y:auto;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px;display:flex;flex-direction:column;gap:4px"></div>
+    <div id="dpAddErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
+    <div class="mfoot">
+      <button class="btn" onclick="closeM('mDpAdd')">キャンセル</button>
+      <button class="btn pri" onclick="submitDpAdd()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 個人タスクの追加・編集 -->
+<div class="overlay" id="mPt">
+  <div class="modal" style="width:440px">
+    <div class="mh" id="mPtH">タスクを追加 <button class="ibtn" onclick="closeM('mPt')">✕</button></div>
+    <div class="fld"><label>タスク名</label><input type="text" id="ptTitle" placeholder="例: 仙台支店 請求書の内容確認"></div>
+    <div class="g2">
+      <div class="fld"><label>担当者</label><select id="ptAssignee" style="width:100%"></select></div>
+      <div class="fld"><label>依頼者</label><select id="ptRequester" style="width:100%"></select></div>
+    </div>
+    <div class="g2">
+      <div class="fld"><label>期限（任意）</label><input type="date" id="ptDue"></div>
+      <div class="fld"><label>ステータス</label><select id="ptStatus" style="width:100%"></select></div>
+    </div>
+    <div class="fld"><label>メモ（任意）</label><textarea id="ptNote" rows="2" placeholder="任意"></textarea></div>
+    <div id="ptErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
+    <div class="mfoot">
+      <button class="btn" id="ptDelBtn" style="display:none;color:var(--red-text)" onclick="deletePersonalTask()">削除</button>
+      <button class="btn" onclick="closeM('mPt')">キャンセル</button>
+      <button class="btn pri" onclick="savePersonalTask()">保存</button>
     </div>
   </div>
 </div>
@@ -4924,6 +5056,7 @@ const stCls=s=>({3:'s3',4:'s4'}[s]||'');
 const PAGE_GROUP = {
   0:'biz', 6:'biz', 18:'biz', 9:'biz', 11:'biz', 22:'biz',
   1:'analysis', 8:'analysis', 23:'analysis', 24:'analysis', 28:'analysis', 29:'analysis',
+  31:'analysis', 32:'analysis', 33:'analysis',
   10:'driver', 12:'driver', 14:'driver', 27:'driver', 30:'driver',
   2:'admin', 3:'admin', 25:'admin', 26:'admin', 15:'admin', 4:'admin', 5:'admin', 17:'admin',
 };
@@ -4952,7 +5085,7 @@ function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
   if (n!==27) unsubscribeChatTabRealtime();
   if (n!==30) unsubscribeChatGroupRealtime();
-  for(let i=0; i<=30; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
+  for(let i=0; i<=33; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
   const target = document.getElementById('pg'+n);
   if(target) target.classList.remove('hide');
@@ -4974,6 +5107,9 @@ function goPage(n,el){
   if(n===8){initCal();renderCal();}
   if(n===28){initStaffSched();loadStaffSchedules().then(()=>renderStaffSchedCal());}
   if(n===29){initBillingProgress();loadBillingProgress().then(()=>renderBillingProgress());}
+  if(n===31){initTaskTop();}
+  if(n===32){initDriverProgress();loadDriverProgress().then(()=>renderDriverProgress());}
+  if(n===33){initPersonalTasks();loadPersonalTasks().then(()=>renderPersonalTasks());}
   if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
   if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
   if(n===10){_setDailyListMonth();initMob();}
@@ -5601,7 +5737,7 @@ async function onLeaseCompanySelChange(){
     populateLeaseCompanyList(name);
   } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
-function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
 function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');const v=inp.value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
@@ -5626,7 +5762,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.partner_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.partner_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dSubmitRuleType').value=d.submit_rule_type||'none';document.getElementById('dSubmitRuleDay').value=d.submit_rule_day??'';document.getElementById('dSendMemo').value=d.send_memo||'';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -5682,6 +5818,9 @@ async function saveDrv(){
     vehicle_rental:+document.getElementById('dVehRental').value||0,
     lease_company:document.getElementById('dLeaseCompany').value.trim()||null,
     hide_statement:document.getElementById('dHideStatement').checked,
+    submit_rule_type:document.getElementById('dSubmitRuleType').value||'none',
+    submit_rule_day:(()=>{const t=document.getElementById('dSubmitRuleType').value;if(t!=='day'&&t!=='next_month_day')return null;const v=parseInt(document.getElementById('dSubmitRuleDay').value,10);return (v>=1&&v<=31)?v:null;})(),
+    send_memo:document.getElementById('dSendMemo').value.trim()||null,
     is_company:document.getElementById('dIsCompany').checked,
     closing_day:parseDayInput(document.getElementById('dClosingDay').value),
     pay_month_offset:+document.getElementById('dPayMonthOffset').value||0,
@@ -5857,13 +5996,29 @@ function renderCli(){
     }).join('');
   }
 }
-function openCliM(){switchModalTab('mCli','basic');eCliId=null;cliKanaEdited=false;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo','cNameKana'].forEach(id=>document.getElementById(id).value='');updateCliKanaHint();document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cSendMethod').value='';document.getElementById('cSubmitRuleType').value='none';document.getElementById('cSubmitRuleDay').value='';document.getElementById('cSendMemo').value='';onCliSubmitRuleChange();document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
+function openCliM(){switchModalTab('mCli','basic');eCliId=null;cliKanaEdited=false;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo','cNameKana'].forEach(id=>document.getElementById(id).value='');updateCliKanaHint();document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cSendMethod').value='';document.getElementById('cSubmitRuleType').value='none';document.getElementById('cSubmitRuleDay').value='';document.getElementById('cSendMemo').value='';onCliSubmitRuleChange();populateCliParentSel(null,null);document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
+// 「毎月N日」「翌月N日」のときだけ日にち入力欄を出す（ドライバー登録側）
+function onDrvSubmitRuleChange(){
+  const t=document.getElementById('dSubmitRuleType')?.value;
+  const w=document.getElementById('dSubmitRuleDayWrap');
+  if(w)w.style.display=(t==='day'||t==='next_month_day')?'':'none';
+}
+// 親会社の候補を並べる。自分自身と、自分を親にしている取引先（循環参照）は候補から外す
+function populateCliParentSel(selfId, current){
+  const sel=document.getElementById('cParent');
+  if(!sel)return;
+  const cand=clients.filter(c=>c.id!==selfId && c.parent_id!==selfId).sort(clientNoCompare);
+  sel.innerHTML='<option value="">なし（親会社として扱う）</option>'
+    +cand.map(c=>`<option value="${c.id}" ${String(c.id)===String(current||'')?'selected':''}>${escHtml(c.name)}${c.client_no?`（ID:${escHtml(c.client_no)}）`:''}</option>`).join('');
+  enhanceSelectSearchable('cParent');
+  sel.value=current?String(current):'';
+}
 // 「毎月N日」「翌月N日」のときだけ日にち入力欄を出す
 function onCliSubmitRuleChange(){
   const t=document.getElementById('cSubmitRuleType').value;
   document.getElementById('cSubmitRuleDayWrap').style.display=(t==='day'||t==='next_month_day')?'':'none';
 }
-function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cNameKana').value=c.name_kana||autoKana(c.name);cliKanaEdited=!!c.name_kana;updateCliKanaHint();document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cSendMethod').value=c.send_method||'';document.getElementById('cSubmitRuleType').value=c.submit_rule_type||'none';document.getElementById('cSubmitRuleDay').value=c.submit_rule_day??'';document.getElementById('cSendMemo').value=c.send_memo||'';onCliSubmitRuleChange();document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
+function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cNameKana').value=c.name_kana||autoKana(c.name);cliKanaEdited=!!c.name_kana;updateCliKanaHint();document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cSendMethod').value=c.send_method||'';document.getElementById('cSubmitRuleType').value=c.submit_rule_type||'none';document.getElementById('cSubmitRuleDay').value=c.submit_rule_day??'';document.getElementById('cSendMemo').value=c.send_memo||'';onCliSubmitRuleChange();populateCliParentSel(c.id,c.parent_id);document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('mCli').classList.add('on');}
 async function delCli(id){
   if(!confirm('削除しますか？'))return;
   try{
@@ -5905,7 +6060,7 @@ async function saveCli(){
   const codeVal=document.getElementById('cCode').value.trim();
   if(codeVal){const dup=clients.find(c=>c.client_no===codeVal&&c.id!==eCliId);if(dup){alert(`取引先ID「${codeVal}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
   const feeRateVal=document.getElementById('cFeeRate').value;
-  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:parseDayInput(document.getElementById('cClosingDay').value),fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),send_method:document.getElementById('cSendMethod').value||null,submit_rule_type:document.getElementById('cSubmitRuleType').value||'none',submit_rule_day:(()=>{const t=document.getElementById('cSubmitRuleType').value;if(t!=='day'&&t!=='next_month_day')return null;const d=parseInt(document.getElementById('cSubmitRuleDay').value,10);return (d>=1&&d<=31)?d:null;})(),send_memo:document.getElementById('cSendMemo').value.trim()||null,name_kana:document.getElementById('cNameKana').value.trim()||null,pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:parseDayInput(document.getElementById('cPayDay').value),invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
+  const obj={name,client_no:codeVal||null,short:document.getElementById('cShort').value.trim(),person:document.getElementById('cPerson').value.trim(),tel:document.getElementById('cTel2').value.trim(),zip:document.getElementById('cZip').value.trim(),address:document.getElementById('cAddress').value.trim(),note:document.getElementById('cNote').value.trim(),closing_day:parseDayInput(document.getElementById('cClosingDay').value),fee_rate:feeRateVal===''?0:parseFloat(feeRateVal),send_method:document.getElementById('cSendMethod').value||null,submit_rule_type:document.getElementById('cSubmitRuleType').value||'none',submit_rule_day:(()=>{const t=document.getElementById('cSubmitRuleType').value;if(t!=='day'&&t!=='next_month_day')return null;const d=parseInt(document.getElementById('cSubmitRuleDay').value,10);return (d>=1&&d<=31)?d:null;})(),send_memo:document.getElementById('cSendMemo').value.trim()||null,parent_id:+document.getElementById('cParent').value||null,name_kana:document.getElementById('cNameKana').value.trim()||null,pay_month_offset:+document.getElementById('cPayMonthOffset').value||0,pay_day:parseDayInput(document.getElementById('cPayDay').value),invoice_no:document.getElementById('cInvoiceNo').value.trim()||null};
   showLoad(true);
   try{
     let data,error,msg='取引先を保存しました';
@@ -10246,7 +10401,8 @@ function renderBillingProgress() {
   const effStatus = c => rowOf(c).status || 'todo';
 
   let list = base;
-  if (q) list = list.filter(c => nm(c.name).includes(q) || nm(c.short||'').includes(q));
+  // 検索は親会社名でも支店がヒットするようにする
+  if (q) list = list.filter(c => nm(cliSearchName(c)).includes(q) || nm(c.short||'').includes(q));
   // 対象外の行は進捗の絞り込み対象にせず、「対象外のみ」を選んだときだけ出す
   if (statusF === 'none') list = list.filter(c => !isTarget(c));
   else {
@@ -10334,7 +10490,9 @@ function renderBillingProgress() {
       <th style="${th};text-align:left">送付メモ</th>
       <th style="${th};text-align:left">備考</th>
     </tr></thead>
-    <tbody>${list.map(c => {
+    <tbody>${(() => {
+    // 1行分のHTML。indent=true は親会社の下にぶら下がる支店・営業所
+    const rowHtml = (c, indent) => {
       const b = bpRow(c.id) || {};
       const inv = invMap[String(c.id)];
       const st = b.status || 'todo';
@@ -10346,8 +10504,8 @@ function renderBillingProgress() {
       const overdue = bpIsOverdue(b, c, month);
       return `<tr style="${noDeal?'opacity:.5':''}">
         <td style="${td};text-align:center"><input type="checkbox" class="bpRowChk" value="${c.id}" data-manual="${b.manual?1:0}" onchange="updateBpBulkBar()" style="width:14px;height:14px;cursor:pointer"></td>
-        <td style="${td};text-align:left;white-space:nowrap">
-          <span style="font-weight:600">${escHtml(c.name)}</span>
+        <td style="${td};text-align:left;white-space:nowrap${indent?';padding-left:18px':''}">
+          ${indent?'<span style="color:var(--text3)">└ </span>':''}<span style="font-weight:600">${escHtml(c.name)}</span>
           ${c.client_no?`<span style="font-size:9.5px;color:var(--text2)"> ID:${escHtml(c.client_no)}</span>`:''}
           ${inv?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:4px">${inv.cnt}件</span>`:'<span style="font-size:9.5px;color:var(--text2);margin-left:4px">実績なし</span>'}
           ${b.manual&&!inv?`<span class="bdg" style="background:var(--amber-bg);color:var(--amber-text);margin-left:4px">手動</span><button class="ibtn" title="この行を一覧から外す" onclick="removeBpManual(${c.id})" style="margin-left:2px">🗑</button>`:''}
@@ -10398,7 +10556,33 @@ function renderBillingProgress() {
           : '<span style="font-size:10px;color:var(--text3)">—</span>'}</td>
         <td style="${td}"><input type="text" style="${inp};width:100%;min-width:110px" value="${escHtml(b.note||'')}" placeholder="—" onchange="saveBpField(${c.id},'note',this.value)"></td>
       </tr>`;
-    }).join('')}</tbody></table>`;
+    };
+    // 本社・支店をまとめ、深刻な状態のグループを上に出す
+    const sevOf = c => {
+      const b = bpRow(c.id) || {};
+      if (b.target === false) return 99;
+      if (bpIsOverdue(b, c, month)) return -1;
+      if (b.status === 'done') return 90;
+      return Object.keys(BP_STATUS_LABEL).indexOf(b.status || 'todo');
+    };
+    return groupByRootClient(list, sevOf).map(g => {
+      if (!g.isGroup) return g.items.map(c => rowHtml(c, false)).join('');
+      const collapsed = !!bpCollapsed[g.rootId];
+      const tg = g.items.filter(c => (bpRow(c.id)||{}).target !== false);
+      const doneN = tg.filter(c => (bpRow(c.id)||{}).status === 'done').length;
+      const overN = tg.filter(c => bpIsOverdue(bpRow(c.id)||{}, c, month)).length;
+      return `<tr style="background:var(--bg2)">
+        <td style="${td};text-align:center"></td>
+        <td style="${td};text-align:left;white-space:nowrap;font-weight:700;cursor:pointer" colspan="15" onclick="toggleBpGroup(${g.rootId})" title="クリックで折りたたみ／展開">
+          <span style="color:var(--text2);display:inline-block;width:12px">${collapsed?'▸':'▾'}</span>
+          ${escHtml(g.root?.name || '—')}
+          <span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:6px">
+            全${g.items.length}件・未完了${tg.length-doneN}件${overN?`　<span style="color:var(--red-text);font-weight:700">⚠ 期限超過${overN}件</span>`:''}
+          </span>
+        </td>
+      </tr>` + (collapsed ? '' : g.items.map(c => rowHtml(c, true)).join(''));
+    }).join('');
+  })()}</tbody></table>`;
 
   // 金額入力などで再描画されても行の選択が消えないよう復元する
   if (keepSel.size) {
@@ -10493,6 +10677,45 @@ async function submitBpAdd() {
   } catch(e) { errEl.textContent = '追加エラー: ' + e.message; }
   showLoad(false);
 }
+/* ===== 取引先の親子（本社・支店・営業所） ===== */
+// 親をたどって最上位の取引先IDを返す（循環参照が混入しても止まるよう回数で打ち切る）
+function cliRootId(cliId) {
+  let c = clients.find(x => x.id === cliId), guard = 0;
+  while (c && c.parent_id && guard++ < 6) {
+    const p = clients.find(x => x.id === c.parent_id);
+    if (!p) break;
+    c = p;
+  }
+  return c ? c.id : cliId;
+}
+function cliHasChildren(cliId) { return clients.some(c => c.parent_id === cliId); }
+// 支店行は自分の名称（「仙台支店」など）しか持たないため、親会社名で検索してもヒットするよう
+// 検索用の文字列は「親会社名＋自分の名称」を連結したものにする
+function cliSearchName(c) {
+  if (!c) return '';
+  const p = c.parent_id ? clients.find(x => x.id === c.parent_id) : null;
+  return (p ? p.name + ' ' : '') + c.name;
+}
+// 行を親会社ごとにまとめる。深刻な状態（期限超過→未完了→完了）のグループを上に出す
+function groupByRootClient(rows, sevOf) {
+  const byRoot = {};
+  rows.forEach(r => { const rid = cliRootId(r.id); (byRoot[rid] = byRoot[rid] || []).push(r); });
+  return Object.keys(byRoot).map(rid => {
+    const rootId = +rid;
+    const items = byRoot[rid].slice().sort((a, b) =>
+      (a.id === rootId ? -1 : b.id === rootId ? 1 : 0) || String(a.name).localeCompare(String(b.name), 'ja'));
+    return {
+      rootId, root: clients.find(c => c.id === rootId) || null, items,
+      severity: Math.min(...items.map(sevOf)),
+      isGroup: items.length > 1 || cliHasChildren(rootId),
+    };
+  }).sort((a, b) => a.severity - b.severity
+    || String(a.root?.name || '').localeCompare(String(b.root?.name || ''), 'ja'));
+}
+// 折りたたみ中のグループ（画面を再描画しても保つ）
+let bpCollapsed = {};
+function toggleBpGroup(rootId) { bpCollapsed[rootId] = !bpCollapsed[rootId]; renderBillingProgress(); }
+
 // 集計欄の件数つきタブから絞り込みを切り替える（上のプルダウンと同じ状態を共有する）
 function setBpStatusFilter(v) {
   const sel = document.getElementById('bpStatusFilter');
@@ -10604,6 +10827,716 @@ async function removeBpManual(cliId) {
     showT('一覧から外しました');
   } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
   showLoad(false);
+}
+
+/* ============================================================
+   個人タスク（pg33）— 会社共通業務とは別に、担当者・依頼者・期限で管理する
+   ============================================================ */
+let personalTasks = [];
+let ePtId = null;
+const PT_STATUS_LABEL = {not_started:'未着手', in_progress:'進行中', review:'確認待ち', done:'完了'};
+const PT_STATUS_COLOR = {
+  not_started: ['--gray-bg','--gray-text'],
+  in_progress: ['--blue-bg','--blue-text'],
+  review:      ['--teal-bg','--teal-text'],
+  done:        ['--green-bg','--green-text'],
+};
+function initPersonalTasks() {
+  const sel = document.getElementById('ptUser');
+  if (sel) {
+    const cur = sel.value || (me?.id ?? '');
+    sel.innerHTML = staffMembers().map(u=>`<option value="${escHtml(u.id)}" ${String(u.id)===String(cur)?'selected':''}>${escHtml(u.name)}</option>`).join('');
+  }
+  const btn = document.getElementById('ptAddBtn');
+  if (btn) btn.classList.toggle('hide', !(me && me.role !== 'viewer'));
+}
+async function loadPersonalTasks() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('tasks').select('*').order('due_date', {nullsFirst:false});
+    if (error) { if (/does not exist|relation/.test(error.message)) { personalTasks=[]; return; } throw error; }
+    personalTasks = data || [];
+  } catch(e) { console.warn('loadPersonalTasks:', e.message); personalTasks = []; }
+}
+const ptIsOverdue = t => !!t.due_date && t.due_date < fmtLocalDate(new Date()) && t.status !== 'done';
+const ptIsToday   = t => t.due_date === fmtLocalDate(new Date()) && t.status !== 'done';
+function renderPersonalTasks() {
+  const area = document.getElementById('ptArea');
+  const sumEl = document.getElementById('ptSummary');
+  if (!area) return;
+  const mode = document.getElementById('ptMode')?.value || 'assigned';
+  const uid  = document.getElementById('ptUser')?.value || me?.id || '';
+  const q    = nm(document.getElementById('ptSearch')?.value || '');
+
+  let list = personalTasks;
+  if (mode === 'assigned')       list = list.filter(t => String(t.assignee_user_id||'') === String(uid));
+  else if (mode === 'requested') list = list.filter(t => String(t.requester_user_id||'') === String(uid));
+  if (q) list = list.filter(t => nm(t.title||'').includes(q) || nm(t.note||'').includes(q));
+
+  const overdueN = list.filter(ptIsOverdue).length;
+  const todayN   = list.filter(ptIsToday).length;
+  const doneN    = list.filter(t => t.status === 'done').length;
+  if (sumEl) {
+    sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px">
+      <span>全 <b>${list.length}</b>件</span>
+      <span>完了 <b style="color:var(--green-text)">${doneN}</b> / 未完了 <b style="color:var(--amber-text)">${list.length-doneN}</b></span>
+      ${overdueN?`<span style="color:var(--red-text);font-weight:600">⚠ 期限超過 ${overdueN}件</span>`:''}
+      ${todayN?`<span style="color:var(--amber-text);font-weight:600">本日期限 ${todayN}件</span>`:''}
+    </div>`;
+  }
+  if (!list.length) { area.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:14px 0">該当するタスクがありません</div>'; return; }
+
+  // 期限超過 → 本日 → 期限あり（近い順）→ 期限なし → 完了 の順に並べる
+  const rank = t => t.status === 'done' ? 4 : ptIsOverdue(t) ? 0 : ptIsToday(t) ? 1 : t.due_date ? 2 : 3;
+  const sorted = [...list].sort((a,b) => rank(a)-rank(b)
+    || String(a.due_date||'9999').localeCompare(String(b.due_date||'9999'))
+    || String(a.title||'').localeCompare(String(b.title||''),'ja'));
+
+  const th = 'padding:6px 8px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;white-space:nowrap;position:sticky;top:0';
+  const td = 'padding:4px 6px;border:0.5px solid var(--border);font-size:11.5px';
+  const inp = 'padding:3px 5px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)';
+  const uname = id => users.find(u=>String(u.id)===String(id))?.name || '—';
+
+  area.innerHTML = `<table style="width:100%;border-collapse:collapse;min-width:760px">
+    <thead><tr>
+      <th style="${th};text-align:left">タスク</th>
+      <th style="${th}">ステータス</th>
+      <th style="${th}">担当者</th>
+      <th style="${th}">依頼者</th>
+      <th style="${th}">期限</th>
+      <th style="${th};text-align:left">メモ</th>
+      <th style="${th};width:40px"></th>
+    </tr></thead>
+    <tbody>${sorted.map(t => {
+      const sc = PT_STATUS_COLOR[t.status] || PT_STATUS_COLOR.not_started;
+      const over = ptIsOverdue(t), today = ptIsToday(t);
+      return `<tr style="${t.status==='done'?'opacity:.6':''}">
+        <td style="${td};text-align:left"><span style="font-weight:600">${escHtml(t.title||'')}</span></td>
+        <td style="${td};text-align:center">
+          <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="savePtField(${t.id},'status',this.value)">
+            ${Object.entries(PT_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </td>
+        <td style="${td};text-align:center;white-space:nowrap">${escHtml(uname(t.assignee_user_id))}</td>
+        <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${escHtml(uname(t.requester_user_id))}</td>
+        <td style="${td};text-align:center;white-space:nowrap;${over?'color:var(--red-text);font-weight:700':today?'color:var(--amber-text);font-weight:700':''}">
+          ${t.due_date ? escHtml(t.due_date) + (over?'<div style="font-size:9px">⚠ 期限超過</div>':today?'<div style="font-size:9px">本日</div>':'') : '<span style="color:var(--text3)">期限なし</span>'}
+        </td>
+        <td style="${td};max-width:220px"><span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t.note||'')}">${escHtml(t.note||'')||'—'}</span></td>
+        <td style="${td};text-align:center">${me&&me.role!=='viewer'?`<button class="ibtn" onclick="openPtM(${t.id})" title="編集">✎</button>`:''}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+const renderPersonalTasksDebounced = debounce(renderPersonalTasks, 250);
+async function savePtField(id, field, value) {
+  if (!sb) return;
+  const patch = { [field]: value === '' ? null : value };
+  if (field === 'status') patch.completed_at = value === 'done' ? new Date().toISOString() : null;
+  try {
+    const {data, error} = await sb.from('tasks').update(patch).eq('id', id).select().single();
+    if (error) throw error;
+    const idx = personalTasks.findIndex(t => t.id === id);
+    if (idx >= 0) personalTasks[idx] = data;
+    renderPersonalTasks();
+  } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
+}
+function openPtM(id) {
+  ePtId = id ?? null;
+  const t = id ? personalTasks.find(x=>x.id===id) : null;
+  const opts = (sel) => staffMembers().map(u=>`<option value="${escHtml(u.id)}" ${String(u.id)===String(sel||'')?'selected':''}>${escHtml(u.name)}</option>`).join('');
+  document.getElementById('mPtH').innerHTML = (t?'タスクを編集':'タスクを追加')+' <button class="ibtn" onclick="closeM(\'mPt\')">✕</button>';
+  document.getElementById('ptTitle').value = t?.title || '';
+  document.getElementById('ptAssignee').innerHTML = '<option value="">未割当</option>' + opts(t ? t.assignee_user_id : me?.id);
+  document.getElementById('ptRequester').innerHTML = '<option value="">未設定</option>' + opts(t ? t.requester_user_id : me?.id);
+  document.getElementById('ptDue').value = t?.due_date || '';
+  document.getElementById('ptStatus').innerHTML = Object.entries(PT_STATUS_LABEL)
+    .map(([k,v])=>`<option value="${k}" ${(t?.status||'not_started')===k?'selected':''}>${v}</option>`).join('');
+  document.getElementById('ptNote').value = t?.note || '';
+  document.getElementById('ptErr').textContent = '';
+  document.getElementById('ptDelBtn').style.display = t ? '' : 'none';
+  document.getElementById('mPt').classList.add('on');
+}
+async function savePersonalTask() {
+  const title = document.getElementById('ptTitle').value.trim();
+  const errEl = document.getElementById('ptErr');
+  errEl.textContent = '';
+  if (!title) { errEl.textContent = 'タスク名を入力してください'; return; }
+  const status = document.getElementById('ptStatus').value;
+  const obj = {
+    title,
+    assignee_user_id: document.getElementById('ptAssignee').value || null,
+    requester_user_id: document.getElementById('ptRequester').value || null,
+    due_date: document.getElementById('ptDue').value || null,
+    status,
+    note: document.getElementById('ptNote').value.trim() || null,
+    completed_at: status === 'done' ? new Date().toISOString() : null,
+  };
+  showLoad(true);
+  try {
+    if (ePtId) {
+      const {data, error} = await sb.from('tasks').update(obj).eq('id', ePtId).select().single();
+      if (error) throw error;
+      const idx = personalTasks.findIndex(t=>t.id===ePtId);
+      if (idx>=0) personalTasks[idx] = data;
+      addLog('個人タスク編集', title);
+    } else {
+      obj.created_by = me?.name || null;
+      const {data, error} = await sb.from('tasks').insert(obj).select().single();
+      if (error) throw error;
+      personalTasks.push(data);
+      addLog('個人タスク追加', title);
+    }
+    closeM('mPt');
+    renderPersonalTasks();
+    showT('保存しました');
+  } catch(e) { errEl.textContent = '保存エラー: ' + e.message; }
+  showLoad(false);
+}
+async function deletePersonalTask() {
+  if (!ePtId) return;
+  const t = personalTasks.find(x=>x.id===ePtId);
+  if (!confirm(`「${t?.title||''}」を削除しますか？`)) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('tasks').delete().eq('id', ePtId);
+    if (error) throw error;
+    personalTasks = personalTasks.filter(x=>x.id!==ePtId);
+    closeM('mPt');
+    renderPersonalTasks();
+    showT('削除しました');
+  } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+
+/* ============================================================
+   タスクTOP（pg31）— 請求書・支払明細書・個人タスクの当月状況をまとめて見る
+   ============================================================ */
+function ttCurrentMonth() {
+  const el = document.getElementById('ttMonth');
+  if (el?.value) return el.value;
+  const n = new Date();
+  const d = new Date(n.getFullYear(), n.getMonth()-1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function taskTopShiftMonth(delta) {
+  const el = document.getElementById('ttMonth');
+  const [y,m] = ttCurrentMonth().split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  initTaskTop();
+}
+async function initTaskTop() {
+  const el = document.getElementById('ttMonth');
+  if (el && !el.value) el.value = ttCurrentMonth();
+  const who = document.getElementById('ttWho');
+  if (who) who.textContent = me ? `ログイン中: ${me.name}` : '';
+  const month = ttCurrentMonth();
+  document.getElementById('ttBody').innerHTML = '<div style="color:var(--text2);font-size:12px;padding:14px 0">読み込み中...</div>';
+  // 3種類のデータをまとめて取得する（画面を開いたときだけ通信する）
+  try {
+    const [bp, dp] = await Promise.all([
+      sb.from('billing_progress').select('*').eq('month', month),
+      sb.from('driver_progress').select('*').eq('month', month),
+    ]);
+    billingProgress = bp.data || [];
+    driverProgress  = dp.data || [];
+    await loadPersonalTasks();
+  } catch(e) { console.warn('initTaskTop:', e.message); }
+  renderTaskTop();
+}
+function renderTaskTop() {
+  const body = document.getElementById('ttBody');
+  if (!body) return;
+  const month = ttCurrentMonth();
+  const invMap = bpInvoiceSummary(month);
+  const payMap = dpPaySummary(month);
+
+  // 請求書側: その月に実績がある取引先＋手動追加分のうち、当月対象のもの
+  const bpList = clients.filter(c => (invMap[String(c.id)] || bpRow(c.id)?.manual) && (bpRow(c.id)||{}).target !== false);
+  const dpList = activeDrvs().filter(d => (payMap[String(d.id)] || dpRow(d.id)?.manual) && (dpRow(d.id)||{}).target !== false);
+
+  const stat = (list, rowFn) => {
+    const done = list.filter(x => (rowFn(x)||{}).status === 'done').length;
+    const over = list.filter(x => bpIsOverdue(rowFn(x)||{}, x, month)).length;
+    const unsent = list.filter(x => bpIsUnsent(rowFn(x)||{})).length;
+    return {n:list.length, done, over, unsent};
+  };
+  const sB = stat(bpList, c => bpRow(c.id));
+  const sD = stat(dpList, d => dpRow(d.id));
+
+  const myTasks = personalTasks.filter(t => String(t.assignee_user_id||'') === String(me?.id||''));
+  const myOver  = myTasks.filter(ptIsOverdue);
+  const myToday = myTasks.filter(ptIsToday);
+
+  const card = (n, label, warn) => `<div class="kpi-card"><div class="kpi-label">${label}</div>
+    <div class="kpi-val" style="color:${warn && n ? 'var(--red)' : 'inherit'}">${n}</div></div>`;
+
+  // 対応が必要な行を、深刻な順（期限超過→未送付→進捗が浅い）に並べて上位だけ出す
+  const rank = (row, obj) => bpIsOverdue(row, obj, month) ? -1
+    : bpIsUnsent(row) ? 0
+    : Object.keys(BP_STATUS_LABEL).indexOf(row.status || 'todo') + 1;
+  const problems = [
+    ...bpList.filter(c => (bpRow(c.id)||{}).status !== 'done')
+      .map(c => ({kind:'請求書', name:c.name, row:bpRow(c.id)||{}, obj:c, go:29})),
+    ...dpList.filter(d => (dpRow(d.id)||{}).status !== 'done')
+      .map(d => ({kind:'支払明細書', name:d.name, row:dpRow(d.id)||{}, obj:d, go:32})),
+  ].sort((a,b) => rank(a.row,a.obj) - rank(b.row,b.obj)).slice(0, 8);
+
+  const td = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:11.5px';
+  body.innerHTML = `
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">${escHtml(month)} の状況</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:14px">
+      ${card(sB.n + sD.n, '当月対象（請求＋支払）')}
+      ${card(sB.done + sD.done, '完了')}
+      ${card(sB.over + sD.over, '期限超過', true)}
+      ${card(sB.unsent + sD.unsent, '未送付', true)}
+      ${card(myOver.length, '自分の期限超過タスク', true)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:16px">
+      <div class="card" style="cursor:pointer" onclick="goPage(29,document.getElementById('nt29'))">
+        <div style="font-size:12px;font-weight:600;margin-bottom:5px">✅ 請求書発行</div>
+        <div style="font-size:11.5px;color:var(--text2)">対象 ${sB.n}件 ／ 完了 ${sB.done}件 ／ 未完了 ${sB.n-sB.done}件
+          ${sB.over?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${sB.over}件</span>`:''}</div>
+      </div>
+      <div class="card" style="cursor:pointer" onclick="goPage(32,document.getElementById('nt32'))">
+        <div style="font-size:12px;font-weight:600;margin-bottom:5px">💴 支払明細書発行</div>
+        <div style="font-size:11.5px;color:var(--text2)">対象 ${sD.n}名 ／ 完了 ${sD.done}名 ／ 未完了 ${sD.n-sD.done}名
+          ${sD.over?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${sD.over}件</span>`:''}</div>
+      </div>
+      <div class="card" style="cursor:pointer" onclick="goPage(33,document.getElementById('nt33'))">
+        <div style="font-size:12px;font-weight:600;margin-bottom:5px">👤 自分のタスク</div>
+        <div style="font-size:11.5px;color:var(--text2)">未完了 ${myTasks.filter(t=>t.status!=='done').length}件
+          ${myOver.length?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${myOver.length}件</span>`:''}
+          ${myToday.length?`<span style="color:var(--amber-text);font-weight:600">　本日 ${myToday.length}件</span>`:''}</div>
+      </div>
+    </div>
+
+    <div class="ctitle">対応が必要な業務 <span style="font-weight:400;color:var(--text2);font-size:11px">${problems.length}件（上位8件）</span></div>
+    ${problems.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+      <thead><tr style="background:var(--bg2)">
+        <th style="${td};text-align:left">種別</th><th style="${td};text-align:left">相手先</th>
+        <th style="${td}">ステータス</th><th style="${td}">提出期限</th><th style="${td}"></th>
+      </tr></thead><tbody>${problems.map(p => {
+        const sc = BP_STATUS_COLOR[p.row.status||'todo'] || BP_STATUS_COLOR.todo;
+        const over = bpIsOverdue(p.row, p.obj, month);
+        const due = bpEffectiveDue(p.row, p.obj, month);
+        return `<tr>
+          <td style="${td};color:var(--text2)">${p.kind}</td>
+          <td style="${td};font-weight:600">${escHtml(p.name)}</td>
+          <td style="${td};text-align:center"><span class="bdg" style="background:var(${sc[0]});color:var(${sc[1]})">${BP_STATUS_LABEL[p.row.status||'todo']}</span></td>
+          <td style="${td};text-align:center;${over?'color:var(--red-text);font-weight:700':''}">${due||'—'}${over?' ⚠':''}</td>
+          <td style="${td};text-align:center"><button class="btn sml" onclick="goPage(${p.go},document.getElementById('nt${p.go}'))">開く</button></td>
+        </tr>`;
+      }).join('')}</tbody></table>` : '<div style="color:var(--text2);font-size:12px;padding:8px 0 16px">対応が必要な業務はありません</div>'}
+
+    <div class="ctitle">自分の期限が近いタスク <span style="font-weight:400;color:var(--text2);font-size:11px">${myOver.length+myToday.length}件</span></div>
+    ${(myOver.length+myToday.length) ? `<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--bg2)">
+        <th style="${td};text-align:left">タスク</th><th style="${td}">ステータス</th><th style="${td}">期限</th>
+      </tr></thead><tbody>${[...myOver, ...myToday].map(t => {
+        const sc = PT_STATUS_COLOR[t.status] || PT_STATUS_COLOR.not_started;
+        return `<tr>
+          <td style="${td};font-weight:600">${escHtml(t.title||'')}</td>
+          <td style="${td};text-align:center"><span class="bdg" style="background:var(${sc[0]});color:var(${sc[1]})">${PT_STATUS_LABEL[t.status]}</span></td>
+          <td style="${td};text-align:center;color:var(--red-text);font-weight:700">${escHtml(t.due_date||'')}</td>
+        </tr>`;
+      }).join('')}</tbody></table>` : '<div style="color:var(--text2);font-size:12px;padding:8px 0">期限が近いタスクはありません</div>'}
+  `;
+}
+
+/* ============================================================
+   支払明細書発行（pg32）— ドライバー・協力会社向けの進捗。
+   請求書側(billing_progress)と同じ考え方だが、対象がドライバーのため別テーブル(driver_progress)を使う
+   ============================================================ */
+let driverProgress = [];
+const dpRow = drvId => driverProgress.find(d => String(d.drv_id) === String(drvId));
+function dpCurrentMonth() {
+  const el = document.getElementById('dpMonth');
+  if (el?.value) return el.value;
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+}
+function dpShiftMonth(delta) {
+  const el = document.getElementById('dpMonth');
+  const [y,m] = dpCurrentMonth().split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  onDpMonthChange();
+}
+function onDpMonthChange() { loadDriverProgress().then(() => renderDriverProgress()); }
+function initDriverProgress() {
+  const el = document.getElementById('dpMonth');
+  if (el && !el.value) {
+    // 支払業務も前月分を当月に処理することが多いため、既定は前月にする
+    const n = new Date();
+    const d = new Date(n.getFullYear(), n.getMonth()-1, 1);
+    el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+  const btn = document.getElementById('dpAddBtn');
+  if (btn) btn.classList.toggle('hide', !(me && me.role !== 'viewer'));
+}
+async function loadDriverProgress() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('driver_progress').select('*').eq('month', dpCurrentMonth());
+    if (error) { if (/does not exist|relation/.test(error.message)) { driverProgress=[]; return; } throw error; }
+    driverProgress = data || [];
+  } catch(e) { console.warn('loadDriverProgress:', e.message); driverProgress = []; }
+}
+// その月の支払対象をドライバーごとに集計（recsから、車番→ドライバーで割り当てる）
+function dpPaySummary(month) {
+  const map = {};
+  recs.forEach(r => {
+    if (!r.date || !r.date.startsWith(month)) return;
+    const d = recDrv(r);
+    if (!d) return;
+    const k = String(d.id);
+    if (!map[k]) map[k] = {amt:0, cnt:0, lastDate:''};
+    map[k].amt += subBySide(r,'payment') + rtaxBySide(r,'payment');
+    map[k].cnt++;
+    if (r.date > map[k].lastDate) map[k].lastDate = r.date;
+  });
+  return map;
+}
+function renderDriverProgress() {
+  const area = document.getElementById('dpArea');
+  const sumEl = document.getElementById('dpSummary');
+  if (!area) return;
+  const keepSel = new Set(Array.from(document.querySelectorAll('.dpRowChk:checked')).map(el => el.value));
+  const month = dpCurrentMonth();
+  const payMap = dpPaySummary(month);
+  const statusF = document.getElementById('dpStatusFilter')?.value || '';
+  const q = nm(document.getElementById('dpSearch')?.value || '');
+  const dataF = document.getElementById('dpDataFilter')?.value ?? 'hasdata';
+
+  let base = [...activeDrvs()].sort((a,b) =>
+    (parseInt(a.supplier_id,10)||999999) - (parseInt(b.supplier_id,10)||999999));
+  if (dataF === 'hasdata') base = base.filter(d => payMap[String(d.id)] || dpRow(d.id)?.manual);
+
+  const rowOf = d => dpRow(d.id) || {};
+  const isTarget = d => rowOf(d).target !== false;
+  const effStatus = d => rowOf(d).status || 'todo';
+
+  let list = base;
+  if (q) list = list.filter(d => nm(d.name).includes(q) || nm(d.company||'').includes(q));
+  if (statusF === 'none') list = list.filter(d => !isTarget(d));
+  else {
+    list = list.filter(isTarget);
+    if (statusF === 'open')         list = list.filter(d => effStatus(d) !== 'done');
+    else if (statusF === 'done')    list = list.filter(d => effStatus(d) === 'done');
+    else if (statusF === 'overdue') list = list.filter(d => bpIsOverdue(rowOf(d), d, month));
+    else if (statusF === 'unsent')  list = list.filter(d => bpIsUnsent(rowOf(d)));
+  }
+
+  const targets = base.filter(isTarget);
+  const doneCnt    = targets.filter(d => effStatus(d) === 'done').length;
+  const overdueCnt = targets.filter(d => bpIsOverdue(rowOf(d), d, month)).length;
+  const unsentCnt  = targets.filter(d => bpIsUnsent(rowOf(d))).length;
+  const offCnt     = base.length - targets.length;
+  const pct = targets.length ? Math.round(doneCnt / targets.length * 1000)/10 : 0;
+  const manualAmt = driverProgress.reduce((a,b)=>a+(b.manual&&!payMap[String(b.drv_id)]?(+b.manual_amt||0):0), 0);
+  const totalAmt = Object.values(payMap).reduce((a,v)=>a+v.amt, 0) + manualAmt;
+  const tabs = [
+    {id:'',        label:'すべて',   n:targets.length},
+    {id:'open',    label:'未完了',   n:targets.length-doneCnt},
+    {id:'overdue', label:'期限超過', n:overdueCnt, warn:true},
+    {id:'unsent',  label:'未送付',   n:unsentCnt,  warn:true},
+    {id:'done',    label:'完了',     n:doneCnt},
+    {id:'none',    label:'対象外',   n:offCnt},
+  ];
+  if (sumEl) {
+    sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px;margin-bottom:7px">
+      <span>当月対象 <b>${targets.length}</b>名${dataF==='hasdata'?`（実績なし ${activeDrvs().length-base.length}名を非表示）`:''}</span>
+      <span>完了 <b style="color:var(--green-text)">${doneCnt}</b> / 未完了 <b style="color:var(--amber-text)">${targets.length-doneCnt}</b></span>
+      ${overdueCnt?`<span style="color:var(--red-text);font-weight:600">⚠ 期限超過 ${overdueCnt}件</span>`:''}
+      ${unsentCnt?`<span style="color:var(--amber-text);font-weight:600">未送付 ${unsentCnt}件</span>`:''}
+      <span>支払合計 <b>${yen(totalAmt)}</b></span>
+      <span style="flex:1;min-width:120px;display:flex;align-items:center;gap:6px">
+        <span style="flex:1;height:7px;background:var(--border);border-radius:99px;overflow:hidden;display:inline-block">
+          <span style="display:block;height:100%;width:${pct}%;background:var(--green)"></span>
+        </span><b>${pct}%</b>
+      </span></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">${tabs.map(t=>{
+        const on = statusF === t.id;
+        const col = t.warn && t.n ? 'var(--red-text)' : on ? 'var(--blue-text)' : 'var(--text2)';
+        return `<button class="btn sml" onclick="setDpStatusFilter('${t.id}')" style="padding:3px 10px;font-size:11px;${on?'background:var(--blue-bg);border-color:var(--blue);font-weight:700;':''}color:${col}">${t.label} ${t.n}</button>`;
+      }).join('')}</div>`;
+  }
+
+  if (!list.length) {
+    area.innerHTML = `<div style="color:var(--text2);font-size:12px;padding:14px 0">${
+      dataF==='hasdata' && !base.length
+        ? 'この月に支払実績のあるドライバーがいません（「実績なしも表示」に切り替えると全員表示できます）'
+        : '該当するドライバーがいません'}</div>`;
+    return;
+  }
+
+  const th = 'padding:6px 8px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;white-space:nowrap;position:sticky;top:0';
+  const td = 'padding:4px 6px;border:0.5px solid var(--border);font-size:11.5px';
+  const inp = 'padding:3px 5px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)';
+  const staff = staffMembers();
+  const staffOpts = (sel) => '<option value="">未入力</option>' + staff.map(u=>`<option value="${escHtml(u.id)}" ${String(u.id)===String(sel||'')?'selected':''}>${escHtml(u.name)}</option>`).join('');
+
+  area.innerHTML = `<div id="dpBulkBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin-bottom:6px;background:var(--blue-bg);border-radius:var(--radius);font-size:11.5px">
+      <span id="dpBulkCount" style="color:var(--blue-text);font-weight:600"></span>
+      <button class="btn sml" onclick="carryOverDpSelected()" title="選択したドライバーを翌月の一覧に追加します（担当者・方法は引き継ぎ、進捗はリセット）">→ 翌月へ繰り越し</button>
+      ${me && me.role !== 'viewer' ? `<button class="btn sml" onclick="deleteDpSelected()" style="color:var(--red-text)" title="手動で追加した行のみ削除できます">🗑 選択を削除</button>` : ''}
+      <button class="btn sml" onclick="toggleDpRowAll(false)" style="margin-left:auto">選択を解除</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;min-width:900px">
+    <thead><tr>
+      <th style="${th};width:26px"><input type="checkbox" id="dpRowChkAll" onchange="toggleDpRowAll(this.checked)" title="表示中の全行を選択" style="width:14px;height:14px;cursor:pointer"></th>
+      <th style="${th};text-align:left">ドライバー</th>
+      <th style="${th}">当月<br>対象</th>
+      <th style="${th};text-align:right">支払金額<div style="font-weight:400;color:var(--text2)">自動</div></th>
+      <th style="${th}">ステータス</th>
+      <th style="${th}">提出期限<div style="font-weight:400;color:var(--text2)">ルール</div></th>
+      <th style="${th}">提出方法</th>
+      <th style="${th}">発行・送付日</th>
+      <th style="${th}">管理担当者</th>
+      <th style="${th}">チェック</th>
+      <th style="${th}">Check担当者</th>
+      <th style="${th};text-align:left">送付メモ</th>
+      <th style="${th};text-align:left">備考</th>
+    </tr></thead>
+    <tbody>${list.map(d => {
+      const b = dpRow(d.id) || {};
+      const pay = payMap[String(d.id)];
+      const st = b.status || 'todo';
+      const sc = BP_STATUS_COLOR[st] || BP_STATUS_COLOR.todo;
+      const noDeal = b.target === false;
+      const due = bpEffectiveDue(b, d, month);
+      const overdue = bpIsOverdue(b, d, month);
+      return `<tr style="${noDeal?'opacity:.5':''}">
+        <td style="${td};text-align:center"><input type="checkbox" class="dpRowChk" value="${d.id}" data-manual="${b.manual?1:0}" onchange="updateDpBulkBar()" style="width:14px;height:14px;cursor:pointer"></td>
+        <td style="${td};text-align:left;white-space:nowrap">
+          <span style="font-weight:600">${escHtml(d.name)}</span>
+          ${d.supplier_id?`<span style="font-size:9.5px;color:var(--text2)"> ID:${escHtml(d.supplier_id)}</span>`:''}
+          ${d.company?`<div style="font-size:9.5px;color:var(--text2)">${escHtml(d.company)}</div>`:''}
+          ${pay?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:4px">${pay.cnt}件</span>`:'<span style="font-size:9.5px;color:var(--text2);margin-left:4px">実績なし</span>'}
+          ${b.manual&&!pay?`<span class="bdg" style="background:var(--amber-bg);color:var(--amber-text);margin-left:4px">手動</span>`:''}
+        </td>
+        <td style="${td};text-align:center"><input type="checkbox" ${noDeal?'':'checked'} onchange="saveDpField(${d.id},'target',this.checked)" title="今月このドライバーへの支払明細書発行があるか" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)"></td>
+        <td style="${td};text-align:right;white-space:nowrap">${
+          pay ? yen(pay.amt)
+              : (b.manual ? `<input type="number" step="1" style="${inp};width:96px;text-align:right" value="${b.manual_amt??''}" placeholder="金額を入力" onchange="saveDpField(${d.id},'manual_amt',this.value)">` : '—')
+        }</td>
+        <td style="${td};text-align:center">${noDeal
+          ? '<span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">当月対象外</span>'
+          : `<select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveDpField(${d.id},'status',this.value)">
+            ${Object.entries(BP_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${st===k?'selected':''}>${v}</option>`).join('')}
+          </select>`}
+        </td>
+        <td style="${td};text-align:center;white-space:nowrap">
+          <input type="date" style="${inp};${overdue?'color:var(--red-text);font-weight:700;border-color:var(--red)':''}" value="${due||''}" title="ドライバー登録の提出ルールから自動計算されます" onchange="saveDpField(${d.id},'planned_date',this.value)">
+          <div style="font-size:9px;color:var(${overdue?'--red-text':'--text2'})">${overdue?'⚠ 期限超過':escHtml(bpRuleText(d))}</div>
+        </td>
+        <td style="${td};text-align:center">
+          <select style="${inp}" onchange="saveDpField(${d.id},'send_method',this.value)">
+            <option value="">未設定</option>
+            ${Object.entries(BP_SEND_LABEL).map(([k,v])=>`<option value="${k}" ${(b.send_method||'')===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </td>
+        <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.submitted_date||''}" onchange="saveDpField(${d.id},'submitted_date',this.value)"></td>
+        <td style="${td};text-align:center"><select style="${inp}" onchange="saveDpField(${d.id},'assignee_user_id',this.value)">${staffOpts(b.assignee_user_id)}</select></td>
+        <td style="${td};text-align:center"><input type="checkbox" ${b.checked?'checked':''} onchange="saveDpField(${d.id},'checked',this.checked)" title="チェック完了" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
+        <td style="${td};text-align:center"><select style="${inp}" onchange="saveDpField(${d.id},'check_user_id',this.value)">${staffOpts(b.check_user_id)}</select></td>
+        <td style="${td};max-width:150px">${d.send_memo
+          ? `<span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.send_memo)}">${escHtml(d.send_memo)}</span>`
+          : '<span style="font-size:10px;color:var(--text3)">—</span>'}</td>
+        <td style="${td}"><input type="text" style="${inp};width:100%;min-width:110px" value="${escHtml(b.note||'')}" placeholder="—" onchange="saveDpField(${d.id},'note',this.value)"></td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+
+  if (keepSel.size) {
+    document.querySelectorAll('.dpRowChk').forEach(el => { if (keepSel.has(el.value)) el.checked = true; });
+    updateDpBulkBar();
+  }
+}
+const renderDriverProgressDebounced = debounce(renderDriverProgress, 250);
+function setDpStatusFilter(v) {
+  const sel = document.getElementById('dpStatusFilter');
+  if (sel) sel.value = v;
+  renderDriverProgress();
+}
+async function saveDpField(drvId, field, value) {
+  if (!sb) return;
+  const month = dpCurrentMonth();
+  const patch = { [field]: (typeof value === 'boolean') ? value
+    : value === '' ? null
+    : (field === 'manual_amt' ? Math.round(+value) || null : value) };
+  if (field === 'submitted_date' && value) {
+    const cur = dpRow(drvId);
+    if (!['sent','done'].includes(cur?.status || 'todo')) patch.status = 'sent';
+  }
+  try {
+    const {data, error} = await sb.from('driver_progress')
+      .upsert({ month, drv_id: drvId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'month,drv_id' })
+      .select().single();
+    if (error) throw error;
+    const idx = driverProgress.findIndex(b => String(b.drv_id) === String(drvId));
+    if (idx >= 0) driverProgress[idx] = data; else driverProgress.push(data);
+    renderDriverProgress();
+    const d = drvs.find(x=>x.id===drvId);
+    addLog('支払明細書発行 更新', `${month} ${d?d.name:`drv:${drvId}`} ${field}=${value||'（クリア）'}`);
+  } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
+}
+/* 行選択（一括削除・翌月繰り越し） */
+function toggleDpRowAll(on) {
+  document.querySelectorAll('.dpRowChk').forEach(el => el.checked = on);
+  const all = document.getElementById('dpRowChkAll');
+  if (all) all.checked = on;
+  updateDpBulkBar();
+}
+function updateDpBulkBar() {
+  const sel = Array.from(document.querySelectorAll('.dpRowChk:checked'));
+  const bar = document.getElementById('dpBulkBar');
+  const cnt = document.getElementById('dpBulkCount');
+  if (!bar) return;
+  bar.style.display = sel.length ? 'flex' : 'none';
+  if (cnt) {
+    const manualN = sel.filter(el => el.dataset.manual === '1').length;
+    cnt.textContent = `${sel.length}名選択中` + (manualN < sel.length ? `（うち手動追加 ${manualN}名）` : '');
+  }
+  const all = document.getElementById('dpRowChkAll');
+  if (all) all.checked = sel.length > 0 && sel.length === document.querySelectorAll('.dpRowChk').length;
+}
+async function deleteDpSelected() {
+  const sel = Array.from(document.querySelectorAll('.dpRowChk:checked'));
+  const manualIds = sel.filter(el => el.dataset.manual === '1').map(el => +el.value);
+  const skipped = sel.length - manualIds.length;
+  if (!manualIds.length) {
+    alert(`削除できるのは手動で追加した行だけです。\n選択中の${sel.length}名はいずれも支払実績から自動表示されている行です。`);
+    return;
+  }
+  const names = manualIds.map(id => drvs.find(d=>d.id===id)?.name || id).join('、');
+  if (!confirm(`次の${manualIds.length}名をこの月の一覧から外しますか？\n\n${names}\n\n入力済みの内容も削除されます。`
+    + (skipped ? `\n\n※ 選択中の${skipped}名は支払実績があるため削除されません。` : ''))) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('driver_progress').delete().eq('month', dpCurrentMonth()).in('drv_id', manualIds);
+    if (error) throw error;
+    driverProgress = driverProgress.filter(b => !manualIds.includes(+b.drv_id));
+    renderDriverProgress();
+    showT(`${manualIds.length}名を一覧から外しました`);
+  } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+async function carryOverDpSelected() {
+  const ids = Array.from(document.querySelectorAll('.dpRowChk:checked')).map(el => +el.value);
+  if (!ids.length) return;
+  const month = dpCurrentMonth();
+  const [y, m] = month.split('-').map(Number);
+  const next = new Date(y, m, 1);
+  const nextMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}`;
+  const names = ids.map(id => drvs.find(d=>d.id===id)?.name || id).join('、');
+  if (!confirm(`次の${ids.length}名を ${nextMonth} の一覧へ繰り越しますか？\n\n${names}\n\n`
+    + `管理担当者・Check担当者・提出方法を引き継ぎます。\n`
+    + `ステータスは「未着手」に戻り、日付・チェック・金額・備考は空になります。\n`
+    + `${month} の行はそのまま残ります。`)) return;
+  showLoad(true);
+  try {
+    const rows = ids.map(drv_id => {
+      const b = driverProgress.find(x => String(x.drv_id) === String(drv_id)) || {};
+      return {
+        month: nextMonth, drv_id, manual: true,
+        assignee_user_id: b.assignee_user_id ?? null,
+        check_user_id: b.check_user_id ?? null,
+        send_method: b.send_method ?? null,
+        target: b.target !== false,
+        status: 'todo', submitted_date: null, planned_date: null,
+        checked: false, manual_amt: null, note: null,
+        updated_at: new Date().toISOString(),
+      };
+    });
+    const {error} = await sb.from('driver_progress').upsert(rows, { onConflict: 'month,drv_id' });
+    if (error) throw error;
+    showT(`${ids.length}名を ${nextMonth} へ繰り越しました`);
+    toggleDpRowAll(false);
+  } catch(e) { showT('繰り越しエラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+/* ドライバーの手動追加 */
+function openDpAddM() {
+  document.getElementById('dpAddSearch').value = '';
+  document.getElementById('dpAddErr').textContent = '';
+  renderDpAddList();
+  document.getElementById('mDpAdd').classList.add('on');
+}
+function renderDpAddList() {
+  const payMap = dpPaySummary(dpCurrentMonth());
+  const checked = new Set(Array.from(document.querySelectorAll('.dpAddChk:checked')).map(el=>el.value));
+  const q = nm(document.getElementById('dpAddSearch')?.value || '');
+  const cand = [...activeDrvs()]
+    .filter(d => !payMap[String(d.id)] && !dpRow(d.id)?.manual)
+    .filter(d => !q || nm(d.name).includes(q) || nm(d.company||'').includes(q))
+    .sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999));
+  const el = document.getElementById('dpAddList');
+  el.innerHTML = cand.length
+    ? cand.map(d=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" class="dpAddChk" value="${d.id}" ${checked.has(String(d.id))?'checked':''} onchange="updateDpAddCount()" style="width:auto">${escHtml(d.name)}${d.supplier_id?`<span style="color:var(--text2);font-size:10.5px">（ID:${escHtml(d.supplier_id)}）</span>`:''}</label>`).join('')
+    : '<div style="font-size:11px;color:var(--text2)">該当するドライバーがいません（すべて一覧に表示済みです）</div>';
+  updateDpAddCount();
+}
+function toggleDpAddAll(on) {
+  document.querySelectorAll('.dpAddChk').forEach(el => el.checked = on);
+  updateDpAddCount();
+}
+function updateDpAddCount() {
+  const n = document.querySelectorAll('.dpAddChk:checked').length;
+  const el = document.getElementById('dpAddCount');
+  if (el) el.textContent = n ? `${n}名選択中` : '';
+}
+async function submitDpAdd() {
+  const ids = Array.from(document.querySelectorAll('.dpAddChk:checked')).map(el=>+el.value);
+  const errEl = document.getElementById('dpAddErr');
+  errEl.textContent = '';
+  if (!ids.length) { errEl.textContent = 'ドライバーを選択してください'; return; }
+  const month = dpCurrentMonth();
+  showLoad(true);
+  try {
+    const rows = ids.map(drv_id => ({ month, drv_id, manual: true, updated_at: new Date().toISOString() }));
+    const {data, error} = await sb.from('driver_progress').upsert(rows, { onConflict: 'month,drv_id' }).select();
+    if (error) throw error;
+    (data||[]).forEach(r => {
+      const idx = driverProgress.findIndex(b => String(b.drv_id) === String(r.drv_id));
+      if (idx >= 0) driverProgress[idx] = r; else driverProgress.push(r);
+    });
+    closeM('mDpAdd');
+    renderDriverProgress();
+    showT(`${ids.length}名を一覧に追加しました`);
+  } catch(e) { errEl.textContent = '追加エラー: ' + e.message; }
+  showLoad(false);
+}
+function exportDriverProgressCsv() {
+  const month = dpCurrentMonth();
+  const payMap = dpPaySummary(month);
+  const headers = ['ドライバー','ドライバーID','協力会社','当月対象','支払金額','件数','ステータス','提出期限','期限超過','提出方法','発行・送付日','管理担当者','チェック','Check担当者','送付メモ','備考'];
+  const dataF = document.getElementById('dpDataFilter')?.value ?? 'hasdata';
+  const rows = [...activeDrvs()]
+    .sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999))
+    .filter(d => dataF !== 'hasdata' || payMap[String(d.id)] || dpRow(d.id)?.manual)
+    .map(d => {
+      const b = dpRow(d.id) || {};
+      const pay = payMap[String(d.id)];
+      const an = users.find(u=>String(u.id)===String(b.assignee_user_id))?.name || '';
+      const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
+      return [d.name, d.supplier_id||'', d.company||'', b.target===false?'対象外':'対象',
+        pay?pay.amt:(b.manual?(b.manual_amt??''):''), pay?pay.cnt:'',
+        b.target===false?'':BP_STATUS_LABEL[b.status||'todo'],
+        bpEffectiveDue(b, d, month)||'', bpIsOverdue(b, d, month)?'超過':'',
+        BP_SEND_LABEL[b.send_method]||'', b.submitted_date||'',
+        an, b.checked?'済':'', cn, d.send_memo||'', b.note||''];
+    });
+  const csv = [headers, ...rows].map(r=>r.map(v=>{
+    const s = String(v??'');
+    return (s.includes('"')||s.includes(',')||s.includes('\n')) ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',')).join('\r\n');
+  const blob = new Blob([new Uint8Array([0xEF,0xBB,0xBF]), csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `支払明細書発行_${month}.csv`;
+  a.click();
 }
 
 function exportBillingProgressCsv() {
