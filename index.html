@@ -10013,8 +10013,16 @@ function clientNoCompare(a, b) {
 }
 
 const BP_SEND_LABEL = {mail:'メール', fax:'FAX', post:'郵送', hand:'手渡し'};
-const BP_STATUS_LABEL = {todo:'未着手', done:'完了', none:'取引なし'};
-const BP_STATUS_COLOR = {todo:['--gray-bg','--gray-text'], done:['--green-bg','--green-text'], none:['--gray-bg','--text2']};
+// ステータスは作業の流れ順に並べる（未着手→進行中→修正→修正済→完了）。取引なしは対象外扱いなので末尾
+const BP_STATUS_LABEL = {todo:'未着手', doing:'進行中', fix:'修正', fixed:'修正済', done:'完了', none:'取引なし'};
+const BP_STATUS_COLOR = {
+  todo:  ['--gray-bg','--gray-text'],
+  doing: ['--blue-bg','--blue-text'],
+  fix:   ['--red-bg','--red-text'],
+  fixed: ['--purple-bg','--purple-text'],
+  done:  ['--green-bg','--green-text'],
+  none:  ['--gray-bg','--text2'],
+};
 let billingProgress = [];   // 表示中の月のbilling_progress行
 let bpLoadedMonth = null;
 
@@ -10097,7 +10105,8 @@ function renderBillingProgress() {
   const effStatus = c => bpRow(c.id)?.status || 'todo';
   let list = base;
   if (q) list = list.filter(c => nm(c.name).includes(q) || nm(c.short||'').includes(q));
-  if (statusF === 'open') list = list.filter(c => effStatus(c) === 'todo');
+  // 未完了＝完了・取引なし以外（進行中・修正・修正済もここに含める）
+  if (statusF === 'open') list = list.filter(c => !['done','none'].includes(effStatus(c)));
   else if (statusF === 'done') list = list.filter(c => effStatus(c) === 'done');
   else if (statusF === 'none') list = list.filter(c => effStatus(c) === 'none');
 
@@ -10137,11 +10146,13 @@ function renderBillingProgress() {
       <th style="${th};text-align:left">取引先</th>
       <th style="${th};text-align:right">請求金額<div style="font-weight:400;color:var(--text2)">自動</div></th>
       <th style="${th}">請求日<div style="font-weight:400;color:var(--text2)">自動</div></th>
-      <th style="${th}">送付方式</th>
       <th style="${th}">ステータス</th>
-      <th style="${th}">管理担当者</th>
+      <th style="${th}">到着方法</th>
       <th style="${th}">明細到着日</th>
+      <th style="${th}">提出方法</th>
       <th style="${th}">明細提出日</th>
+      <th style="${th}">管理担当者</th>
+      <th style="${th}">チェック</th>
       <th style="${th}">Check担当者</th>
       <th style="${th};text-align:left">備考</th>
     </tr></thead>
@@ -10167,20 +10178,27 @@ function renderBillingProgress() {
         <td style="${td};text-align:right;white-space:nowrap">${inv?yen(inv.amt):'—'}</td>
         <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${inv?inv.lastDate:'—'}</td>
         <td style="${td};text-align:center">
+          <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveBpField(${c.id},'status',this.value)">
+            ${Object.entries(BP_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${st===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </td>
+        <td style="${td};text-align:center">
+          <select style="${inp}" onchange="saveBpField(${c.id},'arrival_method',this.value)">
+            <option value="">未設定</option>
+            ${Object.entries(BP_SEND_LABEL).map(([k,v])=>`<option value="${k}" ${(b.arrival_method||'')===k?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </td>
+        <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.arrival_date||''}" onchange="saveBpField(${c.id},'arrival_date',this.value)"></td>
+        <td style="${td};text-align:center">
           <select style="${inp}" onchange="saveBpField(${c.id},'send_method',this.value)">
             <option value="">未設定</option>
             ${Object.entries(BP_SEND_LABEL).map(([k,v])=>`<option value="${k}" ${sm===k?'selected':''}>${v}</option>`).join('')}
           </select>
           ${!b.send_method && c.send_method?'<div style="font-size:9px;color:var(--text2)">マスタ既定</div>':''}
         </td>
-        <td style="${td};text-align:center">
-          <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveBpField(${c.id},'status',this.value)">
-            ${Object.entries(BP_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${st===k?'selected':''}>${v}</option>`).join('')}
-          </select>
-        </td>
-        <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'assignee_user_id',this.value)">${staffOpts(b.assignee_user_id)}</select></td>
-        <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.arrival_date||''}" onchange="saveBpField(${c.id},'arrival_date',this.value)"></td>
         <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.submitted_date||''}" onchange="saveBpField(${c.id},'submitted_date',this.value)"></td>
+        <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'assignee_user_id',this.value)">${staffOpts(b.assignee_user_id)}</select></td>
+        <td style="${td};text-align:center"><input type="checkbox" ${b.checked?'checked':''} onchange="saveBpField(${c.id},'checked',this.checked)" title="チェック完了" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
         <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'check_user_id',this.value)">${staffOpts(b.check_user_id)}</select></td>
         <td style="${td}"><input type="text" style="${inp};width:100%;min-width:110px" value="${escHtml(b.note||'')}" placeholder="—" onchange="saveBpField(${c.id},'note',this.value)"></td>
       </tr>`;
@@ -10194,9 +10212,11 @@ async function saveBpField(cliId, field, value) {
   if (!sb) return;
   const month = bpCurrentMonth();
   const patch = { [field]: value === '' ? null : value };
+  // 未着手・進行中から提出日を入れた場合のみ完了に自動更新する。
+  // 「修正」「修正済」は対応中の状態なので、勝手に完了にせず手動で切り替えてもらう
   if (field === 'submitted_date' && value) {
     const cur = bpRow(cliId);
-    if ((cur?.status || 'todo') === 'todo') patch.status = 'done';
+    if (['todo','doing'].includes(cur?.status || 'todo')) patch.status = 'done';
   }
   try {
     const {data, error} = await sb.from('billing_progress')
@@ -10214,7 +10234,8 @@ async function saveBpField(cliId, field, value) {
 function exportBillingProgressCsv() {
   const month = bpCurrentMonth();
   const invMap = bpInvoiceSummary(month);
-  const headers = ['取引先','取引先ID','請求金額','件数','請求日','送付方式','ステータス','管理担当者','明細到着日','明細提出日','Check担当者','備考'];
+  // 画面の列順に合わせる
+  const headers = ['取引先','取引先ID','請求金額','件数','請求日','ステータス','到着方法','明細到着日','提出方法','明細提出日','管理担当者','チェック','Check担当者','備考'];
   // CSVは画面の並び順・絞り込み（実績ありのみ等）に合わせて出力する
   const sortMode = document.getElementById('bpSort')?.value || 'id';
   const sortFn = sortMode === 'name'
@@ -10229,8 +10250,10 @@ function exportBillingProgressCsv() {
       const an = users.find(u=>String(u.id)===String(b.assignee_user_id))?.name || '';
       const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
       return [c.name, c.client_no||'', inv?inv.amt:'', inv?inv.cnt:'', inv?inv.lastDate:'',
-        BP_SEND_LABEL[b.send_method||c.send_method]||'', BP_STATUS_LABEL[b.status||'todo'],
-        an, b.arrival_date||'', b.submitted_date||'', cn, b.note||''];
+        BP_STATUS_LABEL[b.status||'todo'],
+        BP_SEND_LABEL[b.arrival_method]||'', b.arrival_date||'',
+        BP_SEND_LABEL[b.send_method||c.send_method]||'', b.submitted_date||'',
+        an, b.checked?'済':'', cn, b.note||''];
     });
   const csv = [headers, ...rows].map(r=>r.map(v=>{
     const s = String(v??'');
