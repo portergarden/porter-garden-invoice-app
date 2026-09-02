@@ -3069,13 +3069,14 @@ try {
 <div class="overlay" id="mBpAdd">
   <div class="modal" style="width:400px">
     <div class="mh">＋ タスク管理に取引先を追加 <button class="ibtn" onclick="closeM('mBpAdd')">✕</button></div>
-    <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">請求実績が無い取引先を、この月のタスク一覧に追加します。追加後は金額を手入力でき、上部の請求合計にも反映されます。</div>
-    <div class="fld"><label>取引先</label>
-      <select id="bpAddCli" style="width:100%"><option value="">選択してください</option></select>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">請求実績が無い取引先を、この月のタスク一覧に追加します。金額は追加後に一覧で入力でき、上部の請求合計にも反映されます。</div>
+    <input type="text" id="bpAddSearch" placeholder="🔍 取引先名で絞り込み…" oninput="renderBpAddList()" style="width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);margin-bottom:6px">
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <button class="btn sml" onclick="toggleBpAddAll(true)">全て選択</button>
+      <button class="btn sml" onclick="toggleBpAddAll(false)">全て解除</button>
+      <span id="bpAddCount" style="margin-left:auto;font-size:11px;color:var(--text2);align-self:center"></span>
     </div>
-    <div class="fld"><label>請求金額（任意・あとから変更できます）</label>
-      <input type="number" id="bpAddAmt" placeholder="未入力可" step="1">
-    </div>
+    <div id="bpAddList" style="max-height:260px;overflow-y:auto;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px;display:flex;flex-direction:column;gap:4px"></div>
     <div id="bpAddErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
     <div class="mfoot">
       <button class="btn" onclick="closeM('mBpAdd')">キャンセル</button>
@@ -10108,6 +10109,8 @@ function renderBillingProgress() {
   const area = document.getElementById('bpArea');
   const sumEl = document.getElementById('bpSummary');
   if (!area) return;
+  // 再描画で表を作り直すため、選択中の行を先に控えておく
+  const keepSel = new Set(Array.from(document.querySelectorAll('.bpRowChk:checked')).map(el => el.value));
   const month = bpCurrentMonth();
   const invMap = bpInvoiceSummary(month);
   const statusF = document.getElementById('bpStatusFilter')?.value || '';
@@ -10166,8 +10169,15 @@ function renderBillingProgress() {
   const staff = staffMembers();
   const staffOpts = (sel) => '<option value="">未入力</option>' + staff.map(u=>`<option value="${escHtml(u.id)}" ${String(u.id)===String(sel||'')?'selected':''}>${escHtml(u.name)}</option>`).join('');
 
-  area.innerHTML = `<table style="width:100%;border-collapse:collapse;min-width:1000px">
+  area.innerHTML = `<div id="bpBulkBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin-bottom:6px;background:var(--blue-bg);border-radius:var(--radius);font-size:11.5px">
+      <span id="bpBulkCount" style="color:var(--blue-text);font-weight:600"></span>
+      <button class="btn sml" onclick="carryOverBpSelected()" title="選択した取引先を翌月の一覧に追加します（担当者・方法は引き継ぎ、進捗はリセット）">→ 翌月へ繰り越し</button>
+      ${me && me.role !== 'viewer' ? `<button class="btn sml" onclick="deleteBpSelected()" style="color:var(--red-text)" title="手動で追加した行のみ削除できます">🗑 選択を削除</button>` : ''}
+      <button class="btn sml" onclick="toggleBpRowAll(false)" style="margin-left:auto">選択を解除</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;min-width:1000px">
     <thead><tr>
+      <th style="${th};width:26px"><input type="checkbox" id="bpRowChkAll" onchange="toggleBpRowAll(this.checked)" title="表示中の全行を選択" style="width:14px;height:14px;cursor:pointer"></th>
       <th style="${th};text-align:left">取引先</th>
       <th style="${th};text-align:right">請求金額<div style="font-weight:400;color:var(--text2)">自動</div></th>
       <th style="${th}">請求日<div style="font-weight:400;color:var(--text2)">自動</div></th>
@@ -10190,6 +10200,7 @@ function renderBillingProgress() {
       const sm = b.send_method || c.send_method || '';
       const noDeal = st === 'none';
       return `<tr style="${noDeal?'opacity:.55':''}">
+        <td style="${td};text-align:center"><input type="checkbox" class="bpRowChk" value="${c.id}" data-manual="${b.manual?1:0}" onchange="updateBpBulkBar()" style="width:14px;height:14px;cursor:pointer"></td>
         <td style="${td};text-align:left;white-space:nowrap">
           <span style="font-weight:600">${escHtml(c.name)}</span>
           ${c.client_no?`<span style="font-size:9.5px;color:var(--text2)"> ID:${escHtml(c.client_no)}</span>`:''}
@@ -10234,6 +10245,12 @@ function renderBillingProgress() {
         <td style="${td}"><input type="text" style="${inp};width:100%;min-width:110px" value="${escHtml(b.note||'')}" placeholder="—" onchange="saveBpField(${c.id},'note',this.value)"></td>
       </tr>`;
     }).join('')}</tbody></table>`;
+
+  // 金額入力などで再描画されても行の選択が消えないよう復元する
+  if (keepSel.size) {
+    document.querySelectorAll('.bpRowChk').forEach(el => { if (keepSel.has(el.value)) el.checked = true; });
+    updateBpBulkBar();
+  }
 }
 const renderBillingProgressDebounced = debounce(renderBillingProgress, 250);
 
@@ -10266,44 +10283,147 @@ async function saveBpField(cliId, field, value) {
 // タスク管理に取引先を手動追加する（請求実績が無い取引先を一覧に出したい場合）。
 // 候補は「まだこの月の一覧に出ていない取引先」に絞る
 function openBpAddM() {
-  const month = bpCurrentMonth();
-  const invMap = bpInvoiceSummary(month);
-  const sel = document.getElementById('bpAddCli');
-  const cand = [...clients]
-    .filter(c => !invMap[String(c.id)] && !bpRow(c.id)?.manual)
-    .sort(clientNoCompare);
-  sel.innerHTML = '<option value="">選択してください</option>' +
-    cand.map(c=>`<option value="${c.id}">${escHtml(c.name)}${c.client_no?`（ID:${escHtml(c.client_no)}）`:''}</option>`).join('');
-  enhanceSelectSearchable('bpAddCli');
-  document.getElementById('bpAddAmt').value = '';
-  document.getElementById('bpAddErr').textContent = cand.length ? '' : 'この月に追加できる取引先がありません（すべて表示済みです）';
+  document.getElementById('bpAddSearch').value = '';
+  document.getElementById('bpAddErr').textContent = '';
+  renderBpAddList();
   document.getElementById('mBpAdd').classList.add('on');
 }
+// 追加候補＝まだこの月の一覧に出ていない取引先（実績あり・追加済みは除外）。
+// チェック状態は絞り込みで再描画しても消えないよう、既存のチェックを引き継ぐ
+function renderBpAddList() {
+  const month = bpCurrentMonth();
+  const invMap = bpInvoiceSummary(month);
+  const checked = new Set(Array.from(document.querySelectorAll('.bpAddChk:checked')).map(el=>el.value));
+  const q = nm(document.getElementById('bpAddSearch')?.value || '');
+  const cand = [...clients]
+    .filter(c => !invMap[String(c.id)] && !bpRow(c.id)?.manual)
+    .filter(c => !q || nm(c.name).includes(q) || nm(c.short||'').includes(q))
+    .sort(clientNoCompare);
+  const el = document.getElementById('bpAddList');
+  el.innerHTML = cand.length
+    ? cand.map(c=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" class="bpAddChk" value="${c.id}" ${checked.has(String(c.id))?'checked':''} onchange="updateBpAddCount()" style="width:auto">${escHtml(c.name)}${c.client_no?`<span style="color:var(--text2);font-size:10.5px">（ID:${escHtml(c.client_no)}）</span>`:''}</label>`).join('')
+    : '<div style="font-size:11px;color:var(--text2)">該当する取引先がありません（すべて一覧に表示済みです）</div>';
+  updateBpAddCount();
+}
+function toggleBpAddAll(on) {
+  document.querySelectorAll('.bpAddChk').forEach(el => el.checked = on);
+  updateBpAddCount();
+}
+function updateBpAddCount() {
+  const n = document.querySelectorAll('.bpAddChk:checked').length;
+  const el = document.getElementById('bpAddCount');
+  if (el) el.textContent = n ? `${n}件選択中` : '';
+}
 async function submitBpAdd() {
-  const cliId = +document.getElementById('bpAddCli').value || null;
-  const amtRaw = document.getElementById('bpAddAmt').value;
+  const ids = Array.from(document.querySelectorAll('.bpAddChk:checked')).map(el=>+el.value);
   const errEl = document.getElementById('bpAddErr');
   errEl.textContent = '';
-  if (!cliId) { errEl.textContent = '取引先を選択してください'; return; }
+  if (!ids.length) { errEl.textContent = '取引先を選択してください'; return; }
   const month = bpCurrentMonth();
   showLoad(true);
   try {
+    const rows = ids.map(cli_id => ({ month, cli_id, manual: true, updated_at: new Date().toISOString() }));
     const {data, error} = await sb.from('billing_progress')
-      .upsert({ month, cli_id: cliId, manual: true,
-                manual_amt: amtRaw === '' ? null : (Math.round(+amtRaw) || null),
-                updated_at: new Date().toISOString() }, { onConflict: 'month,cli_id' })
-      .select().single();
+      .upsert(rows, { onConflict: 'month,cli_id' }).select();
     if (error) throw error;
-    const idx = billingProgress.findIndex(b => String(b.cli_id) === String(cliId));
-    if (idx >= 0) billingProgress[idx] = data; else billingProgress.push(data);
+    (data||[]).forEach(r => {
+      const idx = billingProgress.findIndex(b => String(b.cli_id) === String(r.cli_id));
+      if (idx >= 0) billingProgress[idx] = r; else billingProgress.push(r);
+    });
     closeM('mBpAdd');
     renderBillingProgress();
-    const cli = clients.find(c=>c.id===cliId);
-    addLog('タスク管理 取引先追加', `${month} ${cli?cli.name:`cli:${cliId}`}`);
-    showT('一覧に追加しました');
+    addLog('タスク管理 取引先追加', `${month} ${ids.length}件`);
+    showT(`${ids.length}件を一覧に追加しました`);
   } catch(e) { errEl.textContent = '追加エラー: ' + e.message; }
   showLoad(false);
 }
+/* ===== タスク管理の行選択（一括削除・翌月繰り越し） ===== */
+function toggleBpRowAll(on) {
+  document.querySelectorAll('.bpRowChk').forEach(el => el.checked = on);
+  const all = document.getElementById('bpRowChkAll');
+  if (all) all.checked = on;
+  updateBpBulkBar();
+}
+function bpSelectedIds() {
+  return Array.from(document.querySelectorAll('.bpRowChk:checked')).map(el => +el.value);
+}
+function updateBpBulkBar() {
+  const sel = Array.from(document.querySelectorAll('.bpRowChk:checked'));
+  const bar = document.getElementById('bpBulkBar');
+  const cnt = document.getElementById('bpBulkCount');
+  if (!bar) return;
+  bar.style.display = sel.length ? 'flex' : 'none';
+  if (cnt) {
+    const manualN = sel.filter(el => el.dataset.manual === '1').length;
+    cnt.textContent = `${sel.length}件選択中` + (manualN < sel.length ? `（うち手動追加 ${manualN}件）` : '');
+  }
+  const all = document.getElementById('bpRowChkAll');
+  if (all) all.checked = sel.length > 0 && sel.length === document.querySelectorAll('.bpRowChk').length;
+}
+// 選択した行のうち、手動で追加したものだけを削除する。
+// 請求実績から自動で出ている行は消しても再表示されるため対象外にする
+async function deleteBpSelected() {
+  const sel = Array.from(document.querySelectorAll('.bpRowChk:checked'));
+  const manualIds = sel.filter(el => el.dataset.manual === '1').map(el => +el.value);
+  const skipped = sel.length - manualIds.length;
+  if (!manualIds.length) {
+    alert(`削除できるのは手動で追加した行だけです。\n選択中の${sel.length}件はいずれも請求実績から自動表示されている行です。`);
+    return;
+  }
+  const names = manualIds.map(id => clients.find(c=>c.id===id)?.name || id).join('、');
+  if (!confirm(`次の${manualIds.length}件をこの月の一覧から外しますか？\n\n${names}\n\n入力済みのステータス・担当者・日付も削除されます。`
+      + (skipped ? `\n\n※ 選択中の${skipped}件は請求実績があるため削除されません。` : ''))) return;
+  const month = bpCurrentMonth();
+  showLoad(true);
+  try {
+    const {error} = await sb.from('billing_progress').delete().eq('month', month).in('cli_id', manualIds);
+    if (error) throw error;
+    billingProgress = billingProgress.filter(b => !manualIds.includes(+b.cli_id));
+    renderBillingProgress();
+    addLog('タスク管理 取引先削除', `${month} ${manualIds.length}件`);
+    showT(`${manualIds.length}件を一覧から外しました`);
+  } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+// 選択した取引先を翌月の一覧へ繰り越す。
+// 担当者・到着方法・提出方法は引き継ぎ、ステータス・日付・チェック・金額・備考はリセットする
+// （毎月の設定は同じでも、その月の進捗は最初からやり直すため）。繰り越し元の行は今月に残す
+async function carryOverBpSelected() {
+  const ids = bpSelectedIds();
+  if (!ids.length) return;
+  const month = bpCurrentMonth();
+  const [y, m] = month.split('-').map(Number);
+  const next = new Date(y, m, 1);
+  const nextMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}`;
+  const names = ids.map(id => clients.find(c=>c.id===id)?.name || id).join('、');
+  if (!confirm(`次の${ids.length}件を ${nextMonth} の一覧へ繰り越しますか？\n\n${names}\n\n`
+    + `管理担当者・Check担当者・到着方法・提出方法を引き継ぎます。\n`
+    + `ステータスは「未着手」に戻り、日付・チェック・金額・備考は空になります。\n`
+    + `${month} の行はそのまま残ります。`)) return;
+  showLoad(true);
+  try {
+    const rows = ids.map(cli_id => {
+      const b = billingProgress.find(x => String(x.cli_id) === String(cli_id)) || {};
+      return {
+        month: nextMonth, cli_id, manual: true,
+        assignee_user_id: b.assignee_user_id ?? null,
+        check_user_id: b.check_user_id ?? null,
+        arrival_method: b.arrival_method ?? null,
+        send_method: b.send_method ?? null,
+        status: 'todo', arrival_date: null, submitted_date: null,
+        checked: false, manual_amt: null, note: null,
+        updated_at: new Date().toISOString(),
+      };
+    });
+    const {error} = await sb.from('billing_progress').upsert(rows, { onConflict: 'month,cli_id' });
+    if (error) throw error;
+    addLog('タスク管理 翌月繰り越し', `${month} → ${nextMonth} ${ids.length}件`);
+    showT(`${ids.length}件を ${nextMonth} へ繰り越しました`);
+    toggleBpRowAll(false);
+  } catch(e) { showT('繰り越しエラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+
 // 手動追加した行を一覧から外す（入力済みの担当者・日付などもまとめて消えるため確認する）
 async function removeBpManual(cliId) {
   const cli = clients.find(c=>c.id===cliId);
