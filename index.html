@@ -309,6 +309,8 @@ input:focus,select:focus{border-color:var(--blue)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .nav{display:flex;border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
 .ntab{padding:7px 11px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);display:flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0;position:relative}
+/* タスク管理の4画面を切り替えるサブタブ行（ナビタブ1つの中に収める） */
+.task-subnav{display:flex;gap:2px;padding:0 14px;border-bottom:0.5px solid var(--border);background:var(--bg2);overflow-x:auto}
 .ntab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:500}
 .ntab:hover{color:var(--text)}
 .nav-warn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red)}
@@ -619,10 +621,7 @@ try {
     <div class="ntab" id="nt23" onclick="goPage(23,this)">🏢 取引先分析</div>
     <div class="ntab" id="nt24" onclick="goPage(24,this)">🚚 ドライバー分析</div>
     <div class="ntab" id="nt28" onclick="goPage(28,this)">🗓 予定管理</div>
-    <div class="ntab" id="nt31" onclick="goPage(31,this)">🏠 タスクTOP</div>
-    <div class="ntab" id="nt29" onclick="goPage(29,this)">✅ 請求書発行</div>
-    <div class="ntab" id="nt32" onclick="goPage(32,this)">💴 支払明細書発行</div>
-    <div class="ntab" id="nt33" onclick="goPage(33,this)">👤 個人タスク</div>
+    <div class="ntab" id="nt31" onclick="goTaskPage(31)">✅ タスク管理</div>
     <div class="ntab" id="nt8" onclick="goPage(8,this)">📅 日別売上管理</div>
   </nav>
   <nav class="nav hide" id="nav-driver">
@@ -1315,9 +1314,10 @@ try {
   </div>
   <!-- ===== pg29: タスク管理 ===== -->
   <div id="pg29" class="hide">
+    <div class="task-subnav" data-sub="29"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:13px;font-weight:500">✅ タスク管理</span>
+        <span style="font-size:13px;font-weight:500">✅ 請求書発行</span>
         <button class="btn sml" onclick="bpPrevMonth()">◀</button>
         <input type="month" id="bpMonth" onchange="onBpMonthChange()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
         <button class="btn sml" onclick="bpNextMonth()">▶</button>
@@ -1349,6 +1349,7 @@ try {
   </div>
   <!-- ===== pg31: タスクTOP（請求書・支払明細書・個人タスクの当月状況をまとめて見る） ===== -->
   <div id="pg31" class="hide">
+    <div class="task-subnav" data-sub="31"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:13px;font-weight:500">🏠 タスクTOP</span>
@@ -1363,13 +1364,14 @@ try {
 
   <!-- ===== pg32: 支払明細書発行（ドライバー・協力会社向けの進捗） ===== -->
   <div id="pg32" class="hide">
+    <div class="task-subnav" data-sub="32"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:13px;font-weight:500">💴 支払明細書発行</span>
         <button class="btn sml" onclick="dpShiftMonth(-1)">◀</button>
         <input type="month" id="dpMonth" onchange="onDpMonthChange()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
         <button class="btn sml" onclick="dpShiftMonth(1)">▶</button>
-        <select id="dpDataFilter" onchange="renderDriverProgress()" title="その月の支払実績が無いドライバーを一覧に出すかどうか" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+        <select id="dpDataFilter" onchange="renderDriverProgress()" title="その月の支払実績が無い会社を一覧に出すかどうか" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
           <option value="hasdata" selected>実績ありのみ</option>
           <option value="">実績なしも表示</option>
         </select>
@@ -1381,10 +1383,10 @@ try {
           <option value="done">完了のみ</option>
           <option value="none">当月対象外のみ</option>
         </select>
-        <input type="text" id="dpSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderDriverProgressDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:170px">
+        <input type="text" id="dpSearch" placeholder="🔍 会社名で検索…" oninput="renderDriverProgressDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:170px">
       </div>
       <div style="display:flex;gap:6px">
-        <button class="btn sml grn hide" id="dpAddBtn" onclick="openDpAddM()" title="支払実績が無いドライバーも一覧に追加できます">＋ ドライバーを追加</button>
+        <button class="btn sml grn hide" id="dpAddBtn" onclick="openDpAddM()" title="支払実績が無い会社も一覧に追加できます">＋ 会社を追加</button>
         <button class="btn sml" onclick="exportDriverProgressCsv()">↓ CSV</button>
       </div>
     </div>
@@ -1394,6 +1396,7 @@ try {
 
   <!-- ===== pg33: 個人タスク（会社共通業務とは別に、担当者・依頼者・期限で管理する） ===== -->
   <div id="pg33" class="hide">
+    <div class="task-subnav" data-sub="33"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:13px;font-weight:500">👤 個人タスク</span>
@@ -3200,9 +3203,9 @@ try {
 <!-- モーダル: 支払明細書発行の一覧にドライバーを手動で追加 -->
 <div class="overlay" id="mDpAdd">
   <div class="modal" style="width:400px">
-    <div class="mh">＋ 支払明細書発行にドライバーを追加 <button class="ibtn" onclick="closeM('mDpAdd')">✕</button></div>
-    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">支払実績が無いドライバーを、この月の一覧に追加します。</div>
-    <input type="text" id="dpAddSearch" placeholder="🔍 ドライバー名で絞り込み…" oninput="renderDpAddList()" style="width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);margin-bottom:6px">
+    <div class="mh">＋ 支払明細書発行に会社を追加 <button class="ibtn" onclick="closeM('mDpAdd')">✕</button></div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">支払実績が無い会社を、この月の一覧に追加します。</div>
+    <input type="text" id="dpAddSearch" placeholder="🔍 会社名で絞り込み…" oninput="renderDpAddList()" style="width:100%;padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);margin-bottom:6px">
     <div style="display:flex;gap:6px;margin-bottom:6px">
       <button class="btn sml" onclick="toggleDpAddAll(true)">全て選択</button>
       <button class="btn sml" onclick="toggleDpAddAll(false)">全て解除</button>
@@ -5106,6 +5109,8 @@ function goPage(n,el){
   if(n===6){initAggPay();runAggPay();}
   if(n===8){initCal();renderCal();}
   if(n===28){initStaffSched();loadStaffSchedules().then(()=>renderStaffSchedCal());}
+  // タスク管理の4画面は1つのナビタブ配下のサブタブとして扱う
+  if([29,31,32,33].includes(n)) renderTaskSubnav(n);
   if(n===29){initBillingProgress();loadBillingProgress().then(()=>renderBillingProgress());}
   if(n===31){initTaskTop();}
   if(n===32){initDriverProgress();loadDriverProgress().then(()=>renderDriverProgress());}
@@ -10677,6 +10682,23 @@ async function submitBpAdd() {
   } catch(e) { errEl.textContent = '追加エラー: ' + e.message; }
   showLoad(false);
 }
+/* ===== タスク管理のサブタブ（1つのナビタブの中で4画面を切り替える） ===== */
+const TASK_SUBTABS = [
+  {n:31, label:'🏠 TOP'},
+  {n:29, label:'✅ 請求書発行'},
+  {n:32, label:'💴 支払明細書発行'},
+  {n:33, label:'👤 個人タスク'},
+];
+// サブタブから移動するときは、ナビ上の「タスク管理」タブを選択状態のままにする
+function goTaskPage(n) { goPage(n, document.getElementById('nt31')); }
+// 4画面それぞれの先頭にある .task-subnav へ、共通のサブタブ行を描画する
+function renderTaskSubnav(current) {
+  document.querySelectorAll('.task-subnav').forEach(el => {
+    el.innerHTML = TASK_SUBTABS.map(t =>
+      `<div class="ntab${t.n===current?' on':''}" onclick="goTaskPage(${t.n})">${t.label}</div>`).join('');
+  });
+}
+
 /* ===== 取引先の親子（本社・支店・営業所） ===== */
 // 親をたどって最上位の取引先IDを返す（循環参照が混入しても止まるよう回数で打ち切る）
 function cliRootId(cliId) {
@@ -11053,7 +11075,7 @@ function renderTaskTop() {
 
   // 請求書側: その月に実績がある取引先＋手動追加分のうち、当月対象のもの
   const bpList = clients.filter(c => (invMap[String(c.id)] || bpRow(c.id)?.manual) && (bpRow(c.id)||{}).target !== false);
-  const dpList = activeDrvs().filter(d => (payMap[String(d.id)] || dpRow(d.id)?.manual) && (dpRow(d.id)||{}).target !== false);
+  const dpList = dpCompanies().filter(d => (payMap[String(d.id)] || dpRow(d.id)?.manual) && (dpRow(d.id)||{}).target !== false);
 
   const stat = (list, rowFn) => {
     const done = list.filter(x => (rowFn(x)||{}).status === 'done').length;
@@ -11094,17 +11116,17 @@ function renderTaskTop() {
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:16px">
-      <div class="card" style="cursor:pointer" onclick="goPage(29,document.getElementById('nt29'))">
+      <div class="card" style="cursor:pointer" onclick="goTaskPage(29)">
         <div style="font-size:12px;font-weight:600;margin-bottom:5px">✅ 請求書発行</div>
         <div style="font-size:11.5px;color:var(--text2)">対象 ${sB.n}件 ／ 完了 ${sB.done}件 ／ 未完了 ${sB.n-sB.done}件
           ${sB.over?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${sB.over}件</span>`:''}</div>
       </div>
-      <div class="card" style="cursor:pointer" onclick="goPage(32,document.getElementById('nt32'))">
+      <div class="card" style="cursor:pointer" onclick="goTaskPage(32)">
         <div style="font-size:12px;font-weight:600;margin-bottom:5px">💴 支払明細書発行</div>
-        <div style="font-size:11.5px;color:var(--text2)">対象 ${sD.n}名 ／ 完了 ${sD.done}名 ／ 未完了 ${sD.n-sD.done}名
+        <div style="font-size:11.5px;color:var(--text2)">対象 ${sD.n}社 ／ 完了 ${sD.done}社 ／ 未完了 ${sD.n-sD.done}社
           ${sD.over?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${sD.over}件</span>`:''}</div>
       </div>
-      <div class="card" style="cursor:pointer" onclick="goPage(33,document.getElementById('nt33'))">
+      <div class="card" style="cursor:pointer" onclick="goTaskPage(33)">
         <div style="font-size:12px;font-weight:600;margin-bottom:5px">👤 自分のタスク</div>
         <div style="font-size:11.5px;color:var(--text2)">未完了 ${myTasks.filter(t=>t.status!=='done').length}件
           ${myOver.length?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${myOver.length}件</span>`:''}
@@ -11126,7 +11148,7 @@ function renderTaskTop() {
           <td style="${td};font-weight:600">${escHtml(p.name)}</td>
           <td style="${td};text-align:center"><span class="bdg" style="background:var(${sc[0]});color:var(${sc[1]})">${BP_STATUS_LABEL[p.row.status||'todo']}</span></td>
           <td style="${td};text-align:center;${over?'color:var(--red-text);font-weight:700':''}">${due||'—'}${over?' ⚠':''}</td>
-          <td style="${td};text-align:center"><button class="btn sml" onclick="goPage(${p.go},document.getElementById('nt${p.go}'))">開く</button></td>
+          <td style="${td};text-align:center"><button class="btn sml" onclick="goTaskPage(${p.go})">開く</button></td>
         </tr>`;
       }).join('')}</tbody></table>` : '<div style="color:var(--text2);font-size:12px;padding:8px 0 16px">対応が必要な業務はありません</div>'}
 
@@ -11184,14 +11206,33 @@ async function loadDriverProgress() {
     driverProgress = data || [];
   } catch(e) { console.warn('loadDriverProgress:', e.message); driverProgress = []; }
 }
-// その月の支払対象をドライバーごとに集計（recsから、車番→ドライバーで割り当てる）
+// 支払明細書の発行先は会社単位（協力会社）。個人ドライバーは一覧に出さない
+function dpCompanies() {
+  return drvs.filter(d => d.is_company && d.status !== 'terminated');
+}
+// 実績を会社単位に寄せる。個人ドライバーの実績は、その人が所属する協力会社に合算する
+// （所属が無い個人の分はどの会社にも積まない）
+function dpCompanyIdOf(drv) {
+  if (!drv) return null;
+  if (drv.is_company) return drv.id;
+  if (drv.partner_id != null) {
+    const co = dpCompanies().find(c => c.partner_id === drv.partner_id);
+    if (co) return co.id;
+  }
+  if (drv.company) {
+    const co = dpCompanies().find(c => nm(c.name) === nm(drv.company));
+    if (co) return co.id;
+  }
+  return null;
+}
+// その月の支払対象を会社ごとに集計する
 function dpPaySummary(month) {
   const map = {};
   recs.forEach(r => {
     if (!r.date || !r.date.startsWith(month)) return;
-    const d = recDrv(r);
-    if (!d) return;
-    const k = String(d.id);
+    const coId = dpCompanyIdOf(recDrv(r));
+    if (coId == null) return;
+    const k = String(coId);
     if (!map[k]) map[k] = {amt:0, cnt:0, lastDate:''};
     map[k].amt += subBySide(r,'payment') + rtaxBySide(r,'payment');
     map[k].cnt++;
@@ -11210,7 +11251,7 @@ function renderDriverProgress() {
   const q = nm(document.getElementById('dpSearch')?.value || '');
   const dataF = document.getElementById('dpDataFilter')?.value ?? 'hasdata';
 
-  let base = [...activeDrvs()].sort((a,b) =>
+  let base = [...dpCompanies()].sort((a,b) =>
     (parseInt(a.supplier_id,10)||999999) - (parseInt(b.supplier_id,10)||999999));
   if (dataF === 'hasdata') base = base.filter(d => payMap[String(d.id)] || dpRow(d.id)?.manual);
 
@@ -11247,7 +11288,7 @@ function renderDriverProgress() {
   ];
   if (sumEl) {
     sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px;margin-bottom:7px">
-      <span>当月対象 <b>${targets.length}</b>名${dataF==='hasdata'?`（実績なし ${activeDrvs().length-base.length}名を非表示）`:''}</span>
+      <span>当月対象 <b>${targets.length}</b>社${dataF==='hasdata'?`（実績なし ${dpCompanies().length-base.length}社を非表示）`:''}</span>
       <span>完了 <b style="color:var(--green-text)">${doneCnt}</b> / 未完了 <b style="color:var(--amber-text)">${targets.length-doneCnt}</b></span>
       ${overdueCnt?`<span style="color:var(--red-text);font-weight:600">⚠ 期限超過 ${overdueCnt}件</span>`:''}
       ${unsentCnt?`<span style="color:var(--amber-text);font-weight:600">未送付 ${unsentCnt}件</span>`:''}
@@ -11267,8 +11308,8 @@ function renderDriverProgress() {
   if (!list.length) {
     area.innerHTML = `<div style="color:var(--text2);font-size:12px;padding:14px 0">${
       dataF==='hasdata' && !base.length
-        ? 'この月に支払実績のあるドライバーがいません（「実績なしも表示」に切り替えると全員表示できます）'
-        : '該当するドライバーがいません'}</div>`;
+        ? 'この月に支払実績のある会社がありません（「実績なしも表示」に切り替えると全社表示できます）'
+        : '該当する会社がありません'}</div>`;
     return;
   }
 
@@ -11280,14 +11321,14 @@ function renderDriverProgress() {
 
   area.innerHTML = `<div id="dpBulkBar" style="display:none;align-items:center;gap:8px;padding:6px 10px;margin-bottom:6px;background:var(--blue-bg);border-radius:var(--radius);font-size:11.5px">
       <span id="dpBulkCount" style="color:var(--blue-text);font-weight:600"></span>
-      <button class="btn sml" onclick="carryOverDpSelected()" title="選択したドライバーを翌月の一覧に追加します（担当者・方法は引き継ぎ、進捗はリセット）">→ 翌月へ繰り越し</button>
+      <button class="btn sml" onclick="carryOverDpSelected()" title="選択した会社を翌月の一覧に追加します（担当者・方法は引き継ぎ、進捗はリセット）">→ 翌月へ繰り越し</button>
       ${me && me.role !== 'viewer' ? `<button class="btn sml" onclick="deleteDpSelected()" style="color:var(--red-text)" title="手動で追加した行のみ削除できます">🗑 選択を削除</button>` : ''}
       <button class="btn sml" onclick="toggleDpRowAll(false)" style="margin-left:auto">選択を解除</button>
     </div>
     <table style="width:100%;border-collapse:collapse;min-width:900px">
     <thead><tr>
       <th style="${th};width:26px"><input type="checkbox" id="dpRowChkAll" onchange="toggleDpRowAll(this.checked)" title="表示中の全行を選択" style="width:14px;height:14px;cursor:pointer"></th>
-      <th style="${th};text-align:left">ドライバー</th>
+      <th style="${th};text-align:left">会社</th>
       <th style="${th}">当月<br>対象</th>
       <th style="${th};text-align:right">支払金額<div style="font-weight:400;color:var(--text2)">自動</div></th>
       <th style="${th}">ステータス</th>
@@ -11313,11 +11354,10 @@ function renderDriverProgress() {
         <td style="${td};text-align:left;white-space:nowrap">
           <span style="font-weight:600">${escHtml(d.name)}</span>
           ${d.supplier_id?`<span style="font-size:9.5px;color:var(--text2)"> ID:${escHtml(d.supplier_id)}</span>`:''}
-          ${d.company?`<div style="font-size:9.5px;color:var(--text2)">${escHtml(d.company)}</div>`:''}
           ${pay?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:4px">${pay.cnt}件</span>`:'<span style="font-size:9.5px;color:var(--text2);margin-left:4px">実績なし</span>'}
           ${b.manual&&!pay?`<span class="bdg" style="background:var(--amber-bg);color:var(--amber-text);margin-left:4px">手動</span>`:''}
         </td>
-        <td style="${td};text-align:center"><input type="checkbox" ${noDeal?'':'checked'} onchange="saveDpField(${d.id},'target',this.checked)" title="今月このドライバーへの支払明細書発行があるか" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)"></td>
+        <td style="${td};text-align:center"><input type="checkbox" ${noDeal?'':'checked'} onchange="saveDpField(${d.id},'target',this.checked)" title="今月この会社への支払明細書発行があるか" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)"></td>
         <td style="${td};text-align:right;white-space:nowrap">${
           pay ? yen(pay.amt)
               : (b.manual ? `<input type="number" step="1" style="${inp};width:96px;text-align:right" value="${b.manual_amt??''}" placeholder="金額を入力" onchange="saveDpField(${d.id},'manual_amt',this.value)">` : '—')
@@ -11329,7 +11369,7 @@ function renderDriverProgress() {
           </select>`}
         </td>
         <td style="${td};text-align:center;white-space:nowrap">
-          <input type="date" style="${inp};${overdue?'color:var(--red-text);font-weight:700;border-color:var(--red)':''}" value="${due||''}" title="ドライバー登録の提出ルールから自動計算されます" onchange="saveDpField(${d.id},'planned_date',this.value)">
+          <input type="date" style="${inp};${overdue?'color:var(--red-text);font-weight:700;border-color:var(--red)':''}" value="${due||''}" title="協力会社（ドライバー登録の会社レコード）の提出ルールから自動計算されます" onchange="saveDpField(${d.id},'planned_date',this.value)">
           <div style="font-size:9px;color:var(${overdue?'--red-text':'--text2'})">${overdue?'⚠ 期限超過':escHtml(bpRuleText(d))}</div>
         </td>
         <td style="${td};text-align:center">
@@ -11397,7 +11437,7 @@ function updateDpBulkBar() {
   bar.style.display = sel.length ? 'flex' : 'none';
   if (cnt) {
     const manualN = sel.filter(el => el.dataset.manual === '1').length;
-    cnt.textContent = `${sel.length}名選択中` + (manualN < sel.length ? `（うち手動追加 ${manualN}名）` : '');
+    cnt.textContent = `${sel.length}社選択中` + (manualN < sel.length ? `（うち手動追加 ${manualN}社）` : '');
   }
   const all = document.getElementById('dpRowChkAll');
   if (all) all.checked = sel.length > 0 && sel.length === document.querySelectorAll('.dpRowChk').length;
@@ -11407,19 +11447,19 @@ async function deleteDpSelected() {
   const manualIds = sel.filter(el => el.dataset.manual === '1').map(el => +el.value);
   const skipped = sel.length - manualIds.length;
   if (!manualIds.length) {
-    alert(`削除できるのは手動で追加した行だけです。\n選択中の${sel.length}名はいずれも支払実績から自動表示されている行です。`);
+    alert(`削除できるのは手動で追加した行だけです。\n選択中の${sel.length}社はいずれも支払実績から自動表示されている行です。`);
     return;
   }
   const names = manualIds.map(id => drvs.find(d=>d.id===id)?.name || id).join('、');
-  if (!confirm(`次の${manualIds.length}名をこの月の一覧から外しますか？\n\n${names}\n\n入力済みの内容も削除されます。`
-    + (skipped ? `\n\n※ 選択中の${skipped}名は支払実績があるため削除されません。` : ''))) return;
+  if (!confirm(`次の${manualIds.length}社をこの月の一覧から外しますか？\n\n${names}\n\n入力済みの内容も削除されます。`
+    + (skipped ? `\n\n※ 選択中の${skipped}社は支払実績があるため削除されません。` : ''))) return;
   showLoad(true);
   try {
     const {error} = await sb.from('driver_progress').delete().eq('month', dpCurrentMonth()).in('drv_id', manualIds);
     if (error) throw error;
     driverProgress = driverProgress.filter(b => !manualIds.includes(+b.drv_id));
     renderDriverProgress();
-    showT(`${manualIds.length}名を一覧から外しました`);
+    showT(`${manualIds.length}社を一覧から外しました`);
   } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -11431,7 +11471,7 @@ async function carryOverDpSelected() {
   const next = new Date(y, m, 1);
   const nextMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}`;
   const names = ids.map(id => drvs.find(d=>d.id===id)?.name || id).join('、');
-  if (!confirm(`次の${ids.length}名を ${nextMonth} の一覧へ繰り越しますか？\n\n${names}\n\n`
+  if (!confirm(`次の${ids.length}社を ${nextMonth} の一覧へ繰り越しますか？\n\n${names}\n\n`
     + `管理担当者・Check担当者・提出方法を引き継ぎます。\n`
     + `ステータスは「未着手」に戻り、日付・チェック・金額・備考は空になります。\n`
     + `${month} の行はそのまま残ります。`)) return;
@@ -11452,7 +11492,7 @@ async function carryOverDpSelected() {
     });
     const {error} = await sb.from('driver_progress').upsert(rows, { onConflict: 'month,drv_id' });
     if (error) throw error;
-    showT(`${ids.length}名を ${nextMonth} へ繰り越しました`);
+    showT(`${ids.length}社を ${nextMonth} へ繰り越しました`);
     toggleDpRowAll(false);
   } catch(e) { showT('繰り越しエラー: '+e.message, 'ter'); }
   showLoad(false);
@@ -11468,14 +11508,14 @@ function renderDpAddList() {
   const payMap = dpPaySummary(dpCurrentMonth());
   const checked = new Set(Array.from(document.querySelectorAll('.dpAddChk:checked')).map(el=>el.value));
   const q = nm(document.getElementById('dpAddSearch')?.value || '');
-  const cand = [...activeDrvs()]
+  const cand = [...dpCompanies()]
     .filter(d => !payMap[String(d.id)] && !dpRow(d.id)?.manual)
-    .filter(d => !q || nm(d.name).includes(q) || nm(d.company||'').includes(q))
+    .filter(d => !q || nm(d.name).includes(q))
     .sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999));
   const el = document.getElementById('dpAddList');
   el.innerHTML = cand.length
     ? cand.map(d=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" class="dpAddChk" value="${d.id}" ${checked.has(String(d.id))?'checked':''} onchange="updateDpAddCount()" style="width:auto">${escHtml(d.name)}${d.supplier_id?`<span style="color:var(--text2);font-size:10.5px">（ID:${escHtml(d.supplier_id)}）</span>`:''}</label>`).join('')
-    : '<div style="font-size:11px;color:var(--text2)">該当するドライバーがいません（すべて一覧に表示済みです）</div>';
+    : '<div style="font-size:11px;color:var(--text2)">該当する会社がありません（すべて一覧に表示済みです）</div>';
   updateDpAddCount();
 }
 function toggleDpAddAll(on) {
@@ -11485,13 +11525,13 @@ function toggleDpAddAll(on) {
 function updateDpAddCount() {
   const n = document.querySelectorAll('.dpAddChk:checked').length;
   const el = document.getElementById('dpAddCount');
-  if (el) el.textContent = n ? `${n}名選択中` : '';
+  if (el) el.textContent = n ? `${n}社選択中` : '';
 }
 async function submitDpAdd() {
   const ids = Array.from(document.querySelectorAll('.dpAddChk:checked')).map(el=>+el.value);
   const errEl = document.getElementById('dpAddErr');
   errEl.textContent = '';
-  if (!ids.length) { errEl.textContent = 'ドライバーを選択してください'; return; }
+  if (!ids.length) { errEl.textContent = '会社を選択してください'; return; }
   const month = dpCurrentMonth();
   showLoad(true);
   try {
@@ -11504,16 +11544,16 @@ async function submitDpAdd() {
     });
     closeM('mDpAdd');
     renderDriverProgress();
-    showT(`${ids.length}名を一覧に追加しました`);
+    showT(`${ids.length}社を一覧に追加しました`);
   } catch(e) { errEl.textContent = '追加エラー: ' + e.message; }
   showLoad(false);
 }
 function exportDriverProgressCsv() {
   const month = dpCurrentMonth();
   const payMap = dpPaySummary(month);
-  const headers = ['ドライバー','ドライバーID','協力会社','当月対象','支払金額','件数','ステータス','提出期限','期限超過','提出方法','発行・送付日','管理担当者','チェック','Check担当者','送付メモ','備考'];
+  const headers = ['会社','仕入先ID','当月対象','支払金額','件数','ステータス','提出期限','期限超過','提出方法','発行・送付日','管理担当者','チェック','Check担当者','送付メモ','備考'];
   const dataF = document.getElementById('dpDataFilter')?.value ?? 'hasdata';
-  const rows = [...activeDrvs()]
+  const rows = [...dpCompanies()]
     .sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999))
     .filter(d => dataF !== 'hasdata' || payMap[String(d.id)] || dpRow(d.id)?.manual)
     .map(d => {
@@ -11521,7 +11561,7 @@ function exportDriverProgressCsv() {
       const pay = payMap[String(d.id)];
       const an = users.find(u=>String(u.id)===String(b.assignee_user_id))?.name || '';
       const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
-      return [d.name, d.supplier_id||'', d.company||'', b.target===false?'対象外':'対象',
+      return [d.name, d.supplier_id||'', b.target===false?'対象外':'対象',
         pay?pay.amt:(b.manual?(b.manual_amt??''):''), pay?pay.cnt:'',
         b.target===false?'':BP_STATUS_LABEL[b.status||'todo'],
         bpEffectiveDue(b, d, month)||'', bpIsOverdue(b, d, month)?'超過':'',
