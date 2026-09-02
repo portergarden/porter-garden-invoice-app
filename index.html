@@ -1335,7 +1335,6 @@ try {
           <option value="overdue">期限超過のみ</option>
           <option value="unsent">未送付のみ</option>
           <option value="done">完了のみ</option>
-          <option value="none">当月対象外のみ</option>
         </select>
         <input type="text" id="bpSearch" placeholder="🔍 取引先名で検索…" oninput="renderBillingProgressDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:170px">
       </div>
@@ -1381,7 +1380,6 @@ try {
           <option value="overdue">期限超過のみ</option>
           <option value="unsent">未送付のみ</option>
           <option value="done">完了のみ</option>
-          <option value="none">当月対象外のみ</option>
         </select>
         <input type="text" id="dpSearch" placeholder="🔍 会社名で検索…" oninput="renderDriverProgressDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:170px">
       </div>
@@ -10263,7 +10261,6 @@ function clientNoCompare(a, b) {
 const BP_SEND_LABEL = {mail:'メール', fax:'FAX', post:'郵送', hand:'手渡し', web:'Web', mail_post:'メール＋郵送'};
 // ステータスは請求書発行の実務の流れ順に並べる
 // （未着手→作成中→確認待ち→発行済→送付待ち→送付済→完了）。
-// 「今月は取引がない」はステータスではなく当月対象のON/OFF(target)で表す
 const BP_STATUS_LABEL = {
   todo:'未着手', drafting:'作成中', review:'確認待ち', issued:'発行済',
   awaiting_send:'送付待ち', sent:'送付済', done:'完了',
@@ -10307,16 +10304,15 @@ function bpRuleText(cli) {
   if (t === 'next_month_day') return `翌月${cli.submit_rule_day || 1}日`;
   return `毎月${cli.submit_rule_day || 1}日`;
 }
-// 期限超過＝当月対象で、提出日が未入力かつ完了しておらず、期限を過ぎている
+// 期限超過＝提出日が未入力かつ完了しておらず、期限を過ぎている
 function bpIsOverdue(b, cli, month) {
-  if (b?.target === false) return false;
   if (b?.submitted_date || b?.status === 'done') return false;
   const due = bpEffectiveDue(b, cli, month);
   return !!due && due < fmtLocalDate(new Date());
 }
 // 未送付＝発行済・送付待ちのまま提出日が入っていない
 function bpIsUnsent(b) {
-  return b?.target !== false && BP_UNSENT_STATUSES.includes(b?.status) && !b?.submitted_date;
+  return BP_UNSENT_STATUSES.includes(b?.status) && !b?.submitted_date;
 }
 let billingProgress = [];   // 表示中の月のbilling_progress行
 let bpLoadedMonth = null;
@@ -10400,30 +10396,22 @@ function renderBillingProgress() {
   let base = [...clients].sort(sortFn);
   if (dataF === 'hasdata') base = base.filter(c => invMap[String(c.id)] || bpRow(c.id)?.manual);
 
-  // 当月対象の判定は status ではなく target 列で行う（「今月は取引がない」は進捗ではないため）
   const rowOf = c => bpRow(c.id) || {};
-  const isTarget = c => rowOf(c).target !== false;
   const effStatus = c => rowOf(c).status || 'todo';
 
   let list = base;
   // 検索は親会社名でも支店がヒットするようにする
   if (q) list = list.filter(c => nm(cliSearchName(c)).includes(q) || nm(c.short||'').includes(q));
-  // 対象外の行は進捗の絞り込み対象にせず、「対象外のみ」を選んだときだけ出す
-  if (statusF === 'none') list = list.filter(c => !isTarget(c));
-  else {
-    list = list.filter(isTarget);
-    if (statusF === 'open')         list = list.filter(c => effStatus(c) !== 'done');
-    else if (statusF === 'done')    list = list.filter(c => effStatus(c) === 'done');
-    else if (statusF === 'overdue') list = list.filter(c => bpIsOverdue(rowOf(c), c, month));
-    else if (statusF === 'unsent')  list = list.filter(c => bpIsUnsent(rowOf(c)));
-  }
+  if (statusF === 'open')         list = list.filter(c => effStatus(c) !== 'done');
+  else if (statusF === 'done')    list = list.filter(c => effStatus(c) === 'done');
+  else if (statusF === 'overdue') list = list.filter(c => bpIsOverdue(rowOf(c), c, month));
+  else if (statusF === 'unsent')  list = list.filter(c => bpIsUnsent(rowOf(c)));
 
-  // 進捗・件数は表示中の母集団（実績ありのみ等）から当月対象外を除いて算出する
-  const targets = base.filter(isTarget);
+  // 進捗・件数は表示中の母集団（実績ありのみ等）から算出する
+  const targets = base;
   const doneCnt    = targets.filter(c => effStatus(c) === 'done').length;
   const overdueCnt = targets.filter(c => bpIsOverdue(rowOf(c), c, month)).length;
   const unsentCnt  = targets.filter(c => bpIsUnsent(rowOf(c))).length;
-  const offCnt     = base.length - targets.length;
   const pct = targets.length ? Math.round(doneCnt / targets.length * 1000)/10 : 0;
   // 請求合計は請求データの自動集計に、手動追加した行の手入力金額を足す
   const manualAmt = billingProgress.reduce((a,b)=>a+(b.manual&&!invMap[String(b.cli_id)]?(+b.manual_amt||0):0), 0);
@@ -10435,11 +10423,10 @@ function renderBillingProgress() {
     {id:'overdue', label:'期限超過', n:overdueCnt, warn:true},
     {id:'unsent',  label:'未送付',   n:unsentCnt,  warn:true},
     {id:'done',    label:'完了',     n:doneCnt},
-    {id:'none',    label:'対象外',   n:offCnt},
   ];
   if (sumEl) {
     sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px;margin-bottom:7px">
-      <span>当月対象 <b>${targets.length}</b>件${dataF==='hasdata'?`（実績なし ${clients.length-base.length}件を非表示）`:''}</span>
+      <span>対象 <b>${targets.length}</b>件${dataF==='hasdata'?`（実績なし ${clients.length-base.length}件を非表示）`:''}</span>
       <span>完了 <b style="color:var(--green-text)">${doneCnt}</b> / 未完了 <b style="color:var(--amber-text)">${targets.length-doneCnt}</b></span>
       ${overdueCnt?`<span style="color:var(--red-text);font-weight:600">⚠ 期限超過 ${overdueCnt}件</span>`:''}
       ${unsentCnt?`<span style="color:var(--amber-text);font-weight:600">未送付 ${unsentCnt}件</span>`:''}
@@ -10480,7 +10467,6 @@ function renderBillingProgress() {
     <thead><tr>
       <th style="${th};width:26px"><input type="checkbox" id="bpRowChkAll" onchange="toggleBpRowAll(this.checked)" title="表示中の全行を選択" style="width:14px;height:14px;cursor:pointer"></th>
       <th style="${th};text-align:left">取引先</th>
-      <th style="${th}">当月<br>対象</th>
       <th style="${th};text-align:right">請求金額<div style="font-weight:400;color:var(--text2)">自動</div></th>
       <th style="${th}">請求日<div style="font-weight:400;color:var(--text2)">自動</div></th>
       <th style="${th}">ステータス</th>
@@ -10504,10 +10490,9 @@ function renderBillingProgress() {
       const sc = BP_STATUS_COLOR[st] || BP_STATUS_COLOR.todo;
       // 送付方式は月次の指定 → 取引先マスタの既定値 の順で採用する
       const sm = b.send_method || c.send_method || '';
-      const noDeal = b.target === false;
       const due = bpEffectiveDue(b, c, month);
       const overdue = bpIsOverdue(b, c, month);
-      return `<tr style="${noDeal?'opacity:.5':''}">
+      return `<tr>
         <td style="${td};text-align:center"><input type="checkbox" class="bpRowChk" value="${c.id}" data-manual="${b.manual?1:0}" onchange="updateBpBulkBar()" style="width:14px;height:14px;cursor:pointer"></td>
         <td style="${td};text-align:left;white-space:nowrap${indent?';padding-left:18px':''}">
           ${indent?'<span style="color:var(--text3)">└ </span>':''}<span style="font-weight:600">${escHtml(c.name)}</span>
@@ -10520,7 +10505,6 @@ function renderBillingProgress() {
             return `<div style="font-size:9.5px;color:var(${bad?'--amber-text':'--text2'})" title="${bad?'読みを判定できない漢字があります。取引先管理のカナ欄で修正できます':'並び替えに使っている読み'}">${bad?'⚠ ':''}${escHtml(k)}${c.name_kana?'':'（自動）'}</div>`;
           })():''}
         </td>
-        <td style="${td};text-align:center"><input type="checkbox" ${noDeal?'':'checked'} onchange="saveBpField(${c.id},'target',this.checked)" title="今月この取引先の請求業務があるかどうか。外すと進捗の集計から除かれます" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)"></td>
         <td style="${td};text-align:right;white-space:nowrap">${
           inv ? yen(inv.amt)
               : (b.manual
@@ -10528,11 +10512,10 @@ function renderBillingProgress() {
                   : '—')
         }</td>
         <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${inv?inv.lastDate:'—'}</td>
-        <td style="${td};text-align:center">${noDeal
-          ? '<span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">当月対象外</span>'
-          : `<select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveBpField(${c.id},'status',this.value)">
+        <td style="${td};text-align:center">
+          <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveBpField(${c.id},'status',this.value)">
             ${Object.entries(BP_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${st===k?'selected':''}>${v}</option>`).join('')}
-          </select>`}
+          </select>
         </td>
         <td style="${td};text-align:center;white-space:nowrap">
           <input type="date" style="${inp};${overdue?'color:var(--red-text);font-weight:700;border-color:var(--red)':''}" value="${due||''}" title="取引先設定の提出ルールから自動計算されます。ここで直接入れると、その月だけ上書きできます" onchange="saveBpField(${c.id},'planned_date',this.value)">
@@ -10565,7 +10548,6 @@ function renderBillingProgress() {
     // 本社・支店をまとめ、深刻な状態のグループを上に出す
     const sevOf = c => {
       const b = bpRow(c.id) || {};
-      if (b.target === false) return 99;
       if (bpIsOverdue(b, c, month)) return -1;
       if (b.status === 'done') return 90;
       return Object.keys(BP_STATUS_LABEL).indexOf(b.status || 'todo');
@@ -10573,12 +10555,12 @@ function renderBillingProgress() {
     return groupByRootClient(list, sevOf).map(g => {
       if (!g.isGroup) return g.items.map(c => rowHtml(c, false)).join('');
       const collapsed = !!bpCollapsed[g.rootId];
-      const tg = g.items.filter(c => (bpRow(c.id)||{}).target !== false);
+      const tg = g.items;
       const doneN = tg.filter(c => (bpRow(c.id)||{}).status === 'done').length;
       const overN = tg.filter(c => bpIsOverdue(bpRow(c.id)||{}, c, month)).length;
       return `<tr style="background:var(--bg2)">
         <td style="${td};text-align:center"></td>
-        <td style="${td};text-align:left;white-space:nowrap;font-weight:700;cursor:pointer" colspan="15" onclick="toggleBpGroup(${g.rootId})" title="クリックで折りたたみ／展開">
+        <td style="${td};text-align:left;white-space:nowrap;font-weight:700;cursor:pointer" colspan="14" onclick="toggleBpGroup(${g.rootId})" title="クリックで折りたたみ／展開">
           <span style="color:var(--text2);display:inline-block;width:12px">${collapsed?'▸':'▾'}</span>
           ${escHtml(g.root?.name || '—')}
           <span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:6px">
@@ -10602,7 +10584,7 @@ const renderBillingProgressDebounced = debounce(renderBillingProgress, 250);
 async function saveBpField(cliId, field, value) {
   if (!sb) return;
   const month = bpCurrentMonth();
-  // 金額は数値列、当月対象・チェックは真偽値のため、それぞれ型を整えてから保存する
+  // 金額は数値列、チェックは真偽値のため、それぞれ型を整えてから保存する
   const patch = { [field]: (typeof value === 'boolean') ? value
     : value === '' ? null
     : (field === 'manual_amt' ? Math.round(+value) || null : value) };
@@ -10818,7 +10800,6 @@ async function carryOverBpSelected() {
         check_user_id: b.check_user_id ?? null,
         arrival_method: b.arrival_method ?? null,
         send_method: b.send_method ?? null,
-        target: b.target !== false,
         // 提出期限は取引先の提出ルールから翌月分が自動計算されるため、月ごとの上書きは引き継がない
         status: 'todo', arrival_date: null, submitted_date: null, planned_date: null,
         checked: false, manual_amt: null, note: null,
@@ -11073,9 +11054,9 @@ function renderTaskTop() {
   const invMap = bpInvoiceSummary(month);
   const payMap = dpPaySummary(month);
 
-  // 請求書側: その月に実績がある取引先＋手動追加分のうち、当月対象のもの
-  const bpList = clients.filter(c => (invMap[String(c.id)] || bpRow(c.id)?.manual) && (bpRow(c.id)||{}).target !== false);
-  const dpList = dpCompanies().filter(d => (payMap[String(d.id)] || dpRow(d.id)?.manual) && (dpRow(d.id)||{}).target !== false);
+  // 請求書側: その月に実績がある取引先＋手動追加分
+  const bpList = clients.filter(c => invMap[String(c.id)] || bpRow(c.id)?.manual);
+  const dpList = dpCompanies().filter(d => payMap[String(d.id)] || dpRow(d.id)?.manual);
 
   const stat = (list, rowFn) => {
     const done = list.filter(x => (rowFn(x)||{}).status === 'done').length;
@@ -11108,7 +11089,7 @@ function renderTaskTop() {
   body.innerHTML = `
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">${escHtml(month)} の状況</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:14px">
-      ${card(sB.n + sD.n, '当月対象（請求＋支払）')}
+      ${card(sB.n + sD.n, '対象（請求＋支払）')}
       ${card(sB.done + sD.done, '完了')}
       ${card(sB.over + sD.over, '期限超過', true)}
       ${card(sB.unsent + sD.unsent, '未送付', true)}
@@ -11256,25 +11237,19 @@ function renderDriverProgress() {
   if (dataF === 'hasdata') base = base.filter(d => payMap[String(d.id)] || dpRow(d.id)?.manual);
 
   const rowOf = d => dpRow(d.id) || {};
-  const isTarget = d => rowOf(d).target !== false;
   const effStatus = d => rowOf(d).status || 'todo';
 
   let list = base;
   if (q) list = list.filter(d => nm(d.name).includes(q) || nm(d.company||'').includes(q));
-  if (statusF === 'none') list = list.filter(d => !isTarget(d));
-  else {
-    list = list.filter(isTarget);
-    if (statusF === 'open')         list = list.filter(d => effStatus(d) !== 'done');
-    else if (statusF === 'done')    list = list.filter(d => effStatus(d) === 'done');
-    else if (statusF === 'overdue') list = list.filter(d => bpIsOverdue(rowOf(d), d, month));
-    else if (statusF === 'unsent')  list = list.filter(d => bpIsUnsent(rowOf(d)));
-  }
+  if (statusF === 'open')         list = list.filter(d => effStatus(d) !== 'done');
+  else if (statusF === 'done')    list = list.filter(d => effStatus(d) === 'done');
+  else if (statusF === 'overdue') list = list.filter(d => bpIsOverdue(rowOf(d), d, month));
+  else if (statusF === 'unsent')  list = list.filter(d => bpIsUnsent(rowOf(d)));
 
-  const targets = base.filter(isTarget);
+  const targets = base;
   const doneCnt    = targets.filter(d => effStatus(d) === 'done').length;
   const overdueCnt = targets.filter(d => bpIsOverdue(rowOf(d), d, month)).length;
   const unsentCnt  = targets.filter(d => bpIsUnsent(rowOf(d))).length;
-  const offCnt     = base.length - targets.length;
   const pct = targets.length ? Math.round(doneCnt / targets.length * 1000)/10 : 0;
   const manualAmt = driverProgress.reduce((a,b)=>a+(b.manual&&!payMap[String(b.drv_id)]?(+b.manual_amt||0):0), 0);
   const totalAmt = Object.values(payMap).reduce((a,v)=>a+v.amt, 0) + manualAmt;
@@ -11284,11 +11259,10 @@ function renderDriverProgress() {
     {id:'overdue', label:'期限超過', n:overdueCnt, warn:true},
     {id:'unsent',  label:'未送付',   n:unsentCnt,  warn:true},
     {id:'done',    label:'完了',     n:doneCnt},
-    {id:'none',    label:'対象外',   n:offCnt},
   ];
   if (sumEl) {
     sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px;margin-bottom:7px">
-      <span>当月対象 <b>${targets.length}</b>社${dataF==='hasdata'?`（実績なし ${dpCompanies().length-base.length}社を非表示）`:''}</span>
+      <span>対象 <b>${targets.length}</b>社${dataF==='hasdata'?`（実績なし ${dpCompanies().length-base.length}社を非表示）`:''}</span>
       <span>完了 <b style="color:var(--green-text)">${doneCnt}</b> / 未完了 <b style="color:var(--amber-text)">${targets.length-doneCnt}</b></span>
       ${overdueCnt?`<span style="color:var(--red-text);font-weight:600">⚠ 期限超過 ${overdueCnt}件</span>`:''}
       ${unsentCnt?`<span style="color:var(--amber-text);font-weight:600">未送付 ${unsentCnt}件</span>`:''}
@@ -11329,7 +11303,6 @@ function renderDriverProgress() {
     <thead><tr>
       <th style="${th};width:26px"><input type="checkbox" id="dpRowChkAll" onchange="toggleDpRowAll(this.checked)" title="表示中の全行を選択" style="width:14px;height:14px;cursor:pointer"></th>
       <th style="${th};text-align:left">会社</th>
-      <th style="${th}">当月<br>対象</th>
       <th style="${th};text-align:right">支払金額<div style="font-weight:400;color:var(--text2)">自動</div></th>
       <th style="${th}">ステータス</th>
       <th style="${th}">提出期限<div style="font-weight:400;color:var(--text2)">ルール</div></th>
@@ -11346,10 +11319,9 @@ function renderDriverProgress() {
       const pay = payMap[String(d.id)];
       const st = b.status || 'todo';
       const sc = BP_STATUS_COLOR[st] || BP_STATUS_COLOR.todo;
-      const noDeal = b.target === false;
       const due = bpEffectiveDue(b, d, month);
       const overdue = bpIsOverdue(b, d, month);
-      return `<tr style="${noDeal?'opacity:.5':''}">
+      return `<tr>
         <td style="${td};text-align:center"><input type="checkbox" class="dpRowChk" value="${d.id}" data-manual="${b.manual?1:0}" onchange="updateDpBulkBar()" style="width:14px;height:14px;cursor:pointer"></td>
         <td style="${td};text-align:left;white-space:nowrap">
           <span style="font-weight:600">${escHtml(d.name)}</span>
@@ -11357,16 +11329,14 @@ function renderDriverProgress() {
           ${pay?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:4px">${pay.cnt}件</span>`:'<span style="font-size:9.5px;color:var(--text2);margin-left:4px">実績なし</span>'}
           ${b.manual&&!pay?`<span class="bdg" style="background:var(--amber-bg);color:var(--amber-text);margin-left:4px">手動</span>`:''}
         </td>
-        <td style="${td};text-align:center"><input type="checkbox" ${noDeal?'':'checked'} onchange="saveDpField(${d.id},'target',this.checked)" title="今月この会社への支払明細書発行があるか" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue)"></td>
         <td style="${td};text-align:right;white-space:nowrap">${
           pay ? yen(pay.amt)
               : (b.manual ? `<input type="number" step="1" style="${inp};width:96px;text-align:right" value="${b.manual_amt??''}" placeholder="金額を入力" onchange="saveDpField(${d.id},'manual_amt',this.value)">` : '—')
         }</td>
-        <td style="${td};text-align:center">${noDeal
-          ? '<span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">当月対象外</span>'
-          : `<select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveDpField(${d.id},'status',this.value)">
+        <td style="${td};text-align:center">
+          <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveDpField(${d.id},'status',this.value)">
             ${Object.entries(BP_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${st===k?'selected':''}>${v}</option>`).join('')}
-          </select>`}
+          </select>
         </td>
         <td style="${td};text-align:center;white-space:nowrap">
           <input type="date" style="${inp};${overdue?'color:var(--red-text);font-weight:700;border-color:var(--red)':''}" value="${due||''}" title="協力会社（ドライバー登録の会社レコード）の提出ルールから自動計算されます" onchange="saveDpField(${d.id},'planned_date',this.value)">
@@ -11484,7 +11454,6 @@ async function carryOverDpSelected() {
         assignee_user_id: b.assignee_user_id ?? null,
         check_user_id: b.check_user_id ?? null,
         send_method: b.send_method ?? null,
-        target: b.target !== false,
         status: 'todo', submitted_date: null, planned_date: null,
         checked: false, manual_amt: null, note: null,
         updated_at: new Date().toISOString(),
@@ -11551,7 +11520,7 @@ async function submitDpAdd() {
 function exportDriverProgressCsv() {
   const month = dpCurrentMonth();
   const payMap = dpPaySummary(month);
-  const headers = ['会社','仕入先ID','当月対象','支払金額','件数','ステータス','提出期限','期限超過','提出方法','発行・送付日','管理担当者','チェック','Check担当者','送付メモ','備考'];
+  const headers = ['会社','仕入先ID','支払金額','件数','ステータス','提出期限','期限超過','提出方法','発行・送付日','管理担当者','チェック','Check担当者','送付メモ','備考'];
   const dataF = document.getElementById('dpDataFilter')?.value ?? 'hasdata';
   const rows = [...dpCompanies()]
     .sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999))
@@ -11561,9 +11530,9 @@ function exportDriverProgressCsv() {
       const pay = payMap[String(d.id)];
       const an = users.find(u=>String(u.id)===String(b.assignee_user_id))?.name || '';
       const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
-      return [d.name, d.supplier_id||'', b.target===false?'対象外':'対象',
+      return [d.name, d.supplier_id||'',
         pay?pay.amt:(b.manual?(b.manual_amt??''):''), pay?pay.cnt:'',
-        b.target===false?'':BP_STATUS_LABEL[b.status||'todo'],
+        BP_STATUS_LABEL[b.status||'todo'],
         bpEffectiveDue(b, d, month)||'', bpIsOverdue(b, d, month)?'超過':'',
         BP_SEND_LABEL[b.send_method]||'', b.submitted_date||'',
         an, b.checked?'済':'', cn, d.send_memo||'', b.note||''];
@@ -11583,7 +11552,7 @@ function exportBillingProgressCsv() {
   const month = bpCurrentMonth();
   const invMap = bpInvoiceSummary(month);
   // 画面の列順に合わせる
-  const headers = ['取引先','取引先ID','当月対象','請求金額','件数','請求日','ステータス','提出期限','期限超過','到着方法','明細到着日','提出方法','明細提出日','管理担当者','チェック','Check担当者','送付メモ','備考'];
+  const headers = ['取引先','取引先ID','請求金額','件数','請求日','ステータス','提出期限','期限超過','到着方法','明細到着日','提出方法','明細提出日','管理担当者','チェック','Check担当者','送付メモ','備考'];
   // CSVは画面の並び順・絞り込み（実績ありのみ等）に合わせて出力する
   const sortMode = document.getElementById('bpSort')?.value || 'id';
   const sortFn = sortMode === 'name'
@@ -11598,9 +11567,9 @@ function exportBillingProgressCsv() {
       const an = users.find(u=>String(u.id)===String(b.assignee_user_id))?.name || '';
       const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
       // 実績が無い手動追加行は手入力した金額を出力する
-      return [c.name, c.client_no||'', b.target===false?'対象外':'対象',
+      return [c.name, c.client_no||'',
         inv?inv.amt:(b.manual?(b.manual_amt??''):''), inv?inv.cnt:'', inv?inv.lastDate:'',
-        b.target===false?'':BP_STATUS_LABEL[b.status||'todo'],
+        BP_STATUS_LABEL[b.status||'todo'],
         bpEffectiveDue(b, c, month)||'', bpIsOverdue(b, c, month)?'超過':'',
         BP_SEND_LABEL[b.arrival_method]||'', b.arrival_date||'',
         BP_SEND_LABEL[b.send_method||c.send_method]||'', b.submitted_date||'',
