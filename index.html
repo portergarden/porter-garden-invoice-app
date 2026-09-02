@@ -6622,6 +6622,28 @@ function selectDiPartner(name) {
   document.getElementById('diPartner').value = name;
   hideDiPartnerSuggestions();
 }
+// 会社名の表記ゆれ比較用の正規化。空白・記号・法人格（株式会社/有限会社など）を落として比べる。
+// 「〇〇運送」と「〇〇運送株式会社」を同じ会社として検出するために使う
+function normalizePartnerName(s) {
+  return nm(s || '')
+    .replace(/(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|（株）|\(株\)|（有）|\(有\))/g, '')
+    .replace(/[・\-－ー_,.、。]/g, '');
+}
+// 入力された会社名と紛らわしい既存の協力会社を探す。
+// 完全一致は既存に紐づくだけで二重登録にならないため対象外。
+// 正規化して一致するもの、または一方が他方を含むものを「紛らわしい」とみなす
+function findSimilarPartners(input) {
+  const raw = (input || '').trim();
+  if (!raw) return [];
+  const n = normalizePartnerName(raw);
+  if (n.length < 2) return [];
+  return invitePartnerNames.filter(existing => {
+    if (nm(existing) === nm(raw)) return false; // 完全一致は既存が使われるので問題ない
+    const e = normalizePartnerName(existing);
+    if (!e || e.length < 2) return false;
+    return e === n || e.includes(n) || n.includes(e);
+  });
+}
 function hideDiPartnerSuggestions() {
   const box = document.getElementById('diPartnerSuggestions');
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
@@ -6702,6 +6724,21 @@ async function submitDriverSelfRegistration(){
       if (!ok) return;
     }
   } catch(e) { console.warn('check_cars_registered:', e.message); } // 確認に失敗しても登録自体は続行する
+  // 協力会社名が既存と紛らわしい場合は確認する。
+  // 完全一致なら既存に紐づくが、「〇〇運送」と「〇〇運送株式会社」のような表記ゆれだと
+  // 別会社として二重に作られてしまうため、登録前に気づけるようにする
+  const similar = findSimilarPartners(partner);
+  if (similar.length) {
+    const ok = confirm(
+      `入力された会社名「${partner}」に似た協力会社が既に登録されています。\n\n` +
+      `${similar.map(s => '・' + s).join('\n')}\n\n` +
+      `同じ会社の場合は「キャンセル」を押し、上の名前と同じになるように入力し直してください。\n` +
+      `（入力欄に2文字以上入力すると候補が表示されます）\n\n` +
+      `別の会社であれば、このまま登録して問題ありません。\n\n` +
+      `このまま「${partner}」で登録しますか？`
+    );
+    if (!ok) return;
+  }
   showLoad(true);
   try{
     const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel, p_cars: pendTags, p_partner_name: partner||null });
@@ -18271,8 +18308,9 @@ $function$;
 -- 新規作成時はドライバーID(supplier_id)を「既存の数値の最大値+1」で自動採番する
 -- （管理側の「＋ドライバー追加」と同じ採番規則。ログインIDにもこの番号が使われる）。
 -- 協力会社名が入力された場合は、既存を探して無ければ partner_companies に作成して紐づける
+-- （新規作成時は協力会社番号(partner_no)も自動採番する）
 CREATE OR REPLACE FUNCTION public.submit_driver_registration(
-  p_token text, p_name text, p_tel text, p_cars text[], p_partner_name text)
+  p_token text, p_name text, p_tel text, p_cars text[], p_partner_name text DEFAULT NULL::text)
 RETURNS TABLE(driver_id integer, merged boolean)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
 DECLARE
@@ -18286,6 +18324,8 @@ DECLARE
   v_partner_id integer;
   v_partner_name text;
   v_cars_clean text[];
+  v_next_partner_no integer;
+  v_attempt int := 0;
 BEGIN
   SELECT * INTO v_row FROM public.driver_invites WHERE token = p_token FOR UPDATE;
   IF NOT FOUND THEN
@@ -18342,7 +18382,24 @@ BEGIN
     IF v_partner_name IS NOT NULL THEN
       SELECT id INTO v_partner_id FROM public.partner_companies WHERE trim(name) = v_partner_name LIMIT 1;
       IF v_partner_id IS NULL THEN
-        INSERT INTO public.partner_companies (name) VALUES (v_partner_name) RETURNING id INTO v_partner_id;
+        -- 新規の協力会社は番号(partner_no)も採番して作る（衝突したら採番し直す）
+        LOOP
+          v_attempt := v_attempt + 1;
+          SELECT COALESCE(MAX(partner_no::int), 0) + 1 INTO v_next_partner_no
+            FROM public.partner_companies WHERE partner_no ~ '^\d+$';
+          BEGIN
+            INSERT INTO public.partner_companies (name, partner_no)
+            VALUES (v_partner_name, v_next_partner_no::text)
+            RETURNING id INTO v_partner_id;
+            EXIT;
+          EXCEPTION WHEN unique_violation THEN
+            IF v_attempt >= 20 THEN
+              INSERT INTO public.partner_companies (name)
+              VALUES (v_partner_name) RETURNING id INTO v_partner_id;
+              EXIT;
+            END IF;
+          END;
+        END LOOP;
       END IF;
     END IF;
 
