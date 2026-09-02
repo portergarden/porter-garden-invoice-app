@@ -1334,7 +1334,10 @@ try {
         </select>
         <input type="text" id="bpSearch" placeholder="🔍 取引先名で検索…" oninput="renderBillingProgressDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:170px">
       </div>
-      <button class="btn sml" onclick="exportBillingProgressCsv()">↓ CSV</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn sml grn" id="bpAddBtn" onclick="openBpAddM()" title="請求実績が無い取引先も一覧に追加できます">＋ 取引先を追加</button>
+        <button class="btn sml" onclick="exportBillingProgressCsv()">↓ CSV</button>
+      </div>
     </div>
     <div id="bpSummary" style="padding:8px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2)"></div>
     <div style="padding:0 14px 14px;overflow-x:auto" id="bpArea"></div>
@@ -3062,6 +3065,25 @@ try {
   </div>
 </div>
 
+<!-- モーダル: タスク管理に取引先を手動で追加（請求実績が無い取引先を一覧に出したい場合） -->
+<div class="overlay" id="mBpAdd">
+  <div class="modal" style="width:400px">
+    <div class="mh">＋ タスク管理に取引先を追加 <button class="ibtn" onclick="closeM('mBpAdd')">✕</button></div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">請求実績が無い取引先を、この月のタスク一覧に追加します。追加後は金額を手入力でき、上部の請求合計にも反映されます。</div>
+    <div class="fld"><label>取引先</label>
+      <select id="bpAddCli" style="width:100%"><option value="">選択してください</option></select>
+    </div>
+    <div class="fld"><label>請求金額（任意・あとから変更できます）</label>
+      <input type="number" id="bpAddAmt" placeholder="未入力可" step="1">
+    </div>
+    <div id="bpAddErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
+    <div class="mfoot">
+      <button class="btn" onclick="closeM('mBpAdd')">キャンセル</button>
+      <button class="btn pri" onclick="submitBpAdd()">追加する</button>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: パスワード変更（本人が任意のタイミングで変更する場合。強制変更(mForcePw)とは別で、閉じるボタンあり） -->
 <div class="overlay" id="mChangePw">
   <div class="modal" style="width:360px">
@@ -3228,7 +3250,7 @@ async function applyLogin(data) {
     document.getElementById('tbBdg').innerHTML = `<span class="bdg ${rc}">${rn}</span>`;
     if (me.role==='admin') { document.getElementById('nt4').classList.remove('hide'); document.getElementById('nt5').classList.remove('hide'); }
     const canEd = me.role !== 'viewer';
-    ['bAdd','bAddD','bAddC','bAddPartner','bAddVehicle','bDrvInvite','bBulkChat'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
+    ['bAdd','bAddD','bAddC','bAddPartner','bAddVehicle','bDrvInvite','bBulkChat','bpAddBtn'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
   }
   startSess();
   await loadAll();
@@ -10097,10 +10119,11 @@ function renderBillingProgress() {
     ? (a,b) => clientKanaKey(a).localeCompare(clientKanaKey(b), 'ja') || clientNoCompare(a,b)
     : clientNoCompare;
 
-  // その月の請求実績が無い取引先は既定で隠す（毎月使う取引先だけに絞って見られるようにする）
+  // その月の請求実績が無い取引先は既定で隠す（毎月使う取引先だけに絞って見られるようにする）。
+  // ただし手動で追加した取引先(manual)は実績が無くても必ず残す
   const dataF = document.getElementById('bpDataFilter')?.value ?? 'hasdata';
   let base = [...clients].sort(sortFn);
-  if (dataF === 'hasdata') base = base.filter(c => invMap[String(c.id)]);
+  if (dataF === 'hasdata') base = base.filter(c => invMap[String(c.id)] || bpRow(c.id)?.manual);
 
   const effStatus = c => bpRow(c.id)?.status || 'todo';
   let list = base;
@@ -10114,7 +10137,9 @@ function renderBillingProgress() {
   const targets = base.filter(c => effStatus(c) !== 'none');
   const doneCnt = targets.filter(c => effStatus(c) === 'done').length;
   const pct = targets.length ? Math.round(doneCnt / targets.length * 1000)/10 : 0;
-  const totalAmt = Object.values(invMap).reduce((a,v)=>a+v.amt, 0);
+  // 請求合計は請求データの自動集計に、手動追加した行の手入力金額を足す
+  const manualAmt = billingProgress.reduce((a,b)=>a+(b.manual&&!invMap[String(b.cli_id)]?(+b.manual_amt||0):0), 0);
+  const totalAmt = Object.values(invMap).reduce((a,v)=>a+v.amt, 0) + manualAmt;
   if (sumEl) {
     sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px">
       <span>対象 <b>${targets.length}</b>件（取引なし ${base.length-targets.length}件${dataF==='hasdata'?` ／ 実績なし ${clients.length-base.length}件を非表示`:''}）</span>
@@ -10169,13 +10194,19 @@ function renderBillingProgress() {
           <span style="font-weight:600">${escHtml(c.name)}</span>
           ${c.client_no?`<span style="font-size:9.5px;color:var(--text2)"> ID:${escHtml(c.client_no)}</span>`:''}
           ${inv?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:4px">${inv.cnt}件</span>`:'<span style="font-size:9.5px;color:var(--text2);margin-left:4px">実績なし</span>'}
+          ${b.manual&&!inv?`<span class="bdg" style="background:var(--amber-bg);color:var(--amber-text);margin-left:4px">手動</span><button class="ibtn" title="この行を一覧から外す" onclick="removeBpManual(${c.id})" style="margin-left:2px">🗑</button>`:''}
           ${sortMode==='name'?(()=>{
             const k = clientKanaKey(c);
             const bad = kanaNeedsFix(k);
             return `<div style="font-size:9.5px;color:var(${bad?'--amber-text':'--text2'})" title="${bad?'読みを判定できない漢字があります。取引先管理のカナ欄で修正できます':'並び替えに使っている読み'}">${bad?'⚠ ':''}${escHtml(k)}${c.name_kana?'':'（自動）'}</div>`;
           })():''}
         </td>
-        <td style="${td};text-align:right;white-space:nowrap">${inv?yen(inv.amt):'—'}</td>
+        <td style="${td};text-align:right;white-space:nowrap">${
+          inv ? yen(inv.amt)
+              : (b.manual
+                  ? `<input type="number" step="1" style="${inp};width:96px;text-align:right" value="${b.manual_amt??''}" placeholder="金額を入力" title="手動追加した行の請求金額。請求合計にも反映されます" onchange="saveBpField(${c.id},'manual_amt',this.value)">`
+                  : '—')
+        }</td>
         <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${inv?inv.lastDate:'—'}</td>
         <td style="${td};text-align:center">
           <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="saveBpField(${c.id},'status',this.value)">
@@ -10211,7 +10242,8 @@ const renderBillingProgressDebounced = debounce(renderBillingProgress, 250);
 async function saveBpField(cliId, field, value) {
   if (!sb) return;
   const month = bpCurrentMonth();
-  const patch = { [field]: value === '' ? null : value };
+  // 金額は数値列のため、空欄はnull・入力値は整数に丸めてから保存する
+  const patch = { [field]: value === '' ? null : (field === 'manual_amt' ? Math.round(+value) || null : value) };
   // 未着手・進行中から提出日を入れた場合のみ完了に自動更新する。
   // 「修正」「修正済」は対応中の状態なので、勝手に完了にせず手動で切り替えてもらう
   if (field === 'submitted_date' && value) {
@@ -10231,6 +10263,64 @@ async function saveBpField(cliId, field, value) {
   } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
 }
 
+// タスク管理に取引先を手動追加する（請求実績が無い取引先を一覧に出したい場合）。
+// 候補は「まだこの月の一覧に出ていない取引先」に絞る
+function openBpAddM() {
+  const month = bpCurrentMonth();
+  const invMap = bpInvoiceSummary(month);
+  const sel = document.getElementById('bpAddCli');
+  const cand = [...clients]
+    .filter(c => !invMap[String(c.id)] && !bpRow(c.id)?.manual)
+    .sort(clientNoCompare);
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    cand.map(c=>`<option value="${c.id}">${escHtml(c.name)}${c.client_no?`（ID:${escHtml(c.client_no)}）`:''}</option>`).join('');
+  enhanceSelectSearchable('bpAddCli');
+  document.getElementById('bpAddAmt').value = '';
+  document.getElementById('bpAddErr').textContent = cand.length ? '' : 'この月に追加できる取引先がありません（すべて表示済みです）';
+  document.getElementById('mBpAdd').classList.add('on');
+}
+async function submitBpAdd() {
+  const cliId = +document.getElementById('bpAddCli').value || null;
+  const amtRaw = document.getElementById('bpAddAmt').value;
+  const errEl = document.getElementById('bpAddErr');
+  errEl.textContent = '';
+  if (!cliId) { errEl.textContent = '取引先を選択してください'; return; }
+  const month = bpCurrentMonth();
+  showLoad(true);
+  try {
+    const {data, error} = await sb.from('billing_progress')
+      .upsert({ month, cli_id: cliId, manual: true,
+                manual_amt: amtRaw === '' ? null : (Math.round(+amtRaw) || null),
+                updated_at: new Date().toISOString() }, { onConflict: 'month,cli_id' })
+      .select().single();
+    if (error) throw error;
+    const idx = billingProgress.findIndex(b => String(b.cli_id) === String(cliId));
+    if (idx >= 0) billingProgress[idx] = data; else billingProgress.push(data);
+    closeM('mBpAdd');
+    renderBillingProgress();
+    const cli = clients.find(c=>c.id===cliId);
+    addLog('タスク管理 取引先追加', `${month} ${cli?cli.name:`cli:${cliId}`}`);
+    showT('一覧に追加しました');
+  } catch(e) { errEl.textContent = '追加エラー: ' + e.message; }
+  showLoad(false);
+}
+// 手動追加した行を一覧から外す（入力済みの担当者・日付などもまとめて消えるため確認する）
+async function removeBpManual(cliId) {
+  const cli = clients.find(c=>c.id===cliId);
+  if (!confirm(`「${cli?cli.name:cliId}」をこの月の一覧から外しますか？\n入力済みのステータス・担当者・日付も削除されます。`)) return;
+  const month = bpCurrentMonth();
+  showLoad(true);
+  try {
+    const {error} = await sb.from('billing_progress').delete().eq('month', month).eq('cli_id', cliId);
+    if (error) throw error;
+    billingProgress = billingProgress.filter(b => String(b.cli_id) !== String(cliId));
+    renderBillingProgress();
+    addLog('タスク管理 取引先削除', `${month} ${cli?cli.name:`cli:${cliId}`}`);
+    showT('一覧から外しました');
+  } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+
 function exportBillingProgressCsv() {
   const month = bpCurrentMonth();
   const invMap = bpInvoiceSummary(month);
@@ -10243,13 +10333,14 @@ function exportBillingProgressCsv() {
     : clientNoCompare;
   const dataF = document.getElementById('bpDataFilter')?.value ?? 'hasdata';
   const rows = [...clients].sort(sortFn)
-    .filter(c => dataF !== 'hasdata' || invMap[String(c.id)])
+    .filter(c => dataF !== 'hasdata' || invMap[String(c.id)] || bpRow(c.id)?.manual)
     .map(c => {
       const b = bpRow(c.id) || {};
       const inv = invMap[String(c.id)];
       const an = users.find(u=>String(u.id)===String(b.assignee_user_id))?.name || '';
       const cn = users.find(u=>String(u.id)===String(b.check_user_id))?.name || '';
-      return [c.name, c.client_no||'', inv?inv.amt:'', inv?inv.cnt:'', inv?inv.lastDate:'',
+      // 実績が無い手動追加行は手入力した金額を出力する
+      return [c.name, c.client_no||'', inv?inv.amt:(b.manual?(b.manual_amt??''):''), inv?inv.cnt:'', inv?inv.lastDate:'',
         BP_STATUS_LABEL[b.status||'todo'],
         BP_SEND_LABEL[b.arrival_method]||'', b.arrival_date||'',
         BP_SEND_LABEL[b.send_method||c.send_method]||'', b.submitted_date||'',
