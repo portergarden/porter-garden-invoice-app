@@ -1635,7 +1635,7 @@ try {
             <th style="padding:6px 8px;text-align:right" title="追加料金として入力した高速代・立替の合計">高速・立替代</th>
             <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">事務手数料</th>
             <th style="padding:6px 8px;text-align:right">車両代</th>
-            <th style="padding:6px 8px;text-align:right" title="その他の控除＋非課税で入力した明細・追加料金の合計">その他</th>
+            <th style="padding:6px 8px;text-align:right" title="その他の控除＋非課税で入力した明細・追加料金の合計。金額をクリックすると、この集計期間だけ内訳を上書きできます">その他 ✎</th>
             <th style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border)">支払合計金額</th>
             <th style="padding:6px 8px"></th>
           </tr>
@@ -3130,6 +3130,37 @@ try {
   </div>
 </div>
 
+<!-- モーダル: 支払明細書「その他の項目」の期間別上書き -->
+<div class="overlay" id="mPayAdj">
+  <div class="modal" style="width:560px;max-width:95vw">
+    <div class="mh" id="mPayAdjH">その他の項目 <button class="ibtn" onclick="closeM('mPayAdj')">✕</button></div>
+    <div style="padding:12px 14px;max-height:75vh;overflow-y:auto">
+      <div id="payAdjPeriod" style="font-size:11.5px;color:var(--text2);margin-bottom:4px"></div>
+      <div id="payAdjState" style="font-size:11px;margin-bottom:10px"></div>
+      <div id="payAdjList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:5px;margin-bottom:10px">
+        <input type="text" id="payAdjName" placeholder="名称（例: 代車リース代）" style="flex:2">
+        <input type="number" id="payAdjAmt" placeholder="金額（控除は -5000）" step="1" style="flex:1">
+        <button class="btn" onclick="addPayAdjItem()">＋ 追加</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;border-top:0.5px solid var(--border2);padding-top:9px;font-size:12px">
+        <span>この期間の「その他」合計</span>
+        <b id="payAdjTotal" style="font-size:14px"></b>
+      </div>
+      <div style="font-size:10.5px;color:var(--text2);margin-top:9px;line-height:1.6">
+        ここで保存した内訳は、この集計期間の支払集計・支払明細書にだけ反映されます。<br>
+        ドライバー登録の「その他の控除項目」（毎月固定分）と代車リース代の自動計算は変更しません。<br>
+        「自動計算に戻す」を押すと上書きを消し、元の自動計算に戻ります。
+      </div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
+        <button class="btn" id="payAdjResetBtn" onclick="resetPayAdj()">↺ 自動計算に戻す</button>
+        <button class="btn" onclick="closeM('mPayAdj')">キャンセル</button>
+        <button class="btn pri" onclick="savePayAdj()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: 鑑の発行宛て選択（協力会社のプルダウン＋手入力検索） -->
 <div class="overlay" id="mKanAte">
   <div class="modal" style="width:440px;max-width:95vw">
@@ -3618,7 +3649,7 @@ async function loadAll(){
   }catch(e){showT('データ読み込みエラー: '+e.message,'ter');}
   showLoad(false);
   // 個別読込（テーブル未作成でもloadAll全体を止めない）
-  await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments(), loadVehicles()]);
+  await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments(), loadVehicles(), loadPayAdjustments()]);
 }
 let logRoleFilter = 'staff';
 async function loadLogs(){
@@ -4349,8 +4380,8 @@ function buildStatementSheetData(side, rows) {
     // 対象期間は支払集計タブの集計期間ピッカーを使い、未設定なら選択した明細の実日付範囲にフォールバックする
     const vhPeriodFrom = document.getElementById('aggPayFrom')?.value || sortedRows[0]?.date || '';
     const vhPeriodTo = document.getElementById('aggPayTo')?.value || sortedRows[sortedRows.length-1]?.date || '';
-    const vhLease = d ? vehicleRentalForPeriod(d.id, vhPeriodFrom, vhPeriodTo) : {total:0, items:[]};
-    const otherTotal = (d?.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0) - vhLease.total;
+    const othItems = otherItemsForPeriod(d, vhPeriodFrom, vhPeriodTo);
+    const otherTotal = othItems.total;
     // 追加料金（高速代・立替・その他）。集計タブ(runAggPay)の支払合計と同じ計上方法で合計へ加算する
     const extraFeeTotal = sumRecsExtraFees(sortedRows, 'payment');
     const takeHome = netSubtotal+netTax+adminFee+vehRental+extraFeeTotal+otherTotal+nonTaxRows;
@@ -4369,8 +4400,7 @@ function buildStatementSheetData(side, rows) {
       ...(extraFeeTotal ? [['追加料金（高速代・立替など）', extraFeeTotal]] : []),
       ['事務手数料', adminFee],
       [d?.lease_company ? `車両リース代（${d.lease_company}）` : '車両リース代', vehRental],
-      ...(d?.other_deductions||[]).map(od=>[od.name, Number(od.amount)||0]),
-      ...vhLease.items.map(it=>[`代車リース代（${it.car} ${it.from}〜${it.to}）`, -Math.abs(it.amt)]),
+      ...othItems.items.map(it=>[it.name, it.amount]),
       ['支払合計金額', takeHome],
     ];
     // taxOnlyは「税込金額(taxedSummary)に含まれる消費税」＝手数料差引後の合計に対する消費税(netTax)。
@@ -7804,6 +7834,98 @@ async function loadVehicleAssignments() {
   } catch(e) { console.warn('loadVehicleAssignments:', e.message); }
 }
 
+/* --- 「その他の項目」上書きモーダル（支払集計の「その他」列から開く） --- */
+let payAdjDrvId = null, payAdjFrom = '', payAdjTo = '', payAdjItems = [];
+
+function openPayAdjM(drvId) {
+  const d = drvPay(drvs.find(x => x.id === drvId));
+  if (!d) return;
+  // 期間キーは支払集計タブの集計期間ピッカーの値。ここが空だと期間を特定できないため上書きさせない
+  payAdjFrom = document.getElementById('aggPayFrom')?.value || '';
+  payAdjTo   = document.getElementById('aggPayTo')?.value || '';
+  if (!payAdjFrom || !payAdjTo) { showT('先に集計期間を指定してください', 'ter'); return; }
+  payAdjDrvId = drvId;
+  const cur = otherItemsForPeriod(d, payAdjFrom, payAdjTo);
+  payAdjItems = cur.items.map(it => ({name: it.name, amount: it.amount}));
+  document.getElementById('mPayAdjH').innerHTML =
+    `その他の項目: ${escHtml(d.name)} <button class="ibtn" onclick="closeM('mPayAdj')">✕</button>`;
+  document.getElementById('payAdjPeriod').textContent = `集計期間 ${payAdjFrom} 〜 ${payAdjTo}`;
+  document.getElementById('payAdjName').value = '';
+  document.getElementById('payAdjAmt').value = '';
+  renderPayAdjItems();
+  document.getElementById('mPayAdj').classList.add('on');
+}
+
+function renderPayAdjItems() {
+  const el = document.getElementById('payAdjList');
+  const overridden = !!findPayAdj(payAdjDrvId, payAdjFrom, payAdjTo);
+  const st = document.getElementById('payAdjState');
+  if (st) st.innerHTML = overridden
+    ? '<span class="bdg" style="background:var(--amber-bg);color:var(--amber-text)">上書き中</span> この期間は手入力した内訳を使っています'
+    : '<span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">自動計算</span> ドライバー登録の控除項目＋代車リース代の自動計算です';
+  const rb = document.getElementById('payAdjResetBtn');
+  if (rb) rb.classList.toggle('hide', !overridden);
+  if (!payAdjItems.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text3)">項目なし（＋追加で項目を作れます）</div>';
+  } else {
+    el.innerHTML = payAdjItems.map((it,i) => `<div style="display:flex;align-items:center;gap:5px">
+      <input type="text" value="${escHtml(it.name)}" onchange="editPayAdjItem(${i},'name',this.value)" style="flex:2">
+      <input type="number" step="1" value="${it.amount}" onchange="editPayAdjItem(${i},'amount',this.value)" style="flex:1;text-align:right">
+      <button class="ibtn" onclick="rmPayAdjItem(${i})" title="削除">🗑</button>
+    </div>`).join('');
+  }
+  const total = payAdjItems.reduce((a,it)=>a+(Number(it.amount)||0), 0);
+  const tEl = document.getElementById('payAdjTotal');
+  if (tEl) { tEl.textContent = yen(total); tEl.style.color = total < 0 ? '#e05b5b' : 'inherit'; }
+}
+function editPayAdjItem(i, field, val) {
+  if (!payAdjItems[i]) return;
+  payAdjItems[i][field] = field === 'amount' ? (Math.round(+val) || 0) : val;
+  renderPayAdjItems();
+}
+function rmPayAdjItem(i) { payAdjItems.splice(i,1); renderPayAdjItems(); }
+function addPayAdjItem() {
+  const name = document.getElementById('payAdjName').value.trim();
+  const amount = Math.round(+document.getElementById('payAdjAmt').value) || 0;
+  if (!name) { showT('名称を入力してください', 'ter'); return; }
+  payAdjItems.push({name, amount});
+  document.getElementById('payAdjName').value = '';
+  document.getElementById('payAdjAmt').value = '';
+  renderPayAdjItems();
+}
+
+async function savePayAdj() {
+  if (!sb || payAdjDrvId == null) return;
+  const items = payAdjItems.map(it => ({name: it.name, amount: Number(it.amount)||0}));
+  try {
+    const {data, error} = await sb.from('pay_adjustments')
+      .upsert({drv_id: payAdjDrvId, period_from: payAdjFrom, period_to: payAdjTo, items,
+               updated_at: new Date().toISOString()}, {onConflict: 'drv_id,period_from,period_to'})
+      .select().single();
+    if (error) throw error;
+    payAdjustments = payAdjustments.filter(a => !(String(a.drv_id)===String(payAdjDrvId) && a.period_from===payAdjFrom && a.period_to===payAdjTo));
+    payAdjustments.push(data);
+    closeM('mPayAdj');
+    showT('保存しました');
+    runAggPay();
+  } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
+}
+
+async function resetPayAdj() {
+  if (!sb || payAdjDrvId == null) return;
+  const row = findPayAdj(payAdjDrvId, payAdjFrom, payAdjTo);
+  if (!row) { closeM('mPayAdj'); return; }
+  if (!confirm('この期間の上書きを削除して、自動計算に戻しますか？')) return;
+  try {
+    const {error} = await sb.from('pay_adjustments').delete().eq('id', row.id);
+    if (error) throw error;
+    payAdjustments = payAdjustments.filter(a => a.id !== row.id);
+    closeM('mPayAdj');
+    showT('自動計算に戻しました');
+    runAggPay();
+  } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
+}
+
 function openVehicleHistM(car) {
   vhCurrentCar = car;
   document.getElementById('mVehicleHistH').innerHTML = `車両乗務履歴: ${escHtml(car)} <button class="ibtn" onclick="closeM('mVehicleHist')">✕</button>`;
@@ -7914,6 +8036,47 @@ async function endVehicleAssignment(id) {
   } catch(e) { showT('更新エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
+/* ===== 支払明細書「その他の項目」の月別上書き（pay_adjustments） =====
+   既定では drivers.other_deductions（毎月固定の保険料・家賃など）＋
+   車両乗務履歴からの代車リース代の自動計算を「その他の項目」として使う。
+   集計期間ごとに上書き行を保存すると、その期間だけ手入力した内訳に差し替わる。
+   上書きを削除すれば自動計算に戻るため、翌月に金額を引きずらない。 */
+let payAdjustments = [];
+
+async function loadPayAdjustments() {
+  if (!sb) return;
+  try {
+    const {data, error} = await sb.from('pay_adjustments').select('*');
+    if (error) {
+      if (error.message.includes('does not exist')||error.message.includes('relation')) return;
+      throw error;
+    }
+    payAdjustments = data || [];
+  } catch(e) { console.warn('loadPayAdjustments:', e.message); }
+}
+
+// 集計期間はドライバーごとに変わらない（画面の集計期間ピッカーの値）ため、期間そのものをキーにする
+function findPayAdj(drvId, from, to) {
+  return (payAdjustments||[]).find(a =>
+    String(a.drv_id) === String(drvId) && a.period_from === (from||'') && a.period_to === (to||'')) || null;
+}
+
+// その期間の「その他の項目」の内訳。上書きがあればそれを、無ければ自動計算した既定値を返す。
+// 控除はマイナス金額で持つ（代車リース代は自動計算の絶対値をマイナスにして揃える）
+function otherItemsForPeriod(drv, from, to) {
+  const adj = drv ? findPayAdj(drv.id, from, to) : null;
+  if (adj) {
+    const items = (adj.items||[]).map(it => ({name: it.name||'', amount: Number(it.amount)||0}));
+    return { items, total: items.reduce((s,it)=>s+it.amount, 0), overridden: true, lease: null };
+  }
+  const lease = drv ? vehicleRentalForPeriod(drv.id, from, to) : {total:0, items:[]};
+  const items = [
+    ...((drv?.other_deductions)||[]).map(od => ({name: od.name||'', amount: Number(od.amount)||0})),
+    ...lease.items.map(it => ({name: `代車リース代（${it.car} ${it.from}〜${it.to}）`, amount: -Math.abs(it.amt)})),
+  ];
+  return { items, total: items.reduce((s,it)=>s+it.amount, 0), overridden: false, lease };
+}
+
 // 車両乗務履歴（日額設定のある代車の貸し出し記録）から、指定した支払集計期間に重なる日数分の
 // リース料を自動計算する。ドライバーが今も使用中（end_date未設定）の場合は「今日まで」を仮の終了日として概算する。
 // 「終了する」操作を待たずに、対象期間に含まれる日数分がそのまま支払集計・支払明細書に反映される。
@@ -8267,8 +8430,8 @@ function runAggPay() {
     const netIncl = netSubtotal + netTax; // 差引合計(税込)＝（税別金額−業務手数料）＋消費税10%
     const extraFeeTotal = sumRecsExtraFees(rows, 'payment'); // 受注入力の追加料金（支払／両方指定分）
     // 車両管理の乗務履歴（日額設定のある代車）から、この集計期間に重なる日数分のリース料を自動計算する
-    const vhLease = vehicleRentalForPeriod(d.id, from, to);
-    const otherTotal = (d.other_deductions||[]).reduce((s,od)=>s+(Number(od.amount)||0),0) - vhLease.total; // その他控除（保険料・家賃など＋代車リース代）
+    const othItems = otherItemsForPeriod(d, from, to);
+    const otherTotal = othItems.total; // その他控除（保険料・家賃など＋代車リース代。期間ごとの上書きがあればそれを使う）
     const takeHome = grossTax+bizFeeWithTax+adminFee+vehRental+extraFeeTotal+otherTotal; // 支払合計金額（お支払い金額）
     gCnt+=cnt; gGrossTax+=grossTax; gTaxAmt+=taxAmt; gTakeHome+=takeHome;
     gBizFee+=bizFee; gNetIncl+=netIncl; gAdminFee+=adminFee; gVehRental+=vehRental; gAdvHw+=advHwSum; gNonTax+=nonTaxSum; gOther+=otherTotal; gGross+=gross;
@@ -8310,7 +8473,10 @@ function runAggPay() {
       <td style="padding:6px 8px;text-align:right">${yen(advHwSum)}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${adminFee<0?'#e05b5b':'inherit'}">${yen(adminFee)}</td>
       <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}${d.lease_company?`<div style="font-size:9.5px;color:var(--text2);font-weight:400">${escHtml(d.lease_company)}</div>`:''}</td>
-      <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="その他控除${nonTaxSum?'＋非課税分'+yen(nonTaxSum):''}${vhLease.items.length?'\n代車リース代: '+vhLease.items.map(it=>`${it.car} ${it.days}日×${yen(it.rate)}=${yen(it.amt)}${it.ongoing?'（使用中・今日まで概算）':''}`).join('\n'):''}">${yen(nonTaxSum + otherTotal)}</td>
+      <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="クリックでこの集計期間の「その他の項目」を編集できます${nonTaxSum?'\n（非課税分 '+yen(nonTaxSum)+' を含む。非課税分はここでは編集できません）':''}\n${othItems.items.length?othItems.items.map(it=>`${it.name}: ${yen(it.amount)}`).join('\n'):'内訳なし'}">
+        <span onclick="event.stopPropagation();openPayAdjM(${d.id})" style="cursor:pointer;text-decoration:underline dotted">${yen(nonTaxSum + otherTotal)}</span>
+        ${othItems.overridden?'<div style="font-size:9px;color:var(--amber-text);font-weight:600">上書き中</div>':''}
+      </td>
       <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--blue);border-left:0.5px solid var(--border)">${yen(takeHome)}</td>
       <td style="padding:6px 8px;white-space:nowrap">
         <button class="btn sml" onclick="openAggDetailFull('payment','${safeKey}')">明細</button>
@@ -19004,6 +19170,26 @@ CREATE TABLE IF NOT EXISTS vehicle_assignments (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS vehicle_assignments_car_idx ON vehicle_assignments (car);
+
+-- 支払明細書「その他の項目」の集計期間ごとの上書き
+-- 行が無ければ drivers.other_deductions（毎月固定の控除）＋vehicle_assignmentsからの代車リース自動計算を使う。
+-- 行があれば items をそのままその期間の「その他の項目」として使う（削除すれば自動計算に戻る）
+CREATE TABLE IF NOT EXISTS pay_adjustments (
+  id bigserial PRIMARY KEY,
+  drv_id bigint NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+  period_from date NOT NULL,   -- 支払集計タブの集計期間（開始）
+  period_to date NOT NULL,     -- 支払集計タブの集計期間（終了）
+  items jsonb NOT NULL DEFAULT '[]',  -- [{name, amount}] 控除はマイナス金額
+  note text,
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE (drv_id, period_from, period_to)
+);
+CREATE INDEX IF NOT EXISTS pay_adjustments_drv_idx ON pay_adjustments(drv_id);
+ALTER TABLE pay_adjustments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "pay_adjustments_select" ON pay_adjustments FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "pay_adjustments_insert" ON pay_adjustments FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "pay_adjustments_update" ON pay_adjustments FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "pay_adjustments_delete" ON pay_adjustments FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
 -- 車両マスタ（自社の代車・リース車の車検・保険期限・稼働状態を管理する「車両管理」タブ用）
 CREATE TABLE IF NOT EXISTS vehicles (
