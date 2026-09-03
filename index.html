@@ -1458,7 +1458,10 @@ try {
           <button id="bCliViewList" style="border:none;padding:6px 14px;cursor:pointer;background:var(--blue);color:#fff;font-weight:bold;font-size:13px;display:flex;align-items:center;justify-content:center;" onclick="setCliView('list')" title="横長表示">▤</button>
         </div>
       </div>
-      <button class="btn pri hide" id="bAddC" onclick="openCliM()">＋ 取引先追加</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn hide" id="bCliParentDetect" onclick="openCliParentM()" title="会社名から本社と支店・営業所の組み合わせを探して、まとめて親子に設定します">🔗 親子を自動判定</button>
+        <button class="btn pri hide" id="bAddC" onclick="openCliM()">＋ 取引先追加</button>
+      </div>
     </div>
     <div id="cliKpi" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
     <div class="cardgrid" id="cliGrid"></div>
@@ -3138,6 +3141,25 @@ try {
   </div>
 </div>
 
+<!-- モーダル: 取引先の親子を自動判定して一括で紐づける -->
+<div class="overlay" id="mCliParent">
+  <div class="modal" style="width:720px;max-width:96vw">
+    <div class="mh">🔗 親子の自動判定 <button class="ibtn" onclick="closeM('mCliParent')">✕</button></div>
+    <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
+      <div style="font-size:11.5px;color:var(--text2);line-height:1.7;margin-bottom:10px">
+        会社名から本社と支店・営業所の組み合わせを探しました。適用すると、支店側の「親会社」が設定され、
+        タスク管理や取引先管理でひとまとまりに表示されます。請求明細書は今までどおり支店ごとに作れます。<br>
+        親会社が未登録の組み合わせは、取引先を新しく1件作ります（名称はここで直せます）。
+      </div>
+      <div id="cliParentList"></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
+        <button class="btn" onclick="closeM('mCliParent')">キャンセル</button>
+        <button class="btn pri" id="cliParentApplyBtn" onclick="applyCliParentGroups()">選択した組み合わせを適用</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: 支払明細書「その他の項目」の期間別上書き -->
 <div class="overlay" id="mPayAdj">
   <div class="modal" style="width:560px;max-width:95vw">
@@ -3446,7 +3468,7 @@ async function applyLogin(data) {
     document.getElementById('tbBdg').innerHTML = `<span class="bdg ${rc}">${rn}</span>`;
     if (me.role==='admin') { document.getElementById('nt4').classList.remove('hide'); document.getElementById('nt5').classList.remove('hide'); }
     const canEd = me.role !== 'viewer';
-    ['bAdd','bAddD','bAddC','bAddPartner','bAddVehicle','bDrvInvite','bBulkChat','bpAddBtn'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
+    ['bAdd','bAddD','bAddC','bCliParentDetect','bAddPartner','bAddVehicle','bDrvInvite','bBulkChat','bpAddBtn'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
   }
   startSess();
   await loadAll();
@@ -5948,6 +5970,208 @@ function drvPayScheduleLabel(d) {
   const partner = d.partner_id ? partnerCompanies.find(p=>p.id===d.partner_id) : null;
   return partner ? partnerPayOutLabel(partner)+'(協)' : payCycleLabel(d.pay_month_offset, d.pay_day);
 }
+/* ===== 取引先の親子（本社⇄支店・営業所）の自動判定 =====
+   「佐川急便株式会社　仙台南営業所」「第一貨物　仙台南支店」のように、支店ごとに1件ずつ
+   登録されている取引先を、会社名の一致で親子にまとめる。
+   判定は法人格（株式会社など）と空白・中黒を除いた「会社名キー」で行い、
+   ひらがな→カタカナ・英字大文字化まで寄せて「タイへイ／タイヘイ」の表記ゆれも拾う。 */
+const CLI_CORP_TOKENS = ['株式会社','有限会社','合同会社','合資会社','（株）','(株)','（有）','(有)','㈱','㈲'];
+const CLI_SEP_RE = /[\s・･,，.。]/;
+// 共通の頭がこの文字数以上あるものだけ同じ会社とみなす。
+// 3文字だと「ティーユートラベル」と「ティーファクトリー」まで繋がってしまうため4文字にしている
+const CLI_HEAD_MIN = 4;
+
+/* 会社名キーを作る。あわせて
+   idx : キーのn文字目が元の名称の何文字目から来たか（親会社名を元の表記のまま切り出すのに使う）
+   cuts: 「ここで区切れる」キー位置（直前に空白・区切り記号・法人格があった位置）        */
+function cliCorpKeyMap(name) {
+  const raw = String(name || '');
+  let key = '', idx = [], cuts = [], sep = true;
+  for (let i = 0; i < raw.length; ) {
+    const tok = CLI_CORP_TOKENS.find(t => raw.startsWith(t, i));
+    if (tok) { i += tok.length; sep = true; continue; }        // 法人格は飛ばす
+    const ch = raw[i];
+    if (CLI_SEP_RE.test(ch)) { i++; sep = true; continue; }    // 空白・区切り記号も飛ばす
+    let c = ch.toUpperCase();
+    if (c >= '\u3041' && c <= '\u3096') c = String.fromCharCode(c.charCodeAt(0) + 0x60); // ひらがな→カタカナ
+    if (sep) { cuts.push(key.length); sep = false; }
+    key += c; idx.push(i); i++;
+  }
+  return { key, idx, cuts, raw };
+}
+function cliCorpKey(name) { return cliCorpKeyMap(name).key; }
+function lcpLen(a, b) { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; }
+
+/* 親会社名の候補を、その取引先の元の表記から切り出す。
+   「佐川急便株式会社　白石店」で頭が4文字（佐川急便）なら「佐川急便株式会社」を返す */
+function cliParentNameGuess(c, headLen) {
+  const m = cliCorpKeyMap(c.name);
+  if (m.key.length <= headLen) return c.name;
+  const guess = m.raw.slice(0, m.idx[headLen]).replace(/[\s・･,，.。]+$/, '').trim();
+  return guess || m.raw.slice(0, headLen);
+}
+
+/* 共通の頭を、全員に共通する区切り位置まで短くする。
+   「第一貨物　仙台東支店」「第一貨物　仙台南支店」は頭が「第一貨物仙台」まで伸びてしまうが、
+   全員が「第一貨物」の後ろで区切れるため、そこまで戻して会社名として正しくする。
+   区切り位置が取れない（K.ismのように区切りが無い）場合は共通部分をそのまま使う */
+function cliShrinkHead(members, lcp) {
+  let best = 0;
+  const cutSets = members.map(c => new Set(cliCorpKeyMap(c.name).cuts));
+  for (let n = lcp; n >= CLI_HEAD_MIN; n--) {
+    if (cutSets.every(set => set.has(n))) { best = n; break; }
+  }
+  return best >= CLI_HEAD_MIN ? best : lcp;
+}
+
+/* 親子候補を洗い出す。
+   会社名キーの共通の頭でまとめ、キーがちょうどその頭と一致する取引先があればそれを親にする
+   （「タイヘイ株式会社」があるなら支店はその子）。無ければ親会社のレコードを新しく作る
+   （「佐川急便株式会社」は未登録なので新規に作る）。既に親が付いている取引先は触らない。 */
+function detectClientParentGroups() {
+  const keyed = clients.filter(c => !c.parent_id)
+    .map(c => ({c, key: cliCorpKey(c.name)}))
+    .filter(x => x.key.length >= CLI_HEAD_MIN)
+    .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+
+  const groups = [];
+  let run = [], head = '';
+  const flush = () => {
+    if (run.length >= 2) {
+      const members = run.map(x => x.c);
+      const headLen = cliShrinkHead(members, head.length);
+      const parent = members.find(c => cliCorpKey(c.name).length === headLen);
+      const children = members.filter(c => c !== parent).sort(clientNoCompare);
+      if (children.length) {
+        const sorted = members.slice().sort(clientNoCompare);
+        groups.push({
+          parentId: parent ? parent.id : null,
+          parentName: parent ? parent.name : cliParentNameGuess(sorted[0], headLen),
+          headLen, children,
+        });
+      }
+    }
+    run = []; head = '';
+  };
+  keyed.forEach(x => {
+    if (!run.length) { run = [x]; head = x.key; return; }
+    const n = lcpLen(head, x.key);
+    if (n >= CLI_HEAD_MIN) { run.push(x); head = head.slice(0, n); }
+    else { flush(); run = [x]; head = x.key; }
+  });
+  flush();
+
+  return groups.sort((a, b) => b.children.length - a.children.length
+    || String(a.parentName).localeCompare(String(b.parentName), 'ja'));
+}
+
+/* --- 親子の自動判定モーダル --- */
+let cliParentGroups = [];
+function openCliParentM() {
+  cliParentGroups = detectClientParentGroups();
+  renderCliParentList();
+  document.getElementById('mCliParent').classList.add('on');
+}
+function renderCliParentList() {
+  const el = document.getElementById('cliParentList');
+  if (!el) return;
+  if (!cliParentGroups.length) {
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text2);font-size:12px">まとめられそうな組み合わせは見つかりませんでした</div>';
+    document.getElementById('cliParentApplyBtn').classList.add('hide');
+    return;
+  }
+  document.getElementById('cliParentApplyBtn').classList.remove('hide');
+  el.innerHTML = cliParentGroups.map((g, gi) => `
+    <div class="card" style="padding:9px 11px;margin-bottom:7px">
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;margin-bottom:6px">
+        <input type="checkbox" class="cliPgChk" data-gi="${gi}" checked style="width:15px;height:15px;cursor:pointer">
+        <span style="font-size:12px;font-weight:600">親会社</span>
+        ${g.parentId
+          ? `<span style="font-size:13px;font-weight:600">${escHtml(g.parentName)}</span>
+             <span class="bdg" style="background:var(--green-bg);color:var(--green-text)">登録済み</span>`
+          : `<input type="text" class="cliPgName" data-gi="${gi}" value="${escHtml(g.parentName)}" style="flex:1;min-width:180px;font-size:13px;font-weight:600">
+             <span class="bdg" style="background:var(--amber-bg);color:var(--amber-text)">新しく作る</span>`}
+      </label>
+      <div style="padding-left:22px;display:flex;flex-direction:column;gap:2px">
+        ${g.children.map((c, ci) => `
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+            <input type="checkbox" class="cliPcChk" data-gi="${gi}" data-ci="${ci}" checked style="width:13px;height:13px;cursor:pointer">
+            <span style="color:var(--text2)">└</span>
+            <span>${escHtml(c.name)}</span>
+            ${c.client_no?`<span style="font-size:10.5px;color:var(--text2)">ID:${escHtml(c.client_no)}</span>`:''}
+          </label>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+async function applyCliParentGroups() {
+  if (!sb) return;
+  // 画面のチェック状態と、書き換えた親会社名を読み取る
+  const plan = [];
+  document.querySelectorAll('.cliPgChk').forEach(chk => {
+    if (!chk.checked) return;
+    const gi = +chk.dataset.gi;
+    const g = cliParentGroups[gi];
+    if (!g) return;
+    const nameEl = document.querySelector(`.cliPgName[data-gi="${gi}"]`);
+    const children = g.children.filter((c, ci) =>
+      document.querySelector(`.cliPcChk[data-gi="${gi}"][data-ci="${ci}"]`)?.checked);
+    if (!children.length) return;
+    const parentName = (nameEl?.value || g.parentName).trim();
+    if (!g.parentId && !parentName) return;
+    plan.push({parentId: g.parentId, parentName, children});
+  });
+  if (!plan.length) { showT('適用する組み合わせが選ばれていません', 'ter'); return; }
+  const newCnt = plan.filter(x => !x.parentId).length;
+  const childCnt = plan.reduce((a, x) => a + x.children.length, 0);
+  if (!confirm(`${plan.length}組・${childCnt}件の取引先に親会社を設定します。${newCnt?`\n（うち${newCnt}件は親会社の取引先を新しく作ります）`:''}\nよろしいですか？`)) return;
+  showLoad(true);
+  try {
+    for (const g of plan) {
+      let pid = g.parentId;
+      if (!pid) {
+        // 親会社が未登録なら、取引先IDを自動採番して作る
+        const {data, error} = await sb.from('clients')
+          .insert({name: g.parentName, client_no: nextIdFor(clients, 'client_no'),
+                   name_kana: autoKana(g.parentName) || null})
+          .select().single();
+        if (error) throw error;
+        clients.push(data);
+        pid = data.id;
+      }
+      const ids = g.children.map(c => c.id);
+      const {error} = await sb.from('clients').update({parent_id: pid}).in('id', ids);
+      if (error) throw error;
+      clients.forEach(c => { if (ids.includes(c.id)) c.parent_id = pid; });
+    }
+    addLog('取引先の親子を一括設定', `${plan.length}組 / ${childCnt}件`);
+    closeM('mCliParent');
+    rebuildCliFilter();
+    renderCli();
+    showT(`${childCnt}件に親会社を設定しました`);
+  } catch(e) { showT('適用エラー: '+e.message, 'ter'); }
+  showLoad(false);
+}
+
+/* 親会社→その支店・営業所の順に並べ替える。
+   絞り込みで親が外れていても、子が残っていれば親を見出しとして出す（ghost）。
+   親子は自動判定でも手動でも2階層で作られるが、孫がいてもcliRootId()で根までたどってまとめる */
+function orderClientsByFamily(list) {
+  const inList = new Set(list.map(c => c.id));
+  const rootIds = [];
+  list.forEach(c => { const r = cliRootId(c.id); if (!rootIds.includes(r)) rootIds.push(r); });
+  const roots = rootIds.map(id => clients.find(x => x.id === id)).filter(Boolean).sort(clientNoCompare);
+  const out = [];
+  roots.forEach(root => {
+    const kids = clients.filter(c => c.id !== root.id && cliRootId(c.id) === root.id)
+                        .filter(c => inList.has(c.id) || inList.has(root.id))
+                        .sort(clientNoCompare);
+    out.push({c: root, depth: 0, childCnt: kids.length, ghost: !inList.has(root.id)});
+    kids.forEach(k => out.push({c: k, depth: 1, childCnt: 0, ghost: false}));
+  });
+  return out;
+}
+
 function renderCli(){
   const grid=document.getElementById('cliGrid');
   if (!grid) return;
@@ -5967,25 +6191,22 @@ function renderCli(){
   const filteredCli=q?clients.filter(c=>nm(c.name).includes(q)||nm(c.short||'').includes(q)):clients;
   if(q&&!filteredCli.length){grid.innerHTML=`<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">該当する取引先が見つかりません</div>`;return;}
 
-  const sortedCli = [...filteredCli].sort((a,b) => {
-    const idA = a.client_no ? parseInt(a.client_no,10) || 999999 : 999999;
-    const idB = b.client_no ? parseInt(b.client_no,10) || 999999 : 999999;
-    return idA - idB;
-  });
+  const sortedCli = orderClientsByFamily(filteredCli);
 
   if (cliViewMode === 'card') {
     grid.className = 'cardgrid';
     grid.style.display = 'grid';
     grid.style.padding = '10px 14px';
-    grid.innerHTML=sortedCli.map(c=>{
+    grid.innerHTML=sortedCli.map(({c,depth,childCnt,ghost})=>{
       const ini=(c.short||c.name||'?').slice(0,2);
       const cnt=recs.filter(r=>r.cli===c.id).length;
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
       const closingLbl=closingDayLabel(c.closing_day);
       const linkedPartner=partnerCompanies.find(pc=>pc.client_id===c.id);
-      return`<div class="card" style="cursor:pointer" title="ダブルクリックで編集" ondblclick="editCli(${c.id})">
+      return`<div class="card" style="cursor:pointer;${depth?'border-left:3px solid var(--blue);margin-left:14px':''}${ghost?';opacity:.6':''}" title="ダブルクリックで編集" ondblclick="editCli(${c.id})">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px"><div class="av cli">${ini}</div>${canE?`<div style="display:flex;gap:1px" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"><button class="ibtn" onclick="editCli(${c.id})">✎</button><button class="ibtn" onclick="delCli(${c.id})">🗑</button></div>`:''}</div>
-        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${c.name}</div>
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${depth?'<span style="color:var(--text2);font-weight:400">└ </span>':''}${c.name}</div>
+        ${childCnt?`<div style="font-size:10.5px;margin-bottom:2px"><span class="bdg" style="background:var(--blue-bg);color:var(--blue-text)">🏢 支店・営業所 ${childCnt}件</span></div>`:''}
         ${c.client_no?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">取引先ID: ${c.client_no}</div>`:''}
         ${c.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${c.person}</div>`:''}
         ${c.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${c.tel}</div>`:'<div style="margin-bottom:5px"></div>'}
@@ -6014,17 +6235,17 @@ function renderCli(){
       </div>
       <div style="width:52px;flex-shrink:0;"></div>
     </div>`;
-    grid.innerHTML=cliHeaderRow+sortedCli.map(c=>{
+    grid.innerHTML=cliHeaderRow+sortedCli.map(({c,depth,childCnt,ghost})=>{
       const ini=(c.short||c.name||'?').slice(0,2);
       const cnt=recs.filter(r=>r.cli===c.id).length;
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
       const closingLbl=closingDayLabel(c.closing_day);
       const linkedPartner=partnerCompanies.find(pc=>pc.client_id===c.id);
-      return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;cursor:pointer" title="ダブルクリックで編集" ondblclick="editCli(${c.id})">
+      return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:${depth?'2px':'6px'};gap:12px;cursor:pointer;${depth?'margin-left:20px;border-left:3px solid var(--blue)':''}${ghost?';opacity:.6':''}" title="ダブルクリックで編集" ondblclick="editCli(${c.id})">
         <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
           <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${c.client_no ? 'ID: ' + c.client_no : 'ID: —'}</div>
-          <div style="width:135px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${c.name}${linkedPartner?` <span title="協力会社: ${escHtml(linkedPartner.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToPartnerFromClient(${linkedPartner.id})" ondblclick="event.stopPropagation()">🔗</span>`:''}</div>
+          <div style="width:135px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${depth?'<span style="color:var(--text2);font-weight:400">└ </span>':''}${c.name}${childCnt?` <span class="bdg" style="background:var(--blue-bg);color:var(--blue-text)">🏢${childCnt}</span>`:''}${linkedPartner?` <span title="協力会社: ${escHtml(linkedPartner.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToPartnerFromClient(${linkedPartner.id})" ondblclick="event.stopPropagation()">🔗</span>`:''}</div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingLbl}</div>
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
           <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${c.fee_rate?`手数料:${c.fee_rate}%`:'—'}</div>
@@ -19366,7 +19587,9 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS submit_rule_type text
   CHECK (submit_rule_type IS NULL OR submit_rule_type IN ('day','month_end','next_month_day','none'));
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS submit_rule_day integer
   CHECK (submit_rule_day IS NULL OR (submit_rule_day BETWEEN 1 AND 31));
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS send_memo text;  -- 送付時の注意書き（タスク管理の一覧に表示）
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS send_memo text;
+-- 親会社（本社）。支店・営業所ごとに1件ずつ登録した取引先を、請求はそのままに一覧上でまとめるために使う
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS parent_id bigint REFERENCES clients(id) ON DELETE SET NULL;  -- 送付時の注意書き（タスク管理の一覧に表示）
 CREATE INDEX IF NOT EXISTS billing_progress_month_idx ON billing_progress(month);
 ALTER TABLE billing_progress ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "billing_progress_select" ON billing_progress FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
