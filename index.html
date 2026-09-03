@@ -5114,7 +5114,7 @@ function goPage(n,el){
   if(n===29){initBillingProgress();loadBillingProgress().then(()=>renderBillingProgress());}
   if(n===31){initTaskTop();}
   if(n===32){initDriverProgress();loadDriverProgress().then(()=>renderDriverProgress());}
-  if(n===33){initPersonalTasks();loadPersonalTasks().then(()=>renderPersonalTasks());}
+  if(n===33){initPersonalTasks();loadPersonalTasks().then(()=>{renderPersonalTasks();markPtSeen();});}
   if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
   if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
   if(n===10){_setDailyListMonth();initMob();}
@@ -5564,6 +5564,29 @@ async function renderDashWarnings(){
     }catch(e){console.warn('renderDashWarnings(スケジュール):',e.message);}
   };
 
+  // 他人から自分あてに来た個人タスクの依頼
+  const checkMyRequests = async () => {
+    try{
+      if(!me) return;
+      await loadPersonalTasks();
+      const mine = ptIncomingRequests();
+      if(!mine.length) return;
+      const seen = ptSeenMaxId();
+      const fresh = mine.filter(t => (+t.id||0) > seen).length;
+      const over  = mine.filter(ptIsOverdue).length;
+      const uname = id => users.find(u=>String(u.id)===String(id))?.name || '';
+      // 依頼者が1人ならその名前を出す（誰から来た依頼か分かるように）
+      const froms = [...new Set(mine.map(t=>uname(t.requester_user_id)).filter(Boolean))];
+      const fromLabel = froms.length === 1 ? `${froms[0]}さんから ` : '';
+      items.push({
+        sev: over ? 'red' : 'amber',
+        icon: '🙋',
+        text: `${fromLabel}自分あての依頼: ${mine.length}件${fresh?`（新着${fresh}件）`:''}${over?` / 期限超過${over}件`:''}`,
+        btn: '個人タスクへ', go: 33, nt: 'nt31',
+      });
+    }catch(e){console.warn('renderDashWarnings(個人タスク):',e.message);}
+  };
+
   const checkGroupChat = async () => {
     try{
       if(!me) return;
@@ -5582,11 +5605,11 @@ async function renderDashWarnings(){
     }catch(e){console.warn('renderDashWarnings(グループチャット):',e.message);}
   };
 
-  await Promise.all([checkBoard(), checkDrivers(), checkDailyReports(), checkSchedules(), checkGroupChat()]);
+  await Promise.all([checkBoard(), checkDrivers(), checkDailyReports(), checkSchedules(), checkGroupChat(), checkMyRequests()]);
 
   // 各タブ固有の警告（未配車・掲示板・バックアップ・支払/入金予定の期限超過・日報未提出・グループチャット未読）も、
   // ダッシュボードの警告一覧に出す条件とタブの赤丸をズレなく揃えるためitemsから一括反映する
-  ['nt0','nt9','nt10','nt14','nt17','nt22','nt30'].forEach(nt => setNavWarnDot(nt, items.some(it=>it.nt===nt)));
+  ['nt0','nt9','nt10','nt14','nt17','nt22','nt30','nt31'].forEach(nt => setNavWarnDot(nt, items.some(it=>it.nt===nt)));
   setNavWarnDot('nt1', items.length>0);
 
   // renderDashが非同期処理の完了前に別の年へ切り替わっている場合、古い結果で上書きしないようにする
@@ -10295,7 +10318,7 @@ async function deleteTask() {
 
 /* ===== 請求・明細書 送付管理（旧タスク管理タブ） =====
    取引先マスタを毎月の行として自動で並べ、請求金額・請求日はシステムの請求データから自動反映する。
-   毎月手で入れるのは「提出日」「Check担当者」など進行状況だけで済むようにしている。
+   毎月手で入れるのは「提出日」「チェック担当者」など進行状況だけで済むようにしている。
    送付方式は取引先マスタ(clients.send_method)を既定値として引き継ぐ（月ごとに上書きも可能）。 */
 /* ===== 取引先名の読み（カナ）自動生成 =====
    アイウエオ順の並び替え用。ひらがな→カタカナ変換と、社名によく出る語の辞書引きで組み立てる。
@@ -10607,9 +10630,9 @@ function renderBillingProgress() {
       <th style="${th}">明細到着日</th>
       <th style="${th}">提出方法</th>
       <th style="${th}">明細提出日</th>
-      <th style="${th}">管理担当者</th>
+      <th style="${th}">担当者</th>
       <th style="${th}">チェック</th>
-      <th style="${th}">Check担当者</th>
+      <th style="${th}">チェック担当者</th>
       <th style="${th};text-align:left">送付メモ</th>
       <th style="${th};text-align:left">備考</th>
     </tr></thead>
@@ -10669,7 +10692,7 @@ function renderBillingProgress() {
         </td>
         <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.submitted_date||''}" onchange="saveBpField(${c.id},'submitted_date',this.value)"></td>
         <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'assignee_user_id',this.value)">${staffOpts(b.assignee_user_id)}</select></td>
-        <td style="${td};text-align:center"><input type="checkbox" ${b.checked?'checked':''} onchange="saveBpField(${c.id},'checked',this.checked)" title="チェック完了" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
+        <td style="${td};text-align:center"><input type="checkbox" ${b.checked?'checked':''} onchange="saveBpField(${c.id},'checked',this.checked)" title="チェックが済んだらレ点を付けます" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
         <td style="${td};text-align:center"><select style="${inp}" onchange="saveBpField(${c.id},'check_user_id',this.value)">${staffOpts(b.check_user_id)}</select></td>
         <td style="${td};max-width:150px">${c.send_memo
           ? `<span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.send_memo)}">${escHtml(c.send_memo)}</span>`
@@ -10919,7 +10942,7 @@ async function carryOverBpSelected() {
   const nextMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}`;
   const names = ids.map(id => clients.find(c=>c.id===id)?.name || id).join('、');
   if (!confirm(`次の${ids.length}件を ${nextMonth} の一覧へ繰り越しますか？\n\n${names}\n\n`
-    + `管理担当者・Check担当者・到着方法・提出方法を引き継ぎます。\n`
+    + `担当者・チェック担当者・到着方法・提出方法を引き継ぎます。\n`
     + `ステータスは「未着手」に戻り、日付・チェック・金額・備考は空になります。\n`
     + `${month} の行はそのまま残ります。`)) return;
   showLoad(true);
@@ -10993,6 +11016,29 @@ async function loadPersonalTasks() {
     personalTasks = data || [];
   } catch(e) { console.warn('loadPersonalTasks:', e.message); personalTasks = []; }
 }
+/* 他人から自分あてに来た依頼＝担当者が自分で、依頼者が自分以外の未完了タスク。
+   自分で自分に立てたメモは依頼ではないので数えない */
+function ptIncomingRequests() {
+  if (!me) return [];
+  return personalTasks.filter(t =>
+    t.status !== 'done' &&
+    String(t.assignee_user_id||'') === String(me.id) &&
+    t.requester_user_id != null &&
+    String(t.requester_user_id) !== String(me.id));
+}
+/* 「新着」の判定は、個人タスクのタブを最後に開いたときに見えていたタスクIDの最大値で行う。
+   端末ごとのlocalStorageに持つだけなので、他の端末では改めて新着として出る */
+const PT_SEEN_KEY = () => `ptSeenMaxId:${me?.id||''}`;
+function ptSeenMaxId() {
+  try { return +localStorage.getItem(PT_SEEN_KEY()) || 0; } catch(e) { return 0; }
+}
+function markPtSeen() {
+  try {
+    const max = personalTasks.reduce((a,t) => Math.max(a, +t.id||0), 0);
+    if (max) localStorage.setItem(PT_SEEN_KEY(), String(max));
+  } catch(e) { /* プライベートブラウズ等でlocalStorageが使えなくても動作に影響させない */ }
+}
+
 const ptIsOverdue = t => !!t.due_date && t.due_date < fmtLocalDate(new Date()) && t.status !== 'done';
 const ptIsToday   = t => t.due_date === fmtLocalDate(new Date()) && t.status !== 'done';
 function renderPersonalTasks() {
@@ -11202,6 +11248,9 @@ function renderTaskTop() {
   const myTasks = personalTasks.filter(t => String(t.assignee_user_id||'') === String(me?.id||''));
   const myOver  = myTasks.filter(ptIsOverdue);
   const myToday = myTasks.filter(ptIsToday);
+  const incoming = ptIncomingRequests();
+  const incomingNew = incoming.filter(t => (+t.id||0) > ptSeenMaxId());
+  const uname = id => users.find(u=>String(u.id)===String(id))?.name || '';
 
   const card = (n, label, warn) => `<div class="kpi-card"><div class="kpi-label">${label}</div>
     <div class="kpi-val" style="color:${warn && n ? 'var(--red)' : 'inherit'}">${n}</div></div>`;
@@ -11220,6 +11269,14 @@ function renderTaskTop() {
   const td = 'padding:5px 8px;border-bottom:0.5px solid var(--border);font-size:11.5px';
   body.innerHTML = `
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">${escHtml(month)} の状況</div>
+    ${incoming.length ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 11px;margin-bottom:10px;border-radius:var(--radius);cursor:pointer;
+        background:var(${incoming.some(ptIsOverdue)?'--red-bg':'--amber-bg'});color:var(${incoming.some(ptIsOverdue)?'--red-text':'--amber-text'})"
+        onclick="goTaskPage(33)" title="クリックで個人タスクを開きます">
+      <span style="font-size:15px">🙋</span>
+      <span style="font-size:12px;font-weight:600">自分あての依頼が ${incoming.length}件 あります</span>
+      ${incomingNew.length?`<span class="bdg" style="background:var(--bg);color:var(--red-text)">新着 ${incomingNew.length}件</span>`:''}
+      <span style="font-size:11px;font-weight:400">${escHtml([...new Set(incoming.map(t=>uname(t.requester_user_id)).filter(Boolean))].join('、'))} から</span>
+    </div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:14px">
       ${card(sB.n + sD.n, '対象（請求＋支払）')}
       ${card(sB.done + sD.done, '完了')}
@@ -11243,7 +11300,8 @@ function renderTaskTop() {
         <div style="font-size:12px;font-weight:600;margin-bottom:5px">👤 自分のタスク</div>
         <div style="font-size:11.5px;color:var(--text2)">未完了 ${myTasks.filter(t=>t.status!=='done').length}件
           ${myOver.length?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${myOver.length}件</span>`:''}
-          ${myToday.length?`<span style="color:var(--amber-text);font-weight:600">　本日 ${myToday.length}件</span>`:''}</div>
+          ${myToday.length?`<span style="color:var(--amber-text);font-weight:600">　本日 ${myToday.length}件</span>`:''}
+          ${incoming.length?`<span style="color:var(--amber-text);font-weight:600">　🙋 依頼 ${incoming.length}件</span>`:''}</div>
       </div>
     </div>
 
@@ -11438,9 +11496,9 @@ function renderDriverProgress() {
       <th style="${th}">提出期限<div style="font-weight:400;color:var(--text2)">ルール</div></th>
       <th style="${th}">提出方法</th>
       <th style="${th}">発行・送付日</th>
-      <th style="${th}">管理担当者</th>
+      <th style="${th}">担当者</th>
       <th style="${th}">チェック</th>
-      <th style="${th}">Check担当者</th>
+      <th style="${th}">チェック担当者</th>
       <th style="${th};text-align:left">送付メモ</th>
       <th style="${th};text-align:left">備考</th>
     </tr></thead>
@@ -11480,7 +11538,7 @@ function renderDriverProgress() {
         </td>
         <td style="${td};text-align:center"><input type="date" style="${inp}" value="${b.submitted_date||''}" onchange="saveDpField(${d.id},'submitted_date',this.value)"></td>
         <td style="${td};text-align:center"><select style="${inp}" onchange="saveDpField(${d.id},'assignee_user_id',this.value)">${staffOpts(b.assignee_user_id)}</select></td>
-        <td style="${td};text-align:center"><input type="checkbox" ${b.checked?'checked':''} onchange="saveDpField(${d.id},'checked',this.checked)" title="チェック完了" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
+        <td style="${td};text-align:center"><input type="checkbox" ${b.checked?'checked':''} onchange="saveDpField(${d.id},'checked',this.checked)" title="チェックが済んだらレ点を付けます" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
         <td style="${td};text-align:center"><select style="${inp}" onchange="saveDpField(${d.id},'check_user_id',this.value)">${staffOpts(b.check_user_id)}</select></td>
         <td style="${td};max-width:150px">${d.send_memo
           ? `<span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.send_memo)}">${escHtml(d.send_memo)}</span>`
@@ -11572,7 +11630,7 @@ async function carryOverDpSelected() {
   const nextMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}`;
   const names = ids.map(id => drvs.find(d=>d.id===id)?.name || id).join('、');
   if (!confirm(`次の${ids.length}社を ${nextMonth} の一覧へ繰り越しますか？\n\n${names}\n\n`
-    + `管理担当者・Check担当者・提出方法を引き継ぎます。\n`
+    + `担当者・チェック担当者・提出方法を引き継ぎます。\n`
     + `ステータスは「未着手」に戻り、日付・チェック・金額・備考は空になります。\n`
     + `${month} の行はそのまま残ります。`)) return;
   showLoad(true);
@@ -11650,7 +11708,7 @@ async function submitDpAdd() {
 function exportDriverProgressCsv() {
   const month = dpCurrentMonth();
   const payMap = dpPaySummary(month);
-  const headers = ['会社','仕入先ID','支払金額','件数','ステータス','提出期限','期限超過','提出方法','発行・送付日','管理担当者','チェック','Check担当者','送付メモ','備考'];
+  const headers = ['会社','仕入先ID','支払金額','件数','ステータス','提出期限','期限超過','提出方法','発行・送付日','担当者','チェック','チェック担当者','送付メモ','備考'];
   const dataF = document.getElementById('dpDataFilter')?.value ?? 'hasdata';
   const rows = [...dpCompanies()]
     .sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999))
@@ -11682,7 +11740,7 @@ function exportBillingProgressCsv() {
   const month = bpCurrentMonth();
   const invMap = bpInvoiceSummary(month);
   // 画面の列順に合わせる
-  const headers = ['取引先','取引先ID','請求金額','件数','請求日','ステータス','提出期限','期限超過','到着方法','明細到着日','提出方法','明細提出日','管理担当者','チェック','Check担当者','送付メモ','備考'];
+  const headers = ['取引先','取引先ID','請求金額','件数','請求日','ステータス','提出期限','期限超過','到着方法','明細到着日','提出方法','明細提出日','担当者','チェック','チェック担当者','送付メモ','備考'];
   // CSVは画面の並び順・絞り込み（実績ありのみ等）に合わせて出力する
   const sortMode = document.getElementById('bpSort')?.value || 'id';
   const sortFn = sortMode === 'name'
@@ -19278,7 +19336,7 @@ CREATE TABLE IF NOT EXISTS billing_progress (
   arrival_method text,                      -- 到着方法（同じ選択肢）
   assignee_user_id text REFERENCES users(id),
   check_user_id text REFERENCES users(id),
-  checked boolean NOT NULL DEFAULT false,   -- Check担当者のチェックが完了したか
+  checked boolean NOT NULL DEFAULT false,   -- チェック担当者のチェックが完了したか
   arrival_date date,      -- 明細到着日（取引先から支払明細が届いた日）
   submitted_date date,    -- 明細提出日（入力するとステータスが自動で送付済になる）
   planned_date date,      -- 提出期限。未設定なら clients の提出ルールから毎月自動計算する
