@@ -2816,7 +2816,6 @@ try {
           <input type="text" id="dSendMemo" placeholder="例: PDFをメール送付後、原本も郵送" title="支払明細書発行の一覧に表示されます">
         </div>
       </div>
-      <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dIsCompany" style="width:auto"> この登録は個人ではなく会社（法人）を支払先とする<br><span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:22px">支払明細書の宛名が「様」ではなく「御中」になります</span></label></div>
       <div class="fld">
         <label>その他の控除項目（保険料・家賃など、複数追加可）</label>
         <div id="dOtherDeductions" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px"></div>
@@ -2888,7 +2887,8 @@ try {
         <div style="font-size:10px;color:var(--text2);margin-top:3px" id="cNameKanaHint">漢字の読みは推定のため、違っていればこの欄を直してください</div>
       </div>
       <div class="fld"><label>親会社（任意・支店や営業所の場合に選びます）</label>
-        <select id="cParent" style="width:100%" title="設定するとタスク管理で親会社ごとにまとめて表示されます"><option value="">なし（親会社として扱う）</option></select>
+        <select id="cParent" style="width:100%" title="設定するとタスク管理で親会社ごとにまとめて表示されます" onchange="onCliParentChange()"><option value="">なし（親会社として扱う）</option></select>
+        <div style="font-size:10px;color:var(--text2);margin-top:3px" id="cParentHint"></div>
       </div>
       <div class="g2">
         <div class="fld"><label>担当者名（任意）</label><input type="text" id="cPerson"></div>
@@ -2972,10 +2972,6 @@ try {
       <div class="g2">
         <div class="fld"><label>支払手数料率（%・任意）</label><input type="number" id="cPayOutFeeRate" placeholder="例: -7.5" step="0.1" title="この会社への支払から差し引く手数料の割合"></div>
         <div class="fld"><label>振込先（任意）</label><input type="text" id="cBank" placeholder="例: 〇〇銀行 〇〇支店 普 1234567"></div>
-      </div>
-      <div style="border-top:0.5px solid var(--border2);margin:12px 0 0;padding-top:10px">
-        <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">支払先枠（個々のドライバー登録がなくても、この会社へ直接支払う受注を入力したい場合に作成します。受注入力のドライバー欄の候補に「御中」宛の支払先として表示されます）</div>
-        <div id="cPayeeArea"></div>
       </div>
       <div style="border-top:0.5px solid var(--border2);margin:12px 0 0;padding-top:10px">
         <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px">この会社から供給を受けているドライバー</div>
@@ -3876,7 +3872,8 @@ function lkDByAssign(car, date) {
 const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkDByAssign(r.car, r.date) || lkD(r.car);
 // 取引先ID・ドライバーIDの新規登録時の自動採番（既存の最大値+1。数値以外は無視）
 function nextIdFor(list, field) {
-  const nums = list.map(x => parseInt(x[field], 10)).filter(n => !isNaN(n));
+  // 「147-3」のような枝番つきIDは本体の147として数える（枝番ぶんで採番が飛ばないように）
+  const nums = list.map(x => parseInt(String(x[field]||'').split('-')[0], 10)).filter(n => !isNaN(n));
   return nums.length ? String(Math.max(...nums) + 1) : '1';
 }
 // 四捨五入（JSのMath.roundは負数の.5をゼロ側に丸めてしまうため、絶対値で丸めてから符号を戻す本来の四捨五入に統一）
@@ -5761,7 +5758,7 @@ async function onLeaseCompanySelChange(){
     populateLeaseCompanyList(name);
   } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
-function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dIsCompany').checked=false;document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dLoginPw','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
 function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');const v=inp.value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
@@ -5786,7 +5783,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.company_client_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dIsCompany').checked=!!d.is_company;document.getElementById('dSubmitRuleType').value=d.submit_rule_type||'none';document.getElementById('dSubmitRuleDay').value=d.submit_rule_day??'';document.getElementById('dSendMemo').value=d.send_memo||'';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.company_client_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';const pEl=document.getElementById('dLoginPw');if(pEl)pEl.value='';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dHideStatement').checked=!!d.hide_statement;document.getElementById('dSubmitRuleType').value=d.submit_rule_type||'none';document.getElementById('dSubmitRuleDay').value=d.submit_rule_day??'';document.getElementById('dSendMemo').value=d.send_memo||'';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -5845,7 +5842,6 @@ async function saveDrv(){
     submit_rule_type:document.getElementById('dSubmitRuleType').value||'none',
     submit_rule_day:(()=>{const t=document.getElementById('dSubmitRuleType').value;if(t!=='day'&&t!=='next_month_day')return null;const v=parseInt(document.getElementById('dSubmitRuleDay').value,10);return (v>=1&&v<=31)?v:null;})(),
     send_memo:document.getElementById('dSendMemo').value.trim()||null,
-    is_company:document.getElementById('dIsCompany').checked,
     closing_day:parseDayInput(document.getElementById('dClosingDay').value),
     pay_month_offset:+document.getElementById('dPayMonthOffset').value||0,
     pay_day:parseDayInput(document.getElementById('dPayDay').value),
@@ -6179,7 +6175,6 @@ function cliRoleBadges(c) {
   if (c.is_lease && k !== 'lease') out.push('🚗 リースもする');
   const sup = cliSuppliedDrivers(c).length;
   if (sup && k !== 'supplier') out.push(`👤 ドライバー供給${sup}名`);
-  else if (sup) out.push(`👤 ${sup}名`);
   if (k !== 'customer' && recs.some(r => r.cli === c.id)) out.push('📄 請求実績あり');
   return out.map(t => `<span class="bdg" style="background:var(--bg2);color:var(--text2);font-weight:500">${t}</span>`).join('');
 }
@@ -6216,8 +6211,11 @@ function renderCli(){
     grid.className = 'cardgrid';
     grid.style.display = 'grid';
     grid.style.padding = '10px 14px';
+    const leaseCarsByName = leaseCarsIndex();
     grid.innerHTML=sortedCli.map(({c,depth,childCnt,ghost})=>{
       const ini=(c.short||c.name||'?').slice(0,2);
+      const supplied=cliSuppliedDrivers(c);
+      const leaseCars=(c.is_lease||cliKindOf(c)==='lease') ? (leaseCarsByName.get(nm(c.name))||[]) : [];
       const cnt=recs.filter(r=>r.cli===c.id).length;
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
       const closingLbl=closingDayLabel(c.closing_day);
@@ -6230,6 +6228,8 @@ function renderCli(){
         ${c.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${c.tel}</div>`:'<div style="margin-bottom:5px"></div>'}
         <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件　締日: ${closingLbl}${c.fee_rate?`　手数料: ${c.fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2)">入金日: ${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
+        ${supplied.length?`<div style="font-size:11.5px;color:var(--text2);margin-top:2px">👤 供給ドライバー（${supplied.length}名）: ${escHtml(supplied.map(d=>d.name).join('、'))}</div>`:''}
+        ${leaseCars.length?`<div style="font-size:11.5px;color:var(--text2);margin-top:2px;cursor:pointer" title="クリックで車両管理を開きます（この会社の車両で絞り込み）" onclick="event.stopPropagation();jumpToVehiclesByLease('${escHtml(c.name).replace(/'/g,"\\'")}')" ondblclick="event.stopPropagation()">🚗 所属車両（${leaseCars.length}台）: ${escHtml(leaseCars.slice(0,6).join('、'))}${leaseCars.length>6?` 他${leaseCars.length-6}台`:''}</div>`:''}
         <div style="font-size:13px;font-weight:600;color:var(--blue);margin-top:4px">${yen(tot_)}</div>
         ${c.note?`<div style="font-size:11px;color:var(--text2);margin-top:4px">${escHtml(c.note)}</div>`:''}
       </div>`;
@@ -6248,6 +6248,7 @@ function renderCli(){
         <div style="width:110px;flex-shrink:0;">入金日</div>
         <div style="width:90px;flex-shrink:0;">手数料</div>
         <div style="width:100px;flex-shrink:0;">電話番号</div>
+        <div style="flex:1;min-width:110px;">供給ドライバー</div>
         <div style="width:65px;text-align:right;flex-shrink:0;">請求件数</div>
         <div style="width:95px;text-align:right;flex-shrink:0;">請求合計</div>
       </div>
@@ -6255,6 +6256,8 @@ function renderCli(){
     </div>`;
     grid.innerHTML=cliHeaderRow+sortedCli.map(({c,depth,childCnt,ghost})=>{
       const ini=(c.short||c.name||'?').slice(0,2);
+      const supplied=cliSuppliedDrivers(c);
+      const supId=`cliDrvList${c.id}`;
       const cnt=recs.filter(r=>r.cli===c.id).length;
       const tot_=recs.filter(r=>r.cli===c.id).reduce((a,r)=>a+totR(r,taxMode),0);
       const closingLbl=closingDayLabel(c.closing_day);
@@ -6268,6 +6271,7 @@ function renderCli(){
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
           <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${c.fee_rate?`手数料:${c.fee_rate}%`:'—'}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${c.tel || '—'}</div>
+          <div id="${supId}" style="flex:1;min-width:110px;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${supplied.length?'cursor:pointer':''}" title="${supplied.length?'クリックで全件表示':''}" ${supplied.length?`onclick="event.stopPropagation();toggleFullText('${supId}')" ondblclick="event.stopPropagation()"`:''}>${supplied.length?escHtml(supplied.map(d=>d.name).join('、')):'—'}</div>
           <div style="width:65px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
           <div style="width:95px;font-size:12.5px;font-weight:600;color:var(--blue);text-align:right;flex-shrink:0;">${yen(tot_)}</div>
         </div>
@@ -6276,7 +6280,7 @@ function renderCli(){
     }).join('');
   }
 }
-function openCliM(kind){switchModalTab('mCli','basic');eCliId=null;cliKanaEdited=false;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo','cNameKana','cBank','cPayOutFeeRate'].forEach(id=>document.getElementById(id).value='');updateCliKanaHint();document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cKind').value=kind||'customer';document.getElementById('cIsLease').checked=(kind==='lease');document.getElementById('cPayOutMonthOffset').value='2';document.getElementById('cPayOutDay').value=dayInputDisplay('end');renderPartnerPayeeArea(null);renderCliSuppliedArea(null);document.getElementById('cDocsBtn').classList.add('hide');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cSendMethod').value='';document.getElementById('cSubmitRuleType').value='none';document.getElementById('cSubmitRuleDay').value='';document.getElementById('cSendMemo').value='';onCliSubmitRuleChange();populateCliParentSel(null,null);document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
+function openCliM(kind){switchModalTab('mCli','basic');eCliId=null;cliKanaEdited=false;['cName','cShort','cPerson','cTel2','cZip','cAddress','cNote','cInvoiceNo','cNameKana','cBank','cPayOutFeeRate'].forEach(id=>document.getElementById(id).value='');updateCliKanaHint();document.getElementById('cCode').value=nextIdFor(clients,'client_no');document.getElementById('cKind').value=kind||'customer';document.getElementById('cIsLease').checked=(kind==='lease');document.getElementById('cPayOutMonthOffset').value='2';document.getElementById('cPayOutDay').value=dayInputDisplay('end');renderCliSuppliedArea(null);document.getElementById('cDocsBtn').classList.add('hide');document.getElementById('cClosingDay').value=dayInputDisplay('end');document.getElementById('cFeeRate').value='';document.getElementById('cSendMethod').value='';document.getElementById('cSubmitRuleType').value='none';document.getElementById('cSubmitRuleDay').value='';document.getElementById('cSendMemo').value='';onCliSubmitRuleChange();populateCliParentSel(null,null);onCliParentChange();document.getElementById('cPayMonthOffset').value='1';document.getElementById('cPayDay').value=dayInputDisplay('end');document.getElementById('mCli').classList.add('on');}
 // 「毎月N日」「翌月N日」のときだけ日にち入力欄を出す（ドライバー登録側）
 function onDrvSubmitRuleChange(){
   const t=document.getElementById('dSubmitRuleType')?.value;
@@ -6287,18 +6291,38 @@ function onDrvSubmitRuleChange(){
 function populateCliParentSel(selfId, current){
   const sel=document.getElementById('cParent');
   if(!sel)return;
-  const cand=clients.filter(c=>c.id!==selfId && c.parent_id!==selfId).sort(clientNoCompare);
+  // selfIdがnull（新規追加）のときに c.parent_id!==null で親会社を全部弾いてしまわないよう、
+  // 循環参照の除外は編集中の会社があるときだけ行う
+  const cand=clients.filter(c=>selfId==null || (c.id!==selfId && c.parent_id!==selfId)).sort(clientNoCompare);
   sel.innerHTML='<option value="">なし（親会社として扱う）</option>'
     +cand.map(c=>`<option value="${c.id}" ${String(c.id)===String(current||'')?'selected':''}>${escHtml(c.name)}${c.client_no?`（ID:${escHtml(c.client_no)}）`:''}</option>`).join('');
   enhanceSelectSearchable('cParent');
   sel.value=current?String(current):'';
 }
+/* 親会社を選んだら会社IDを「親ID-枝番」に振り直す案内を出す。
+   勝手に書き換えず、押したときだけ入れ替える（既存のIDを紙で使っている場合に備えて） */
+function onCliParentChange(){
+  const hint = document.getElementById('cParentHint');
+  const pid = +document.getElementById('cParent').value || null;
+  if (!hint) return;
+  if (!pid) { hint.innerHTML = ''; return; }
+  const suggested = nextBranchNo(pid);
+  const cur = document.getElementById('cCode').value.trim();
+  if (!suggested || cur === suggested) { hint.innerHTML = ''; return; }
+  hint.innerHTML = `会社IDを <b>${escHtml(suggested)}</b> にすると、一覧で親会社とまとめて並びます
+    <button type="button" class="btn sml" style="margin-left:6px" onclick="applyCliBranchNo('${escHtml(suggested)}')">この番号にする</button>`;
+}
+function applyCliBranchNo(no){
+  document.getElementById('cCode').value = no;
+  document.getElementById('cParentHint').innerHTML = '';
+}
+
 // 「毎月N日」「翌月N日」のときだけ日にち入力欄を出す
 function onCliSubmitRuleChange(){
   const t=document.getElementById('cSubmitRuleType').value;
   document.getElementById('cSubmitRuleDayWrap').style.display=(t==='day'||t==='next_month_day')?'':'none';
 }
-function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cNameKana').value=c.name_kana||autoKana(c.name);cliKanaEdited=!!c.name_kana;updateCliKanaHint();document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cSendMethod').value=c.send_method||'';document.getElementById('cSubmitRuleType').value=c.submit_rule_type||'none';document.getElementById('cSubmitRuleDay').value=c.submit_rule_day??'';document.getElementById('cSendMemo').value=c.send_memo||'';onCliSubmitRuleChange();populateCliParentSel(c.id,c.parent_id);document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('cKind').value=cliKindOf(c);document.getElementById('cIsLease').checked=!!c.is_lease;document.getElementById('cBank').value=c.bank||'';document.getElementById('cPayOutMonthOffset').value=c.pay_out_month_offset??2;document.getElementById('cPayOutDay').value=dayInputDisplay(c.pay_out_day);document.getElementById('cPayOutFeeRate').value=c.pay_out_fee_rate||'';renderPartnerPayeeArea(c.id);renderCliSuppliedArea(c.id);document.getElementById('cDocsBtn').classList.remove('hide');document.getElementById('mCli').classList.add('on');}
+function editCli(id){const c=clients.find(x=>x.id===id);if(!c)return;switchModalTab('mCli','basic');eCliId=id;document.getElementById('cCode').value=c.client_no||'';document.getElementById('cName').value=c.name;document.getElementById('cNameKana').value=c.name_kana||autoKana(c.name);cliKanaEdited=!!c.name_kana;updateCliKanaHint();document.getElementById('cShort').value=c.short||'';document.getElementById('cPerson').value=c.person||'';document.getElementById('cTel2').value=c.tel||'';document.getElementById('cZip').value=c.zip||'';document.getElementById('cAddress').value=c.address||'';document.getElementById('cNote').value=c.note||'';document.getElementById('cClosingDay').value=dayInputDisplay(c.closing_day);document.getElementById('cFeeRate').value=c.fee_rate||'';document.getElementById('cSendMethod').value=c.send_method||'';document.getElementById('cSubmitRuleType').value=c.submit_rule_type||'none';document.getElementById('cSubmitRuleDay').value=c.submit_rule_day??'';document.getElementById('cSendMemo').value=c.send_memo||'';onCliSubmitRuleChange();populateCliParentSel(c.id,c.parent_id);onCliParentChange();document.getElementById('cPayMonthOffset').value=c.pay_month_offset??1;document.getElementById('cPayDay').value=dayInputDisplay(c.pay_day);document.getElementById('cInvoiceNo').value=c.invoice_no||'';document.getElementById('cKind').value=cliKindOf(c);document.getElementById('cIsLease').checked=!!c.is_lease;document.getElementById('cBank').value=c.bank||'';document.getElementById('cPayOutMonthOffset').value=c.pay_out_month_offset??2;document.getElementById('cPayOutDay').value=dayInputDisplay(c.pay_out_day);document.getElementById('cPayOutFeeRate').value=c.pay_out_fee_rate||'';renderCliSuppliedArea(c.id);document.getElementById('cDocsBtn').classList.remove('hide');document.getElementById('mCli').classList.add('on');}
 async function delCli(id){
   if(!confirm('削除しますか？'))return;
   try{
@@ -6385,9 +6409,6 @@ function toggleFullText(id) {
     el.dataset.expanded = '1';
   }
 }
-/* ===== 会社マスタの支払先枠 =====
-   個々のドライバー登録が無くても、その会社へ直接支払う受注を入力できるようにするための
-   「御中」宛のドライバーレコード。受注入力のドライバー欄の候補に出る */
 // この会社から供給を受けているドライバーの一覧（会社モーダルの支払設定タブに出す）
 function renderCliSuppliedArea(clientId) {
   const el = document.getElementById('cSuppliedArea');
@@ -6397,53 +6418,6 @@ function renderCliSuppliedArea(clientId) {
   if (!list.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text2)">なし</div>'; return; }
   el.innerHTML = `<div style="font-size:11.5px;line-height:1.8">${list.map(d =>
     `<span style="cursor:pointer;color:var(--blue);text-decoration:underline dotted;margin-right:10px" onclick="closeM('mCli');goPage(2,document.getElementById('nt2'));setTimeout(()=>editDrv(${d.id}),80)">${escHtml(d.name)}${d.supplier_id?`(${escHtml(d.supplier_id)})`:''}</span>`).join('')}</div>`;
-}
-function findPartnerPayeeDriver(clientId) {
-  return drvs.find(d => d.company_client_id === clientId && d.is_company) || null;
-}
-function renderPartnerPayeeArea(clientId) {
-  const el = document.getElementById('cPayeeArea');
-  if (!el) return;
-  if (clientId === null) {
-    el.innerHTML = '<div style="font-size:11px;color:var(--text2)">（保存後に作成できます）</div>';
-    return;
-  }
-  const payee = findPartnerPayeeDriver(clientId);
-  if (payee) {
-    el.innerHTML = `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg2);border-radius:var(--radius)">
-      <span style="font-size:11.5px">💴 支払先: ${escHtml(payee.name)}　御中${payee.supplier_id?`（ID:${escHtml(payee.supplier_id)}）`:''}</span>
-      <button type="button" class="btn sml" style="margin-left:auto" onclick="jumpToPayeeDriver(${payee.id})">開く</button>
-    </div>`;
-  } else {
-    el.innerHTML = `<div style="display:flex;align-items:center;gap:6px">
-      <span style="font-size:11.5px;color:var(--text2)">未作成</span>
-      <button type="button" class="btn sml" style="margin-left:auto" onclick="createPayeeDriverFromPartner(${clientId})">＋ 支払先枠を作る</button>
-    </div>`;
-  }
-}
-async function createPayeeDriverFromPartner(clientId) {
-  const c = lkCli(clientId); if (!c) return;
-  if (!confirm(`「${c.name}」宛の支払先枠を作成しますか？\n受注入力のドライバー欄に「御中」宛の支払先として表示されます。`)) return;
-  showLoad(true);
-  try {
-    const {data, error} = await sb.from('drivers').insert({
-      name: c.name, company: c.name, company_client_id: c.id, cars: [],
-      is_company: true, supplier_id: nextIdFor(drvs, 'supplier_id'),
-    }).select().single();
-    if (error) throw error;
-    drvs.push(data);
-    invalidateDriverIndexes();
-    addLog('支払先枠を作成', c.name);
-    renderPartnerPayeeArea(clientId);
-    renderDrv();
-    showT('支払先枠を作成しました');
-  } catch(e) { showT('作成エラー: '+e.message, 'ter'); }
-  showLoad(false);
-}
-function jumpToPayeeDriver(drvId) {
-  closeM('mCli');
-  goPage(2, document.getElementById('nt2'));
-  setTimeout(() => editDrv(drvId), 80);
 }
 
 /* ===== 協力会社の添付書類 ===== */
@@ -7884,11 +7858,11 @@ async function savePayAdj() {
   const items = payAdjItems.map(it => ({name: it.name, amount: Number(it.amount)||0}));
   try {
     const {data, error} = await sb.from('pay_adjustments')
-      .upsert({drv_id: payAdjDrvId, period_from: payAdjFrom, period_to: payAdjTo, items,
+      .upsert({cli_id: payAdjDrvId, period_from: payAdjFrom, period_to: payAdjTo, items,
                updated_at: new Date().toISOString()}, {onConflict: 'drv_id,period_from,period_to'})
       .select().single();
     if (error) throw error;
-    payAdjustments = payAdjustments.filter(a => !(String(a.drv_id)===String(payAdjDrvId) && a.period_from===payAdjFrom && a.period_to===payAdjTo));
+    payAdjustments = payAdjustments.filter(a => !(String(a.cli_id)===String(payAdjDrvId) && a.period_from===payAdjFrom && a.period_to===payAdjTo));
     payAdjustments.push(data);
     closeM('mPayAdj');
     showT('保存しました');
@@ -8033,9 +8007,9 @@ async function loadPayAdjustments() {
 }
 
 // 集計期間はドライバーごとに変わらない（画面の集計期間ピッカーの値）ため、期間そのものをキーにする
-function findPayAdj(drvId, from, to) {
+function findPayAdj(cliId, from, to) {
   return (payAdjustments||[]).find(a =>
-    String(a.drv_id) === String(drvId) && a.period_from === (from||'') && a.period_to === (to||'')) || null;
+    String(a.cli_id) === String(cliId) && a.period_from === (from||'') && a.period_to === (to||'')) || null;
 }
 
 // その期間の「その他の項目」の内訳。上書きがあればそれを、無ければ自動計算した既定値を返す。
@@ -10392,13 +10366,28 @@ const kanaNeedsFix = k => /[一-鿿]/.test(k || '');
 const clientKanaKey = c => (c.name_kana && c.name_kana.trim()) ? autoKana(c.name_kana) : autoKana(c.name);
 // 取引先IDは「1, 10, 100, 11」のようにゼロ埋めされていないため、数値として比較する
 // （文字列比較だと 1→10→100→11 の順になり、会社一覧の並びと食い違う）
+/* 会社IDは「147」（親・単独）と「147-3」（親147の3番目の支店）の2つの形をとる。
+   本体番号→枝番の順で比べ、親を必ず支店より先に並べる。
+   英字混在・未設定のIDは数値IDの後ろにまとめる */
+function parseClientNo(no) {
+  const m = /^(\d+)(?:-(\d+))?$/.exec(String(no||'').trim());
+  return m ? {main: parseInt(m[1],10), branch: m[2] ? parseInt(m[2],10) : 0} : null;
+}
 function clientNoCompare(a, b) {
-  const na = /^\d+$/.test(a.client_no||'') ? parseInt(a.client_no,10) : null;
-  const nb = /^\d+$/.test(b.client_no||'') ? parseInt(b.client_no,10) : null;
-  if (na !== null && nb !== null) return na - nb;
-  if (na !== null) return -1;   // 数値IDを先に、英字混在・未設定を後ろに
-  if (nb !== null) return 1;
+  const pa = parseClientNo(a.client_no), pb = parseClientNo(b.client_no);
+  if (pa && pb) return pa.main - pb.main || pa.branch - pb.branch;
+  if (pa) return -1;   // 数値IDを先に、英字混在・未設定を後ろに
+  if (pb) return 1;
   return (a.client_no||'zzz').localeCompare(b.client_no||'zzz', 'ja');
+}
+// 支店を追加したときの次の枝番（親ID-N）。既に使われている枝番の最大＋1
+function nextBranchNo(parentId) {
+  const parent = lkCli(parentId);
+  const main = parseClientNo(parent?.client_no)?.main;
+  if (main == null) return '';
+  const used = clients.filter(c => c.parent_id === parentId)
+    .map(c => parseClientNo(c.client_no)).filter(x => x && x.main === main).map(x => x.branch);
+  return `${main}-${(used.length ? Math.max(...used) : 0) + 1}`;
 }
 
 const BP_SEND_LABEL = {mail:'メール', fax:'FAX', post:'郵送', hand:'手渡し', web:'Web', mail_post:'メール＋郵送'};
@@ -11296,7 +11285,7 @@ function renderTaskTop() {
    請求書側(billing_progress)と同じ考え方だが、対象がドライバーのため別テーブル(driver_progress)を使う
    ============================================================ */
 let driverProgress = [];
-const dpRow = drvId => driverProgress.find(d => String(d.drv_id) === String(drvId));
+const dpRow = cliId => driverProgress.find(d => String(d.cli_id) === String(cliId));
 function dpCurrentMonth() {
   const el = document.getElementById('dpMonth');
   if (el?.value) return el.value;
@@ -11330,21 +11319,19 @@ async function loadDriverProgress() {
     driverProgress = data || [];
   } catch(e) { console.warn('loadDriverProgress:', e.message); driverProgress = []; }
 }
-// 支払明細書の発行先は会社単位（協力会社）。個人ドライバーは一覧に出さない
+/* 支払明細書の発行先は会社単位。会社マスタ(clients)のうち、
+   ドライバーを供給してくれている会社と、協力会社・自社支店・リース会社として登録した会社を出す。
+   （ドライバー管理には個人しか置かないため、会社はすべてこちらで扱う） */
 function dpCompanies() {
-  return drvs.filter(d => d.is_company && d.status !== 'terminated');
+  return clients.filter(c => ['supplier','lease','branch'].includes(cliKindOf(c)) || cliSuppliedDrivers(c).length);
 }
-// 実績を会社単位に寄せる。個人ドライバーの実績は、その人が所属する協力会社に合算する
+// 実績を会社単位に寄せる。個人ドライバーの実績は、その人の所属会社に合算する
 // （所属が無い個人の分はどの会社にも積まない）
 function dpCompanyIdOf(drv) {
   if (!drv) return null;
-  if (drv.is_company) return drv.id;
-  if (drv.company_client_id != null) {
-    const co = dpCompanies().find(c => c.company_client_id === drv.company_client_id);
-    if (co) return co.id;
-  }
+  if (drv.company_client_id != null) return drv.company_client_id;
   if (drv.company) {
-    const co = dpCompanies().find(c => nm(c.name) === nm(drv.company));
+    const co = clients.find(c => nm(c.name) === nm(drv.company));
     if (co) return co.id;
   }
   return null;
@@ -11568,7 +11555,7 @@ async function deleteDpSelected() {
     + (skipped ? `\n\n※ 選択中の${skipped}社は支払実績があるため削除されません。` : ''))) return;
   showLoad(true);
   try {
-    const {error} = await sb.from('driver_progress').delete().eq('month', dpCurrentMonth()).in('drv_id', manualIds);
+    const {error} = await sb.from('driver_progress').delete().eq('month', dpCurrentMonth()).in('cli_id', manualIds);
     if (error) throw error;
     driverProgress = driverProgress.filter(b => !manualIds.includes(+b.drv_id));
     renderDriverProgress();
@@ -11602,7 +11589,7 @@ async function carryOverDpSelected() {
         updated_at: new Date().toISOString(),
       };
     });
-    const {error} = await sb.from('driver_progress').upsert(rows, { onConflict: 'month,drv_id' });
+    const {error} = await sb.from('driver_progress').upsert(rows, { onConflict: 'month,cli_id' });
     if (error) throw error;
     showT(`${ids.length}社を ${nextMonth} へ繰り越しました`);
     toggleDpRowAll(false);
@@ -11648,7 +11635,7 @@ async function submitDpAdd() {
   showLoad(true);
   try {
     const rows = ids.map(drv_id => ({ month, drv_id, manual: true, updated_at: new Date().toISOString() }));
-    const {data, error} = await sb.from('driver_progress').upsert(rows, { onConflict: 'month,drv_id' }).select();
+    const {data, error} = await sb.from('driver_progress').upsert(rows, { onConflict: 'month,cli_id' }).select();
     if (error) throw error;
     (data||[]).forEach(r => {
       const idx = driverProgress.findIndex(b => String(b.drv_id) === String(r.drv_id));
@@ -19088,7 +19075,8 @@ CREATE TABLE IF NOT EXISTS clients (
   closing_day text DEFAULT 'end', fee_rate numeric DEFAULT 0,
   zip text, address text,
   pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end',
-  invoice_no text, client_no text UNIQUE,
+  invoice_no text,
+  client_no text UNIQUE,  -- 表示・並び替え用の会社ID。支店は「親ID-枝番」（例: 147-3）で持つ
   send_method text, -- 請求書の既定の送付方式（タスク管理タブで毎月の既定値として使う）
   name_kana text,   -- 会社名の読み（アイウエオ順の並び替え用）。未入力なら名称から自動生成した読みを使う
   -- ここから下は、旧 partner_companies（協力会社管理）を統合したときに合流した項目。
@@ -19144,7 +19132,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   company_client_id bigint REFERENCES clients(id) ON DELETE SET NULL, -- 所属会社（会社マスタへの直接紐づけ。companyは表示・集計用の複製）
   partner_id bigint, -- 統合前の協力会社ID。参照はしていないが切り戻し用に残している
   hide_statement boolean NOT NULL DEFAULT false,
-  is_company boolean NOT NULL DEFAULT false,
+  is_company boolean NOT NULL DEFAULT false,  -- 旧：会社を支払先とするドライバーレコード。2026-09に会社マスタへ移し、現在は常にfalse
   email text,           -- LINE未連携時の通知先メールアドレス
   line_user_id text,    -- LINE通知の宛先（webhook経由で連携コード照合時に自動設定）
   line_link_code text,  -- ドライバーがLINE公式アカウントに送信する連携コード
@@ -19169,15 +19157,15 @@ CREATE INDEX IF NOT EXISTS vehicle_assignments_car_idx ON vehicle_assignments (c
 -- 行があれば items をそのままその期間の「その他の項目」として使う（削除すれば自動計算に戻る）
 CREATE TABLE IF NOT EXISTS pay_adjustments (
   id bigserial PRIMARY KEY,
-  drv_id bigint NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+  cli_id bigint NOT NULL REFERENCES clients(id) ON DELETE CASCADE,  -- 対象の会社（会社マスタ）
   period_from date NOT NULL,   -- 支払集計タブの集計期間（開始）
   period_to date NOT NULL,     -- 支払集計タブの集計期間（終了）
   items jsonb NOT NULL DEFAULT '[]',  -- [{name, amount}] 控除はマイナス金額
   note text,
   updated_at timestamptz DEFAULT now(),
-  UNIQUE (drv_id, period_from, period_to)
+  UNIQUE (cli_id, period_from, period_to)
 );
-CREATE INDEX IF NOT EXISTS pay_adjustments_drv_idx ON pay_adjustments(drv_id);
+CREATE INDEX IF NOT EXISTS pay_adjustments_cli_idx ON pay_adjustments(cli_id);
 ALTER TABLE pay_adjustments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "pay_adjustments_select" ON pay_adjustments FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 CREATE POLICY "pay_adjustments_insert" ON pay_adjustments FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
