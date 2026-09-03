@@ -1501,9 +1501,12 @@ try {
           <option value="">すべて表示</option>
         </select>
       </div>
-      <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn hide" id="bImportCars" onclick="importUnregisteredCars()" title="ドライバー登録にあって車両管理に無い車番をまとめて登録します">↓ 未登録の車番を取り込む</button>
+        <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
+      </div>
     </div>
-    <div id="vehicleKpi" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+    <div id="vehicleKpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
     <div id="vehicleMismatchArea" style="padding:0 14px"></div>
     <div style="padding:10px 14px" id="vehicleList"></div>
   </div>
@@ -3074,119 +3077,81 @@ try {
   </div>
 </div>
 
-<!-- モーダル: 車両登録・編集（車両管理タブ） -->
+<!-- モーダル: 車両カルテ（1台ぶんの登録内容と使用者・乗務履歴を1画面にまとめたもの） -->
 <div class="overlay" id="mVehicle">
-  <div class="modal" style="width:440px">
-    <div class="mh" id="mVehicleH">車両 追加・編集 <button class="ibtn" onclick="closeM('mVehicle')">✕</button></div>
-    <div class="fld"><label>車番</label><input type="text" id="vCar" list="vCarSuggestList" placeholder="例: 仙台480れ141（ドライバー登録済みの車番は候補に出ます）"><datalist id="vCarSuggestList"></datalist></div>
-    <div class="g2">
-      <div class="fld"><label>状態</label>
-        <select id="vStatus" style="width:100%">
-          <option value="active">稼働中</option>
-          <option value="scrapped">廃車</option>
-        </select>
-      </div>
-      <div class="fld"><label>種別</label>
-        <select id="vType" style="width:100%" onchange="onVehicleTypeChange()">
-          <option value="unclassified" disabled>未分類（要確認）</option>
-          <option value="company">自社所有</option>
-          <option value="brought">持ち込み（ドライバー所有）</option>
-          <option value="lease">リース</option>
-        </select>
-      </div>
-    </div>
-    <div class="fld" id="vLeaseCompanyWrap" style="display:none">
-      <label>リース会社</label>
-      <select id="vLeaseCompany" style="width:100%" onchange="onVehicleLeaseSelChange()"></select>
-    </div>
-    <div class="fld"><label>日額リース料（円・任意）</label><input type="number" id="vDailyRate" placeholder="例: 1500"></div>
-    <div style="font-size:10.5px;color:var(--text2);margin:8px 0 4px">車検・保険はドライバーの書類提出（車検証・自賠責・任意保険）と自動で連動します。ここで直接修正した場合は、現在の使用ドライバーの提出書類側にも反映されます。</div>
-    <div class="g2">
-      <div class="fld"><label>車検満了日（任意）</label><input type="date" id="vShakenExpiry"></div>
-      <div class="fld"><label>自賠責保険満了日（任意）</label><input type="date" id="vJibaiExpiry"></div>
-    </div>
-    <div class="fld"><label>任意保険満了日（任意）</label><input type="date" id="vNiniExpiry"></div>
-    <div class="fld"><label>備考（任意）</label><textarea id="vNote" rows="3" style="width:100%;resize:vertical"></textarea></div>
-    <div class="mfoot"><button class="btn" onclick="closeM('mVehicle')">キャンセル</button><button class="btn pri" onclick="saveVehicle()">保存</button></div>
-  </div>
-</div>
-
-<!-- モーダル: 車両乗務履歴（車番ごとに過去〜現在の使用ドライバーを記録） -->
-<div class="overlay" id="mVehicleHist">
-  <div class="modal" style="width:520px">
-    <div class="mh" id="mVehicleHistH">車両乗務履歴 <button class="ibtn" onclick="closeM('mVehicleHist')">✕</button></div>
-    <div style="padding:12px 14px;max-height:75vh;overflow-y:auto">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">この車番を過去〜現在誰が使用したかを記録します。受注入力・請求明細の自動判定（車番→ドライバー）には影響しません。車番とドライバーの紐付け自体は従来通りドライバー登録で管理してください。</div>
-      <div id="vhCurrentArea" style="margin-bottom:12px"></div>
-      <div style="border-top:0.5px solid var(--border2);padding-top:10px">
-        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">新しい乗務を記録</div>
-        <div class="fld"><label>ドライバー</label>
-          <input type="hidden" id="vhDrvId">
-          <input type="text" id="vhDrvText" list="vhDrvList" placeholder="ドライバー名を入力…（候補から選択）" autocomplete="off" oninput="onVhDrvTextInput()" style="width:100%">
-          <datalist id="vhDrvList"></datalist>
-        </div>
-        <div class="g2">
-          <div class="fld"><label>開始日</label><input type="date" id="vhStart" style="width:100%"></div>
-          <div class="fld"><label>終了日（任意・分かっていれば）</label><input type="date" id="vhEnd" style="width:100%"></div>
-        </div>
-        <div class="fld"><label>日額リース料（円・任意。自社の代車など）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
-        <div class="fld"><label>備考（任意）</label><input type="text" id="vhNote" style="width:100%"></div>
-        <button class="btn pri sml" onclick="addVehicleAssignment()">＋ 記録する</button>
-      </div>
-      <div style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px">
-        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">履歴</div>
-        <div id="vhHistList"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- モーダル: 取引先の親子を自動判定して一括で紐づける -->
-<div class="overlay" id="mCliParent">
-  <div class="modal" style="width:720px;max-width:96vw">
-    <div class="mh">🔗 親子の自動判定 <button class="ibtn" onclick="closeM('mCliParent')">✕</button></div>
+  <div class="modal" style="width:620px;max-width:96vw">
+    <div class="mh" id="mVehicleH">車両カルテ <button class="ibtn" onclick="closeM('mVehicle')">✕</button></div>
     <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
-      <div style="font-size:11.5px;color:var(--text2);line-height:1.7;margin-bottom:10px">
-        会社名から本社と支店・営業所の組み合わせを探しました。適用すると、支店側の「親会社」が設定され、
-        タスク管理や取引先管理でひとまとまりに表示されます。請求明細書は今までどおり支店ごとに作れます。<br>
-        親会社が未登録の組み合わせは、取引先を新しく1件作ります（名称はここで直せます）。
-      </div>
-      <div id="cliParentList"></div>
-      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
-        <button class="btn" onclick="closeM('mCliParent')">キャンセル</button>
-        <button class="btn pri" id="cliParentApplyBtn" onclick="applyCliParentGroups()">選択した組み合わせを適用</button>
-      </div>
-    </div>
-  </div>
-</div>
 
-<!-- モーダル: 支払明細書「その他の項目」の期間別上書き -->
-<div class="overlay" id="mPayAdj">
-  <div class="modal" style="width:560px;max-width:95vw">
-    <div class="mh" id="mPayAdjH">その他の項目 <button class="ibtn" onclick="closeM('mPayAdj')">✕</button></div>
-    <div style="padding:12px 14px;max-height:75vh;overflow-y:auto">
-      <div id="payAdjPeriod" style="font-size:11.5px;color:var(--text2);margin-bottom:4px"></div>
-      <div id="payAdjState" style="font-size:11px;margin-bottom:10px"></div>
-      <div id="payAdjList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
-      <div style="display:flex;gap:5px;margin-bottom:10px">
-        <input type="text" id="payAdjName" placeholder="名称（例: 代車リース代）" style="flex:2">
-        <input type="number" id="payAdjAmt" placeholder="金額（控除は -5000）" step="1" style="flex:1">
-        <button class="btn" onclick="addPayAdjItem()">＋ 追加</button>
+      <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:6px">基本</div>
+      <div class="fld"><label>車番</label><input type="text" id="vCar" list="vCarSuggestList" placeholder="例: 仙台480れ141（ドライバー登録済みの車番は候補に出ます）" style="width:100%"><datalist id="vCarSuggestList"></datalist></div>
+      <div class="g2">
+        <div class="fld"><label>状態</label>
+          <select id="vStatus" style="width:100%">
+            <option value="active">稼働中</option>
+            <option value="scrapped">廃車</option>
+          </select>
+        </div>
+        <div class="fld"><label>種別</label>
+          <select id="vType" style="width:100%" onchange="onVehicleTypeChange()">
+            <option value="unclassified" disabled>未分類（要確認）</option>
+            <option value="company">自社所有</option>
+            <option value="brought">持ち込み（ドライバー所有）</option>
+            <option value="lease">リース</option>
+          </select>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;border-top:0.5px solid var(--border2);padding-top:9px;font-size:12px">
-        <span>この期間の「その他」合計</span>
-        <b id="payAdjTotal" style="font-size:14px"></b>
+      <div class="fld" id="vLeaseCompanyWrap" style="display:none">
+        <label>リース会社</label>
+        <select id="vLeaseCompany" style="width:100%" onchange="onVehicleLeaseSelChange()"></select>
       </div>
-      <div style="font-size:10.5px;color:var(--text2);margin-top:9px;line-height:1.6">
-        ここで保存した内訳は、この集計期間の支払集計・支払明細書にだけ反映されます。<br>
-        ドライバー登録の「その他の控除項目」（毎月固定分）と代車リース代の自動計算は変更しません。<br>
-        「自動計算に戻す」を押すと上書きを消し、元の自動計算に戻ります。
+      <div class="fld"><label>日額リース料（円・任意。自社の代車として貸す場合）</label><input type="number" id="vDailyRate" placeholder="例: 1500" style="width:100%"></div>
+
+      <div style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px">
+        <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">車検・保険の期限</div>
+        <div style="font-size:10.5px;color:var(--text2);margin-bottom:6px">ドライバーの書類提出（車検証・自賠責・任意保険）と自動で連動します。ここで直接修正した場合は、現在の使用ドライバーの提出書類側にも反映されます。</div>
+        <div class="g2">
+          <div class="fld"><label>車検満了日（任意）</label><input type="date" id="vShakenExpiry" style="width:100%"></div>
+          <div class="fld"><label>自賠責保険満了日（任意）</label><input type="date" id="vJibaiExpiry" style="width:100%"></div>
+        </div>
+        <div class="fld"><label>任意保険満了日（任意）</label><input type="date" id="vNiniExpiry" style="width:100%"></div>
       </div>
-      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
-        <button class="btn" id="payAdjResetBtn" onclick="resetPayAdj()">↺ 自動計算に戻す</button>
-        <button class="btn" onclick="closeM('mPayAdj')">キャンセル</button>
-        <button class="btn pri" onclick="savePayAdj()">保存</button>
+
+      <div class="fld" style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px"><label>備考（任意）</label><textarea id="vNote" rows="2" style="width:100%;resize:vertical"></textarea></div>
+
+      <div class="mfoot" style="margin-top:6px"><button class="btn" onclick="closeM('mVehicle')">キャンセル</button><button class="btn pri" onclick="saveVehicle()">保存</button></div>
+
+      <!-- 使用者・乗務履歴。車番が確定している（＝保存済みの）車両でだけ操作できる -->
+      <div id="vhSection" style="border-top:0.5px solid var(--border);margin-top:14px;padding-top:12px">
+        <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">使用者・乗務履歴</div>
+        <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">この車を過去〜現在誰が使用したかを記録します。受注入力・請求明細の自動判定（車番→ドライバー）には影響しません。車番とドライバーの紐付け自体はドライバー登録で管理してください。</div>
+        <div id="vhCurrentArea" style="margin-bottom:12px"></div>
+        <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px">
+          <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">新しい乗務を記録</div>
+          <div class="fld"><label>ドライバー</label>
+            <input type="hidden" id="vhDrvId">
+            <input type="text" id="vhDrvText" list="vhDrvList" placeholder="ドライバー名を入力…（候補から選択）" autocomplete="off" oninput="onVhDrvTextInput()" style="width:100%">
+            <datalist id="vhDrvList"></datalist>
+          </div>
+          <div class="g2">
+            <div class="fld"><label>開始日</label><input type="date" id="vhStart" style="width:100%"></div>
+            <div class="fld"><label>終了日（任意・分かっていれば）</label><input type="date" id="vhEnd" style="width:100%"></div>
+          </div>
+          <div class="g2">
+            <div class="fld"><label>日額リース料（円・任意）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
+            <div class="fld"><label>備考（任意）</label><input type="text" id="vhNote" style="width:100%"></div>
+          </div>
+          <button class="btn pri sml" onclick="addVehicleAssignment()">＋ 記録する</button>
+        </div>
+        <div style="margin-top:12px">
+          <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">履歴</div>
+          <div id="vhHistList"></div>
+        </div>
       </div>
+      <div id="vhSectionHint" style="display:none;border-top:0.5px solid var(--border);margin-top:14px;padding-top:12px;font-size:11.5px;color:var(--text2)">
+        使用者・乗務履歴は、この車両を保存してから記録できます。
+      </div>
+
     </div>
   </div>
 </div>
@@ -3468,7 +3433,7 @@ async function applyLogin(data) {
     document.getElementById('tbBdg').innerHTML = `<span class="bdg ${rc}">${rn}</span>`;
     if (me.role==='admin') { document.getElementById('nt4').classList.remove('hide'); document.getElementById('nt5').classList.remove('hide'); }
     const canEd = me.role !== 'viewer';
-    ['bAdd','bAddD','bAddC','bCliParentDetect','bAddPartner','bAddVehicle','bDrvInvite','bBulkChat','bpAddBtn'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
+    ['bAdd','bAddD','bAddC','bCliParentDetect','bAddPartner','bAddVehicle','bImportCars','bDrvInvite','bBulkChat','bpAddBtn'].forEach(bid => { const el=document.getElementById(bid); if(el) el.classList.toggle('hide',!canEd); });
   }
   startSess();
   await loadAll();
@@ -5910,6 +5875,7 @@ async function saveDrv(){
         }catch(e2){showT(`ドライバーは登録しましたが、ログイン作成に失敗しました: ${e2.message}（ユーザー管理から追加してください）`,'ter');}
       }
     }
+    await syncVehiclesFromDriverCars(pendTags);  // 車両管理を車両の唯一の台帳に保つ
     closeM('mDrv');renderDrv();renderInv();
     refreshPayAggIfVisible(); // 支払明細書作成タブから開いた場合、その場で集計テーブルにも反映する
     if(createLogin && createdInitialPw && users.find(u=>u.id===loginId)){showT('ドライバーとログインを登録しました');showLoginCreatedInfo(loginId,createdInitialPw);}
@@ -7724,20 +7690,83 @@ function getAllRegisteredCarNumbers() {
   });
   return [...set].sort();
 }
-// ドライバーには登録済みだが車両管理(vehicles)にまだ登録されていない車番。
-// 1台の車がフル表記・略式番号の両方でdrivers.carsに入っていることがあるため、
-// どちらか一方でもvehiclesに登録済みならその車は「登録済み」として扱う
+/* ドライバーには登録済みだが車両管理(vehicles)にまだ無い車番。
+   台帳に入れるのは稼働中ドライバーのフル表記の車番だけにする。
+   数字だけの略式車番は同じ車の別表記であることが多く、解約済みドライバーの車番は
+   コムトラからの引き継ぎ分に重複が残っているため、どちらも台帳には入れない。 */
 function getUnregisteredCarNumbers() {
   const registered = new Set(vehicles.map(v => nm(v.car)));
   const missing = new Set();
   drvs.forEach(d => {
-    const cars = (d.cars || []).filter(c => c && !c.includes('----'));
-    if (!cars.length) return;
-    if (cars.some(c => registered.has(nm(c)))) return; // いずれかの表記で登録済み
-    const full = cars.filter(isFullPlateNumber);
-    missing.add(full[0] || cars[0]);
+    if (d.status === 'terminated') return;
+    (d.cars || []).forEach(c => {
+      if (!c || c.includes('----') || !isFullPlateNumber(c)) return;
+      if (registered.has(nm(c))) return;
+      missing.add(c);
+    });
   });
   return [...missing].sort();
+}
+
+/* 同じ車の表記ゆれと思われる組み合わせ（分類記号＋かな＋一連番号が同じで、地名だけ違う）。
+   「仙台480れ2618」と「宮城480れ2618」のような重複登録に気づけるように一覧へ出す */
+function vehiclePlateVariants() {
+  const bySig = new Map();
+  (vehicles||[]).forEach(v => {
+    const m = nm(v.car).match(/(\d{1,3}[^\d]{1,2}\d{1,4})$/);   // 末尾の「480れ2618」部分
+    if (!m) return;
+    const sig = m[1];
+    if (!bySig.has(sig)) bySig.set(sig, []);
+    bySig.get(sig).push(v);
+  });
+  return [...bySig.values()].filter(list => list.length > 1)
+    .sort((a,b) => nm(a[0].car).localeCompare(nm(b[0].car), 'ja'));
+}
+
+/* 車両カルテの「使用者」。乗務履歴に使用中の記録があればそれを最優先し、
+   無ければドライバー登録の担当車番から引く（取り込んだ車両にも使用者が出るようにするため） */
+function vehicleUserDriver(car) {
+  const byAssign = currentVehicleDriver(car);
+  if (byAssign) return {drv: byAssign, fromAssign: true};
+  const d = drvs.find(x => x.status !== 'terminated' && (x.cars||[]).some(c => nm(c)===nm(car)));
+  return d ? {drv: d, fromAssign: false} : null;
+}
+
+/* ドライバー登録で車番を足したとき、車両管理(vehicles)にも同じ車番を自動で作る。
+   車両管理を唯一の台帳にするため、登録の手間を二重にしないための処理。
+   種別は「未分類」で入り、車両管理の一覧に⚠付きで出るので、あとで分類してもらう。
+   失敗してもドライバー登録自体は成功扱いにする（台帳は後から取り込みボタンで揃えられる） */
+async function syncVehiclesFromDriverCars(cars) {
+  if (!sb || !cars?.length) return;
+  const registered = new Set(vehicles.map(v => nm(v.car)));
+  const add = [...new Set(cars.filter(c => c && !c.includes('----') && isFullPlateNumber(c) && !registered.has(nm(c))))];
+  if (!add.length) return;
+  try {
+    const {data, error} = await sb.from('vehicles')
+      .insert(add.map(car => ({car, status:'active', vehicle_type:'unclassified', note:'ドライバー登録の車番から自動作成'})))
+      .select();
+    if (error) throw error;
+    vehicles.push(...(data||[]));
+  } catch(e) { console.warn('syncVehiclesFromDriverCars:', e.message); }
+}
+
+/* ドライバー登録に無い車番を車両管理へまとめて取り込む（種別は未分類。あとで分類する） */
+async function importUnregisteredCars() {
+  if (!sb) return;
+  const cars = getUnregisteredCarNumbers();
+  if (!cars.length) { showT('取り込む車番はありません'); return; }
+  if (!confirm(`ドライバー登録にあって車両管理に無い車番 ${cars.length}台 を取り込みます。\n種別は「未分類」で登録されるので、あとで自社所有／持ち込み／リースに分類してください。\nよろしいですか？`)) return;
+  showLoad(true);
+  try {
+    const rows = cars.map(car => ({car, status:'active', vehicle_type:'unclassified', note:'ドライバー登録の車番から取り込み'}));
+    const {data, error} = await sb.from('vehicles').insert(rows).select();
+    if (error) throw error;
+    vehicles.push(...(data||[]));
+    addLog('車番の一括取り込み', `${cars.length}台`);
+    renderVehicles();
+    showT(`${cars.length}台を取り込みました`);
+  } catch(e) { showT('取込エラー: '+e.message, 'ter'); }
+  showLoad(false);
 }
 
 /* ===== リース会社 ⇄ 所属車両の連動 =====
@@ -7838,12 +7867,31 @@ function quickRegisterVehicleMismatch(car, drvId, minDate) {
   }
   document.getElementById('vhStart').value = minDate;
 }
+// 同じ車の別表記が二重登録されていないかの注意書き（地名だけ違う車番の組み合わせ）
+function vehicleVariantPanelHtml() {
+  const groups = vehiclePlateVariants();
+  if (!groups.length) return '';
+  return `<div style="padding:8px 12px;margin-bottom:10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11.5px;color:var(--amber-text)">
+      <span style="cursor:pointer" onclick="toggleVehicleVariantList()">⚠ 同じ車の表記ゆれと思われる車番があります（${groups.length}組）（クリックで一覧表示）</span>
+      <div id="vehicleVariantList" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
+        ${groups.map(list => `<div style="background:var(--bg);border-radius:var(--radius);padding:5px 8px">
+          ${list.map(v => `<span style="cursor:pointer;text-decoration:underline dotted;margin-right:10px" onclick="editVehicle(${v.id})">🚙 ${escHtml(v.car)}</span>`).join('')}
+          <span style="color:var(--text2)">— 使わない方をカルテから削除してください</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+function toggleVehicleVariantList() {
+  const el = document.getElementById('vehicleVariantList');
+  if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
 function renderVehicleMismatchPanel() {
   const el = document.getElementById('vehicleMismatchArea');
   if (!el) return;
-  if (!vehicleMismatches.length) { el.innerHTML = ''; return; }
+  const variantHtml = vehicleVariantPanelHtml();
+  if (!vehicleMismatches.length) { el.innerHTML = variantHtml; return; }
   const totalCnt = vehicleMismatches.length;
-  el.innerHTML = `
+  el.innerHTML = variantHtml + `
     <div style="padding:8px 12px;margin-bottom:10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11.5px;color:var(--amber-text)">
       <span style="cursor:pointer" onclick="toggleVehicleMismatchList()">⚠ 乗務履歴の登録がない車番で日報が提出されています（${totalCnt}件・直近60日）（クリックで一覧表示）</span>
       <div id="vehicleMismatchList" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
@@ -7860,13 +7908,17 @@ function renderVehicles() {
   const kpiEl = document.getElementById('vehicleKpi');
   if (kpiEl) {
     const active = vehicles.filter(v=>v.status!=='scrapped');
+    const unclassified = active.filter(v=>v.vehicle_type==='unclassified');
+    const unreg = getUnregisteredCarNumbers();
     const soonOrExpired = active.filter(v => {
       const sts = [v.shaken_expiry, v.jibai_expiry, v.nini_expiry].map(d=>docStatusOf({expiry_date:d}));
       return sts.some(s => ['expired','soon'].includes(s.cls));
     });
     kpiEl.innerHTML = `
       <div class="kpi-card"><div class="kpi-label">登録車両数</div><div class="kpi-val">${active.length}台</div></div>
+      <div class="kpi-card"><div class="kpi-label">種別が未分類</div><div class="kpi-val" style="color:${unclassified.length?'var(--amber-text)':'inherit'}">${unclassified.length}台</div></div>
       <div class="kpi-card"><div class="kpi-label">車検・保険 要確認</div><div class="kpi-val" style="color:${soonOrExpired.length?'var(--amber-text)':'inherit'}">${soonOrExpired.length}台</div></div>
+      <div class="kpi-card"><div class="kpi-label">取り込み待ちの車番</div><div class="kpi-val" style="color:${unreg.length?'var(--amber-text)':'inherit'}">${unreg.length}台</div></div>
       <div class="kpi-card"><div class="kpi-label">廃車</div><div class="kpi-val">${vehicles.filter(v=>v.status==='scrapped').length}台</div></div>
     `;
   }
@@ -7889,8 +7941,8 @@ function renderVehicles() {
   if (!filtered.length) { listEl.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">該当する車両が見つかりません</div>`; return; }
   // 並び順: 現在の使用者のドライバーID順（未割当は車番順で末尾に）
   filtered = [...filtered].sort((a,b) => {
-    const ida = currentVehicleDriver(a.car)?.supplier_id;
-    const idb = currentVehicleDriver(b.car)?.supplier_id;
+    const ida = vehicleUserDriver(a.car)?.drv?.supplier_id;
+    const idb = vehicleUserDriver(b.car)?.drv?.supplier_id;
     if (ida && idb) return ida.localeCompare(idb, 'ja', {numeric:true}) || nm(a.car).localeCompare(nm(b.car));
     if (ida) return -1;
     if (idb) return 1;
@@ -7911,12 +7963,13 @@ function renderVehicles() {
     <div style="width:60px;flex-shrink:0;"></div>
   </div>`;
   listEl.innerHTML = headerRow + filtered.map(v => {
-    const drv = currentVehicleDriver(v.car);
+    const user = vehicleUserDriver(v.car);
+    const drv = user?.drv || null;
     const scrapped = v.status === 'scrapped';
     return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;cursor:pointer" title="ダブルクリックで編集" ondblclick="editVehicle(${v.id})">
       <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
         <div style="width:125px;font-weight:600;font-size:13px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
-        <div style="width:100px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" ondblclick="event.stopPropagation()" title="クリックで乗務履歴を記録・確認">${drv?escHtml(drv.name):'未割当'}</div>
+        <div style="width:100px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();openVehicleHistM('${escHtml(v.car).replace(/'/g,"\\'")}')" ondblclick="event.stopPropagation()" title="${drv?(user.fromAssign?'乗務履歴に登録された使用者\n':'ドライバー登録の担当車番から表示しています（乗務履歴は未登録）\n'):''}クリックで車両カルテの乗務履歴を開きます">${drv?escHtml(drv.name)+(user.fromAssign?'':'<span style="color:var(--text2)">*</span>'):'未割当'}</div>
         <div style="width:60px;font-size:11px;flex-shrink:0;${v.vehicle_type==='unclassified'?'color:var(--amber-text);font-weight:600':'color:var(--text2)'}" title="${v.vehicle_type==='unclassified'?'ドライバーの書類提出から自動登録されたため種別が未確認です。編集して自社所有／持ち込み／リースのいずれかを選択してください':''}">${v.vehicle_type==='unclassified'?'⚠ ':''}${vehicleTypeLabel(v)}</div>
         <div style="width:115px;font-size:11px;flex-shrink:0;color:var(--text2);overflow-wrap:break-word;word-break:break-word;">${v.vehicle_type==='lease'?escHtml(v.lease_company||'（未設定）'):'—'}</div>
         ${!scrapped ? `
@@ -7973,31 +8026,32 @@ async function onVehicleLeaseSelChange() {
     populateVehicleLeaseSel(name);
   } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
-function openVehicleM() {
+/* 車両カルテを開く。追加も編集も同じ画面で、下半分に使用者・乗務履歴が付く。
+   新規追加のときは車番がまだ決まっていないため、履歴の部分は保存後に使えるようにしておく */
+function openVehicleM(car) {
   eVehicleId = null;
-  document.getElementById('mVehicleH').innerHTML = '車両追加 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
-  document.getElementById('vCar').value = '';
+  vhCurrentCar = car || null;
+  document.getElementById('mVehicleH').innerHTML = '車両カルテ（新規追加） <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
+  document.getElementById('vCar').value = car || '';
   document.getElementById('vCarSuggestList').innerHTML = getUnregisteredCarNumbers().map(c=>`<option value="${escHtml(c)}">`).join('');
   document.getElementById('vStatus').value = 'active';
   document.getElementById('vType').value = 'company';
   populateVehicleLeaseSel('');
   document.getElementById('vLeaseCompanyWrap').style.display = 'none';
-  document.getElementById('vDailyRate').value = '';
-  document.getElementById('vShakenExpiry').value = '';
-  document.getElementById('vJibaiExpiry').value = '';
-  document.getElementById('vNiniExpiry').value = '';
-  document.getElementById('vNote').value = '';
+  ['vDailyRate','vShakenExpiry','vJibaiExpiry','vNiniExpiry','vNote'].forEach(id => document.getElementById(id).value = '');
+  setVehicleHistSection(false);
   document.getElementById('mVehicle').classList.add('on');
 }
-function editVehicle(id) {
+function editVehicle(id, focusHist) {
   const v = vehicles.find(x=>x.id===id); if (!v) return;
   eVehicleId = id;
-  document.getElementById('mVehicleH').innerHTML = '車両編集 <button class="ibtn" onclick="closeM(\'mVehicle\')">✕</button>';
+  vhCurrentCar = v.car;
+  document.getElementById('mVehicleH').innerHTML = `車両カルテ: ${escHtml(v.car)} <button class="ibtn" onclick="closeM('mVehicle')">✕</button>`;
   document.getElementById('vCar').value = v.car;
   document.getElementById('vStatus').value = v.status || 'active';
   // 旧データ(vehicle_type='own'。持ち込み・自社所有が未分離だった頃の値)は自社所有として編集フォームに出す。
   // 保存すると新しい値'company'として書き込まれ、以後は分類済みになる。
-  // 'unclassified'（ドライバーの書類提出から自動登録され未確認）はそのまま選択欄に表示し、
+  // 'unclassified'（書類提出や車番の取り込みから自動登録され未確認）はそのまま選択欄に表示し、
   // 選択肢の中では選べない状態にすることで、必ずどれかへ選び直してもらう
   document.getElementById('vType').value = (!v.vehicle_type || v.vehicle_type === 'own') ? 'company' : v.vehicle_type;
   populateVehicleLeaseSel(v.lease_company || '');
@@ -8007,7 +8061,25 @@ function editVehicle(id) {
   document.getElementById('vJibaiExpiry').value = v.jibai_expiry || '';
   document.getElementById('vNiniExpiry').value = v.nini_expiry || '';
   document.getElementById('vNote').value = v.note || '';
+  setVehicleHistSection(true);
   document.getElementById('mVehicle').classList.add('on');
+  if (focusHist) setTimeout(() => document.getElementById('vhSection')?.scrollIntoView({behavior:'smooth', block:'start'}), 60);
+}
+// 使用者・乗務履歴の欄を使える状態にする（車番が確定している車両のときだけ）
+function setVehicleHistSection(on) {
+  document.getElementById('vhSection').style.display = on ? '' : 'none';
+  document.getElementById('vhSectionHint').style.display = on ? 'none' : '';
+  if (!on) return;
+  document.getElementById('vhDrvId').value = '';
+  document.getElementById('vhDrvText').value = '';
+  document.getElementById('vhStart').value = fmtLocalDate(new Date());
+  document.getElementById('vhEnd').value = '';
+  // 車両に日額リース料が登録済みならデフォルト値として入れておく（変更可）
+  const vMaster = vehicles.find(v => nm(v.car) === nm(vhCurrentCar||''));
+  document.getElementById('vhRate').value = vMaster?.daily_rate ?? '';
+  document.getElementById('vhNote').value = '';
+  document.getElementById('vhDrvList').innerHTML = activeDrvs().map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+  renderVehicleHist();
 }
 // 車両側の車検・保険期限が(手動で)変わったら、現在この車を使っているドライバーの提出書類（既に提出済みの分のみ）の
 // 期限表示も合わせて更新する。ファイルの再アップロードは行わず、期限日付のみを同期する
@@ -8203,20 +8275,12 @@ async function resetPayAdj() {
   } catch(e) { showT('削除エラー: '+e.message, 'ter'); }
 }
 
+/* 一覧の「現在の使用者」から呼ばれる。車両カルテを開いて履歴欄まで送る。
+   台帳に無い車番なら、その車番を入れた状態で新規追加として開く */
 function openVehicleHistM(car) {
-  vhCurrentCar = car;
-  document.getElementById('mVehicleHistH').innerHTML = `車両乗務履歴: ${escHtml(car)} <button class="ibtn" onclick="closeM('mVehicleHist')">✕</button>`;
-  document.getElementById('vhDrvId').value = '';
-  document.getElementById('vhDrvText').value = '';
-  document.getElementById('vhStart').value = fmtLocalDate(new Date());
-  document.getElementById('vhEnd').value = '';
-  // 車両管理タブに日額リース料が登録済みならデフォルト値として入れておく（変更可）
-  const vMaster = vehicles.find(v => nm(v.car) === nm(car));
-  document.getElementById('vhRate').value = vMaster?.daily_rate ?? '';
-  document.getElementById('vhNote').value = '';
-  document.getElementById('vhDrvList').innerHTML = activeDrvs().map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
-  renderVehicleHist();
-  document.getElementById('mVehicleHist').classList.add('on');
+  const v = vehicles.find(x => nm(x.car) === nm(car));
+  if (v) editVehicle(v.id, true);
+  else openVehicleM(car);
 }
 function onVhDrvTextInput() {
   const val = document.getElementById('vhDrvText').value.trim();
@@ -19469,7 +19533,11 @@ CREATE POLICY "pay_adjustments_insert" ON pay_adjustments FOR INSERT TO authenti
 CREATE POLICY "pay_adjustments_update" ON pay_adjustments FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 CREATE POLICY "pay_adjustments_delete" ON pay_adjustments FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
--- 車両マスタ（自社の代車・リース車の車検・保険期限・稼働状態を管理する「車両管理」タブ用）
+-- 車両マスタ。車両に関する登録はここに集約し、車両管理タブの「車両カルテ」1画面で
+-- 種別・リース会社・車検/保険の期限・日額リース料・使用者（vehicle_assignments）まで扱う。
+-- ドライバー登録で車番を追加すると、この表にも種別「未分類」で自動作成される。
+-- ドライバー登録済みで台帳に無い車番は、車両管理の「未登録の車番を取り込む」でまとめて入れられる
+-- （取り込むのは稼働中ドライバーのフル表記の車番のみ。数字だけの略式車番と解約済みドライバーの車番は入れない）。
 CREATE TABLE IF NOT EXISTS vehicles (
   id bigserial PRIMARY KEY,
   car text NOT NULL UNIQUE,
