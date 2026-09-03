@@ -1399,8 +1399,8 @@ try {
         <span style="font-size:13px;font-weight:500">👤 個人タスク</span>
         <select id="ptUser" onchange="renderPersonalTasks()" title="誰の視点で見るかを切り替えます" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></select>
         <select id="ptOtherScope" onchange="renderPersonalTasks()" title="下段「他人の分」に何を出すか" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
-          <option value="requested" selected>他人の分: 自分が依頼した分</option>
-          <option value="all">他人の分: すべて</option>
+          <option value="all" selected>他人の分: すべて</option>
+          <option value="requested">他人の分: 自分が依頼した分</option>
         </select>
         <input type="text" id="ptSearch" placeholder="🔍 タスク名で検索…" oninput="renderPersonalTasksDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:180px">
       </div>
@@ -11039,7 +11039,7 @@ function renderPersonalTasks() {
   const sumEl = document.getElementById('ptSummary');
   if (!area) return;
   const uid   = document.getElementById('ptUser')?.value || me?.id || '';
-  const scope = document.getElementById('ptOtherScope')?.value || 'requested';
+  const scope = document.getElementById('ptOtherScope')?.value || 'all';
   const q     = nm(document.getElementById('ptSearch')?.value || '');
   const uname = id => users.find(u=>String(u.id)===String(id))?.name || '—';
   const selfName = uname(uid);
