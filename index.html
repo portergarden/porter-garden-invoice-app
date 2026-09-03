@@ -11016,17 +11016,31 @@ async function loadPersonalTasks() {
 }
 /* 他人から自分あてに来た依頼＝担当者が自分で、依頼者が自分以外の未完了タスク。
    自分で自分に立てたメモは依頼ではないので数えない */
+// 依頼＝依頼者が担当者と別のタスク。完了済みでも依頼だったことは変わらない
+function ptIsRequest(t) {
+  return t.requester_user_id != null
+    && String(t.requester_user_id) !== String(t.assignee_user_id||'');
+}
+// uid あての「まだ対応が要る」依頼＝未完了で、その人が担当のもの
 function ptIsRequestTo(t, uid) {
-  return t.status !== 'done'
-    && String(t.assignee_user_id||'') === String(uid)
-    && t.requester_user_id != null
-    && String(t.requester_user_id) !== String(uid);
+  return t.status !== 'done' && String(t.assignee_user_id||'') === String(uid) && ptIsRequest(t);
 }
 /* お知らせに出すのは「まだ受け取り側がレ点を付けていない依頼」だけ。
    レ点を付けた時点で確認済みとみなし、ダッシュボードの警告から消える */
 function ptIncomingRequests() {
   if (!me) return [];
   return personalTasks.filter(t => ptIsRequestTo(t, me.id) && !t.acknowledged_at);
+}
+
+// 依頼日時・完了日時の表示（「09/03 14:05」の形。年は今年なら省く）
+function ptStamp(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0'), mi = String(d.getMinutes()).padStart(2,'0');
+  const y = d.getFullYear() === new Date().getFullYear() ? '' : `${d.getFullYear()}/`;
+  return `${y}${mm}/${dd} ${hh}:${mi}`;
 }
 
 const ptIsOverdue = t => !!t.due_date && t.due_date < fmtLocalDate(new Date()) && t.status !== 'done';
@@ -11079,44 +11093,49 @@ function renderPersonalTasks() {
   const rowHtml = (t, isMine) => {
     const sc = PT_STATUS_COLOR[t.status] || PT_STATUS_COLOR.not_started;
     const over = ptIsOverdue(t), today = ptIsToday(t);
-    const isRequest = ptIsRequestTo(t, t.assignee_user_id);   // 依頼者が担当者と別＝誰かからの依頼
+    const isRequest = ptIsRequest(t);          // 依頼者が担当者と別＝誰かからの依頼
     const acked = !!t.acknowledged_at;
-    // レ点は担当者本人だけが操作できる。他人の分では状態の表示だけにする
-    const canAck = isMine && String(uid) === String(me?.id||'');
-    return `<tr style="${t.status==='done'?'opacity:.6':''}${!isMine||acked||!isRequest?'':';background:var(--amber-bg)'}">
+    const needsAck = isRequest && !acked && t.status !== 'done';   // 強調するのは未完了で未確認のものだけ
+    // レ点は担当者本人だけが操作できる。他人の分と完了済みは状態の表示だけにする
+    const canAck = isMine && String(uid) === String(me?.id||'') && t.status !== 'done';
+    return `<tr style="${t.status==='done'?'opacity:.6':''}${isMine&&needsAck?';background:var(--amber-bg)':''}">
+      <td style="${td};text-align:center">${isRequest
+        ? `<input type="checkbox" ${acked?'checked':''} ${canAck?'':'disabled'} onchange="togglePtAck(${t.id},this.checked)"
+             title="${canAck?'依頼を確認したらレ点を付けます（ダッシュボードのお知らせが消えます）':t.status==='done'?'完了済みのため変更できません':`確認のレ点は担当者本人（${escHtml(uname(t.assignee_user_id))}）だけが付けられます`}"
+             style="width:16px;height:16px;cursor:${canAck?'pointer':'not-allowed'};accent-color:var(--green)">`
+        : '<span style="color:var(--text3)">—</span>'}</td>
       <td style="${td};text-align:left"><span style="font-weight:600">${escHtml(t.title||'')}</span>
-        ${isRequest&&!acked?'<span class="bdg" style="background:var(--red-bg);color:var(--red-text);margin-left:5px">未確認</span>':''}</td>
+        ${needsAck?'<span class="bdg" style="background:var(--red-bg);color:var(--red-text);margin-left:5px">未確認</span>':''}</td>
       <td style="${td};text-align:center">
         <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="savePtField(${t.id},'status',this.value)">
           ${Object.entries(PT_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}
         </select>
       </td>
-      <td style="${td};text-align:center;white-space:nowrap">${escHtml(uname(t.assignee_user_id))}</td>
-      <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${escHtml(uname(t.requester_user_id))}</td>
-      <td style="${td};text-align:center">${isRequest
-        ? `<input type="checkbox" ${acked?'checked':''} ${canAck?'':'disabled'} onchange="togglePtAck(${t.id},this.checked)"
-             title="${canAck?'依頼を確認したらレ点を付けます（ダッシュボードのお知らせが消えます）':`確認のレ点は担当者本人（${escHtml(uname(t.assignee_user_id))}）だけが付けられます`}"
-             style="width:16px;height:16px;cursor:${canAck?'pointer':'not-allowed'};accent-color:var(--green)">`
-        : '<span style="color:var(--text3)">—</span>'}</td>
+      <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)" title="タスクを登録した日時です">${ptStamp(t.created_at)||'—'}</td>
       <td style="${td};text-align:center;white-space:nowrap;${over?'color:var(--red-text);font-weight:700':today?'color:var(--amber-text);font-weight:700':''}">
         ${t.due_date ? escHtml(t.due_date) + (over?'<div style="font-size:9px">⚠ 期限超過</div>':today?'<div style="font-size:9px">本日</div>':'') : '<span style="color:var(--text3)">期限なし</span>'}
       </td>
+      <td style="${td};text-align:center;white-space:nowrap;color:var(${t.completed_at?'--green-text':'--text3'})" title="ステータスを「完了」にすると自動で入ります">${ptStamp(t.completed_at)||'—'}</td>
       <td style="${td};max-width:220px"><span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t.note||'')}">${escHtml(t.note||'')||'—'}</span></td>
+      <td style="${td};text-align:center;white-space:nowrap">${escHtml(uname(t.assignee_user_id))}</td>
+      <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${escHtml(uname(t.requester_user_id))}</td>
       <td style="${td};text-align:center">${me&&me.role!=='viewer'?`<button class="ibtn" onclick="openPtM(${t.id})" title="編集">✎</button>`:''}</td>
     </tr>`;
   };
 
   const tableHtml = (list, isMine, emptyMsg) => !list.length
     ? `<div style="color:var(--text2);font-size:12px;padding:10px 0 16px">${emptyMsg}</div>`
-    : `<table style="width:100%;border-collapse:collapse;min-width:820px;margin-bottom:16px">
+    : `<table style="width:100%;border-collapse:collapse;min-width:980px;margin-bottom:16px">
         <thead><tr>
+          <th style="${th};width:44px">チェック</th>
           <th style="${th};text-align:left">タスク</th>
           <th style="${th}">ステータス</th>
+          <th style="${th}">依頼日時<div style="font-weight:400;color:var(--text2)">自動</div></th>
+          <th style="${th}">期限</th>
+          <th style="${th}">完了日時<div style="font-weight:400;color:var(--text2)">自動</div></th>
+          <th style="${th};text-align:left">メモ</th>
           <th style="${th}">担当者</th>
           <th style="${th}">依頼者</th>
-          <th style="${th}">チェック</th>
-          <th style="${th}">期限</th>
-          <th style="${th};text-align:left">メモ</th>
           <th style="${th};width:40px"></th>
         </tr></thead>
         <tbody>${sortRows(list).map(t => rowHtml(t, isMine)).join('')}</tbody></table>`;
@@ -11137,6 +11156,11 @@ async function togglePtAck(id, on) {
   if (!t) return;
   if (String(t.assignee_user_id||'') !== String(me?.id||'')) {
     showT('確認のレ点は担当者本人だけが付けられます', 'twa');
+    renderPersonalTasks();
+    return;
+  }
+  if (t.status === 'done') {
+    showT('完了済みのタスクは変更できません', 'twa');
     renderPersonalTasks();
     return;
   }
@@ -11196,7 +11220,10 @@ async function savePersonalTask() {
     due_date: document.getElementById('ptDue').value || null,
     status,
     note: document.getElementById('ptNote').value.trim() || null,
-    completed_at: status === 'done' ? new Date().toISOString() : null,
+    // 完了日時は「完了になった瞬間」を残す。既に完了済みのタスクを編集し直しても打ち直さない
+    completed_at: status === 'done'
+      ? ((ePtId && personalTasks.find(t=>t.id===ePtId)?.completed_at) || new Date().toISOString())
+      : null,
   };
   showLoad(true);
   try {
