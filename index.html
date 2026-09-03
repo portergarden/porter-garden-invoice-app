@@ -1480,6 +1480,7 @@ try {
       </div>
       <button class="btn pri hide" id="bAddPartner" onclick="openPartnerM()">＋ 協力会社追加</button>
     </div>
+    <div class="task-subnav" id="partnerKindTabs"></div>
     <div id="partnerKpi" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
     <div class="cardgrid" id="partnerGrid"></div>
   </div>
@@ -2988,6 +2989,13 @@ try {
       <div class="g2">
         <div class="fld"><label>郵便番号（任意）</label><input type="text" id="pnZip" placeholder="例: 123-4567"></div>
         <div class="fld"><label>住所（任意）</label><input type="text" id="pnAddress"></div>
+      </div>
+      <div class="fld"><label>区分（この会社が主にどれか。兼ねている役割はバッジで併記されます）</label>
+        <select id="pnKind" style="width:100%">
+          <option value="partner">協力会社（仕事のやり取り・ドライバーの供給を受ける）</option>
+          <option value="branch">自社支店・支社</option>
+          <option value="lease">車両リース会社</option>
+        </select>
       </div>
       <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="pnIsLease" style="width:auto"> 車両リース会社（ドライバーの車両リース代の支払先）として使う<br><span style="font-size:10px;color:var(--text2);font-weight:400;margin-left:22px">ドライバー登録の「リース会社」プルダウンの候補に表示され、リース会社別集計から明細書を発行できます</span></label></div>
       <div style="border-top:0.5px solid var(--border2);margin:12px 0 0;padding-top:10px">
@@ -6155,6 +6163,44 @@ function toggleFullText(id) {
     el.dataset.expanded = '1';
   }
 }
+/* --- 協力会社の区分（主区分）と、兼ねている役割のバッジ ---
+   主区分は「その会社を一言で言うと何か」。リースもする協力会社のように役割を兼ねる場合は、
+   主区分はひとつだけ選び、兼務ぶんは役割バッジ（リース／ドライバー供給／取引先）で併記する。 */
+const PARTNER_KINDS = [
+  {id:'',        label:'すべて'},
+  {id:'partner', label:'🤝 協力会社'},
+  {id:'branch',  label:'🏢 自社支店'},
+  {id:'lease',   label:'🚗 リース会社'},
+];
+const PARTNER_KIND_LABEL = {partner:'協力会社', branch:'自社支店', lease:'リース会社'};
+const PARTNER_KIND_COLOR = {
+  partner:['--blue-bg','--blue-text'], branch:['--purple-bg','--purple-text'], lease:['--amber-bg','--amber-text'],
+};
+let partnerKindFilter = '';
+function pnKindOf(p) { return PARTNER_KIND_LABEL[p?.kind] ? p.kind : 'partner'; }
+
+// 主区分のバッジ（一覧の会社名の横に必ず出す）
+function pnKindBadge(p) {
+  const k = pnKindOf(p), c = PARTNER_KIND_COLOR[k];
+  return `<span class="bdg" style="background:var(${c[0]});color:var(${c[1]})">${PARTNER_KIND_LABEL[k]}</span>`;
+}
+// 兼ねている役割のバッジ。主区分と重複するものは出さない
+function pnRoleBadges(p) {
+  const k = pnKindOf(p);
+  const out = [];
+  if (p.is_lease && k !== 'lease') out.push('🚗 リースもする');
+  if (drvs.some(d => d.partner_id === p.id)) out.push('👤 ドライバー供給');
+  if (p.client_id) out.push('📄 取引先でもある');
+  return out.map(t => `<span class="bdg" style="background:var(--bg2);color:var(--text2);font-weight:500">${t}</span>`).join('');
+}
+function setPartnerKindFilter(k) { partnerKindFilter = k; renderPartners(); }
+function renderPartnerKindTabs(counts) {
+  const el = document.getElementById('partnerKindTabs');
+  if (!el) return;
+  el.innerHTML = PARTNER_KINDS.map(t =>
+    `<div class="ntab${t.id===partnerKindFilter?' on':''}" onclick="setPartnerKindFilter('${t.id}')">${t.label} <span style="color:var(--text2);font-weight:400">${counts[t.id]??0}</span></div>`).join('');
+}
+
 function renderPartners(){
   const grid = document.getElementById('partnerGrid');
   if (!grid) return;
@@ -6165,21 +6211,24 @@ function renderPartners(){
   if (kpiEl) {
     const suppliedDrvCnt = drvs.filter(d=>d.partner_id!=null).length;
     kpiEl.innerHTML = `
-      <div class="kpi-card"><div class="kpi-label">総協力会社数</div><div class="kpi-val">${partnerCompanies.length}社</div></div>
-      <div class="kpi-card"><div class="kpi-label">ドライバー供給あり</div><div class="kpi-val">${suppliedDrvCnt}名</div></div>
+      <div class="kpi-card"><div class="kpi-label">総登録数</div><div class="kpi-val">${partnerCompanies.length}社</div><div style="font-size:10px;color:var(--text2)">協力${partnerCompanies.filter(p=>pnKindOf(p)==='partner').length} / 支店${partnerCompanies.filter(p=>pnKindOf(p)==='branch').length} / リース${partnerCompanies.filter(p=>pnKindOf(p)==='lease').length}</div></div>
+      <div class="kpi-card"><div class="kpi-label">供給を受けているドライバー</div><div class="kpi-val">${suppliedDrvCnt}名</div></div>
     `;
   }
   if (!partnerCompanies.length) { grid.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">協力会社が登録されていません</div>`; return; }
   const q = nm(document.getElementById('partnerSearch')?.value || '');
-  const filtered = q ? partnerCompanies.filter(p=>nm(p.name).includes(q)||nm(p.short||'').includes(q)) : partnerCompanies;
-  if (q && !filtered.length) { grid.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">該当する協力会社が見つかりません</div>`; return; }
+  const kindCounts = {'':partnerCompanies.length};
+  PARTNER_KINDS.forEach(t => { if (t.id) kindCounts[t.id] = partnerCompanies.filter(p=>pnKindOf(p)===t.id).length; });
+  renderPartnerKindTabs(kindCounts);
+  let filtered = partnerKindFilter ? partnerCompanies.filter(p=>pnKindOf(p)===partnerKindFilter) : partnerCompanies;
+  if (q) filtered = filtered.filter(p=>nm(p.name).includes(q)||nm(p.short||'').includes(q));
+  if (!filtered.length) { grid.innerHTML = `<div style="text-align:center;padding:28px;color:var(--text2);font-size:12px;grid-column:1/-1">該当する協力会社が見つかりません</div>`; return; }
   // 他の管理タブと同じくID（協力会社ID）の数値順で並べる
   const sorted = [...filtered].sort((a,b) => {
     const idA = a.partner_no ? parseInt(a.partner_no,10) || 999999 : 999999;
     const idB = b.partner_no ? parseInt(b.partner_no,10) || 999999 : 999999;
     return idA - idB;
   });
-  const leaseBadge = p => p.is_lease ? ' <span title="車両リース会社" style="font-size:10.5px;font-weight:500;padding:1px 5px;background:var(--amber-bg);color:var(--amber-text);border-radius:99px">🚗 リース</span>' : '';
   // リース会社カード・行に出す「所属車両」欄。車両管理側の登録（vehicles.lease_company）と自動で連動する
   const leaseCarsLine = p => {
     if (!p.is_lease) return '';
@@ -6208,7 +6257,8 @@ function renderPartners(){
             ${canE ? `<button class="ibtn" onclick="editPartner(${p.id})">✎</button><button class="ibtn" onclick="delPartner(${p.id})">🗑</button>` : ''}
           </div>
         </div>
-        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${escHtml(p.name)}${leaseBadge(p)}</div>
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:3px">${escHtml(p.name)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:3px">${pnKindBadge(p)}${pnRoleBadges(p)}</div>
         ${p.partner_no?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">協力会社ID: ${escHtml(p.partner_no)}</div>`:''}
         ${(p.zip||p.address) ? `<div style="font-size:11.5px;color:var(--text2)">${p.zip?`〒${escHtml(p.zip)} `:''}${escHtml(p.address||'')}</div>` : ''}
         ${p.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${escHtml(p.person)}</div>`:''}
@@ -6230,6 +6280,7 @@ function renderPartners(){
         <div style="width:26px;flex-shrink:0;"></div>
         <div style="width:60px;flex-shrink:0;">ID</div>
         <div style="width:150px;flex-shrink:0;">会社名</div>
+        <div style="width:150px;flex-shrink:0;">区分・役割</div>
         <div style="width:150px;flex-shrink:0;">入金（手数料）</div>
         <div style="width:150px;flex-shrink:0;">支払（手数料）</div>
         <div style="width:100px;flex-shrink:0;">電話番号</div>
@@ -6251,6 +6302,7 @@ function renderPartners(){
             const cars = leaseCarsByName.get(nm(p.name)) || [];
             return ` <span title="リース車両 ${cars.length?cars.join('、'):'未登録'}（クリックで車両管理へ）" style="font-size:11px;cursor:pointer;color:${cars.length?'var(--text2)':'var(--amber-text)'}" onclick="event.stopPropagation();jumpToVehiclesByLease('${escHtml(p.name).replace(/'/g,"\\'")}')" ondblclick="event.stopPropagation()">🚗${cars.length?cars.length:'0'}</span>`;
           })():''}${linkedCli?` <span title="取引先: ${escHtml(linkedCli.name)}" style="font-size:11px;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();jumpToClientFromPartner(${linkedCli.id})" ondblclick="event.stopPropagation()">🔗</span>`:''}</div>
+          <div style="width:150px;flex-shrink:0;display:flex;flex-wrap:wrap;gap:2px;align-content:flex-start">${pnKindBadge(p)}${pnRoleBadges(p)}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerReceivableLabel(p)}${p.fee_rate?`(${p.fee_rate}%)`:''}</div>
           <div style="width:150px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${partnerPayOutLabel(p)}${p.pay_out_fee_rate?`(${p.pay_out_fee_rate}%)`:''}</div>
           <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${p.tel || '—'}</div>
@@ -6270,6 +6322,7 @@ function openPartnerM(){
   ['pnName','pnShort','pnPerson','pnTel','pnZip','pnAddress','pnBank','pnInvoiceNo','pnNote','pnFeeRate','pnPayOutFeeRate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('pnCode').value=nextIdFor(partnerCompanies,'partner_no');
   document.getElementById('pnIsLease').checked=false;
+  document.getElementById('pnKind').value='partner';
   document.getElementById('pnPayOutMonthOffset').value='2';
   document.getElementById('pnPayOutDay').value=dayInputDisplay('end');
   document.getElementById('pnPayMonthOffset').value='1';
@@ -6284,6 +6337,7 @@ function editPartner(id){
   switchModalTab('mPartner','basic'); ePartnerId=id;
   document.getElementById('pnCode').value=p.partner_no||'';
   document.getElementById('pnIsLease').checked=!!p.is_lease;
+  document.getElementById('pnKind').value=p.kind||'partner';
   document.getElementById('pnName').value=p.name;
   document.getElementById('pnShort').value=p.short||'';
   document.getElementById('pnPerson').value=p.person||'';
@@ -6317,7 +6371,9 @@ async function savePartner(){
   const obj = {
     name,
     partner_no: codeVal||null,
-    is_lease: document.getElementById('pnIsLease').checked,
+    kind: document.getElementById('pnKind').value||'partner',
+    // 区分をリース会社にしたら、リース会社プルダウンの候補にも自動で載せる
+    is_lease: document.getElementById('pnIsLease').checked || document.getElementById('pnKind').value==='lease',
     short: document.getElementById('pnShort').value.trim()||null,
     person: document.getElementById('pnPerson').value.trim()||null,
     tel: document.getElementById('pnTel').value.trim()||null,
@@ -19121,6 +19177,7 @@ CREATE TABLE IF NOT EXISTS partner_companies (
   id bigserial PRIMARY KEY, name text NOT NULL,
   partner_no text UNIQUE,       -- 協力会社ID（他タブのclient_no/supplier_idと同形式の連番）
   is_lease boolean NOT NULL DEFAULT false, -- 車両リース会社（ドライバーの車両リース代の支払先）として使う
+  kind text NOT NULL DEFAULT 'partner' CHECK (kind IN ('branch','lease','partner')), -- 主区分: 'branch'（自社支店・支社）| 'lease'（車両リース会社）| 'partner'（協力会社）。兵ねている役割は is_lease / client_id / drivers.partner_id から派生するバッジで併記する
   short text, zip text, address text, person text, tel text,
   bank text, invoice_no text,
   pay_out_month_offset int DEFAULT 2, pay_out_day text DEFAULT 'end', pay_out_fee_rate numeric DEFAULT 0, -- 支払設定（ドライバー供給時）
