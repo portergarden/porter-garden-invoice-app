@@ -3156,6 +3156,56 @@ try {
   </div>
 </div>
 
+<!-- モーダル: 取引先の親子を自動判定して一括で紐づける -->
+<div class="overlay" id="mCliParent">
+  <div class="modal" style="width:720px;max-width:96vw">
+    <div class="mh">🔗 親子の自動判定 <button class="ibtn" onclick="closeM('mCliParent')">✕</button></div>
+    <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
+      <div style="font-size:11.5px;color:var(--text2);line-height:1.7;margin-bottom:10px">
+        会社名から本社と支店・営業所の組み合わせを探しました。適用すると、支店側の「親会社」が設定され、
+        タスク管理や取引先管理でひとまとまりに表示されます。請求明細書は今までどおり支店ごとに作れます。<br>
+        親会社が未登録の組み合わせは、取引先を新しく1件作ります（名称はここで直せます）。
+      </div>
+      <div id="cliParentList"></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
+        <button class="btn" onclick="closeM('mCliParent')">キャンセル</button>
+        <button class="btn pri" id="cliParentApplyBtn" onclick="applyCliParentGroups()">選択した組み合わせを適用</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 支払明細書「その他の項目」の期間別上書き -->
+<div class="overlay" id="mPayAdj">
+  <div class="modal" style="width:560px;max-width:95vw">
+    <div class="mh" id="mPayAdjH">その他の項目 <button class="ibtn" onclick="closeM('mPayAdj')">✕</button></div>
+    <div style="padding:12px 14px;max-height:75vh;overflow-y:auto">
+      <div id="payAdjPeriod" style="font-size:11.5px;color:var(--text2);margin-bottom:4px"></div>
+      <div id="payAdjState" style="font-size:11px;margin-bottom:10px"></div>
+      <div id="payAdjList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:5px;margin-bottom:10px">
+        <input type="text" id="payAdjName" placeholder="名称（例: 代車リース代）" style="flex:2">
+        <input type="number" id="payAdjAmt" placeholder="金額（控除は -5000）" step="1" style="flex:1">
+        <button class="btn" onclick="addPayAdjItem()">＋ 追加</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;border-top:0.5px solid var(--border2);padding-top:9px;font-size:12px">
+        <span>この期間の「その他」合計</span>
+        <b id="payAdjTotal" style="font-size:14px"></b>
+      </div>
+      <div style="font-size:10.5px;color:var(--text2);margin-top:9px;line-height:1.6">
+        ここで保存した内訳は、この集計期間の支払集計・支払明細書にだけ反映されます。<br>
+        ドライバー登録の「その他の控除項目」（毎月固定分）と代車リース代の自動計算は変更しません。<br>
+        「自動計算に戻す」を押すと上書きを消し、元の自動計算に戻ります。
+      </div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:12px">
+        <button class="btn" id="payAdjResetBtn" onclick="resetPayAdj()">↺ 自動計算に戻す</button>
+        <button class="btn" onclick="closeM('mPayAdj')">キャンセル</button>
+        <button class="btn pri" onclick="savePayAdj()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: 鑑の発行宛て選択（協力会社のプルダウン＋手入力検索） -->
 <div class="overlay" id="mKanAte">
   <div class="modal" style="width:440px;max-width:95vw">
