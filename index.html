@@ -1397,12 +1397,11 @@ try {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid var(--border);flex-wrap:wrap;gap:6px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:13px;font-weight:500">👤 個人タスク</span>
-        <select id="ptMode" onchange="renderPersonalTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
-          <option value="assigned" selected>自分が担当</option>
-          <option value="requested">自分が依頼</option>
-          <option value="all">すべて</option>
+        <select id="ptUser" onchange="renderPersonalTasks()" title="誰の視点で見るかを切り替えます" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></select>
+        <select id="ptOtherScope" onchange="renderPersonalTasks()" title="下段「他人の分」に何を出すか" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="requested" selected>他人の分: 自分が依頼した分</option>
+          <option value="all">他人の分: すべて</option>
         </select>
-        <select id="ptUser" onchange="renderPersonalTasks()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></select>
         <input type="text" id="ptSearch" placeholder="🔍 タスク名で検索…" oninput="renderPersonalTasksDebounced()" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:180px">
       </div>
       <button class="btn sml grn hide" id="ptAddBtn" onclick="openPtM()">＋ タスクを追加</button>
@@ -5114,7 +5113,7 @@ function goPage(n,el){
   if(n===29){initBillingProgress();loadBillingProgress().then(()=>renderBillingProgress());}
   if(n===31){initTaskTop();}
   if(n===32){initDriverProgress();loadDriverProgress().then(()=>renderDriverProgress());}
-  if(n===33){initPersonalTasks();loadPersonalTasks().then(()=>{renderPersonalTasks();markPtSeen();});}
+  if(n===33){initPersonalTasks();loadPersonalTasks().then(()=>renderPersonalTasks());}
   if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
   if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
   if(n===10){_setDailyListMonth();initMob();}
@@ -5569,10 +5568,9 @@ async function renderDashWarnings(){
     try{
       if(!me) return;
       await loadPersonalTasks();
+      // 受け取り側がレ点を付けた依頼は ptIncomingRequests() から外れるため、ここにも出なくなる
       const mine = ptIncomingRequests();
       if(!mine.length) return;
-      const seen = ptSeenMaxId();
-      const fresh = mine.filter(t => (+t.id||0) > seen).length;
       const over  = mine.filter(ptIsOverdue).length;
       const uname = id => users.find(u=>String(u.id)===String(id))?.name || '';
       // 依頼者が1人ならその名前を出す（誰から来た依頼か分かるように）
@@ -5581,7 +5579,7 @@ async function renderDashWarnings(){
       items.push({
         sev: over ? 'red' : 'amber',
         icon: '🙋',
-        text: `${fromLabel}自分あての依頼: ${mine.length}件${fresh?`（新着${fresh}件）`:''}${over?` / 期限超過${over}件`:''}`,
+        text: `${fromLabel}未確認の依頼: ${mine.length}件${over?` / 期限超過${over}件`:''}`,
         btn: '個人タスクへ', go: 33, nt: 'nt31',
       });
     }catch(e){console.warn('renderDashWarnings(個人タスク):',e.message);}
@@ -11018,97 +11016,145 @@ async function loadPersonalTasks() {
 }
 /* 他人から自分あてに来た依頼＝担当者が自分で、依頼者が自分以外の未完了タスク。
    自分で自分に立てたメモは依頼ではないので数えない */
+function ptIsRequestTo(t, uid) {
+  return t.status !== 'done'
+    && String(t.assignee_user_id||'') === String(uid)
+    && t.requester_user_id != null
+    && String(t.requester_user_id) !== String(uid);
+}
+/* お知らせに出すのは「まだ受け取り側がレ点を付けていない依頼」だけ。
+   レ点を付けた時点で確認済みとみなし、ダッシュボードの警告から消える */
 function ptIncomingRequests() {
   if (!me) return [];
-  return personalTasks.filter(t =>
-    t.status !== 'done' &&
-    String(t.assignee_user_id||'') === String(me.id) &&
-    t.requester_user_id != null &&
-    String(t.requester_user_id) !== String(me.id));
-}
-/* 「新着」の判定は、個人タスクのタブを最後に開いたときに見えていたタスクIDの最大値で行う。
-   端末ごとのlocalStorageに持つだけなので、他の端末では改めて新着として出る */
-const PT_SEEN_KEY = () => `ptSeenMaxId:${me?.id||''}`;
-function ptSeenMaxId() {
-  try { return +localStorage.getItem(PT_SEEN_KEY()) || 0; } catch(e) { return 0; }
-}
-function markPtSeen() {
-  try {
-    const max = personalTasks.reduce((a,t) => Math.max(a, +t.id||0), 0);
-    if (max) localStorage.setItem(PT_SEEN_KEY(), String(max));
-  } catch(e) { /* プライベートブラウズ等でlocalStorageが使えなくても動作に影響させない */ }
+  return personalTasks.filter(t => ptIsRequestTo(t, me.id) && !t.acknowledged_at);
 }
 
 const ptIsOverdue = t => !!t.due_date && t.due_date < fmtLocalDate(new Date()) && t.status !== 'done';
 const ptIsToday   = t => t.due_date === fmtLocalDate(new Date()) && t.status !== 'done';
+/* 個人タスクは「自分の分（担当が自分）」と「他人の分（担当が自分以外）」の二段で見せる。
+   上段は自分がやること、下段は自分が誰かに頼んでいることが分かるようにしている。
+   ptUserで視点を切り替えられるので、管理者が他の人の状況を見ることもできる。 */
 function renderPersonalTasks() {
   const area = document.getElementById('ptArea');
   const sumEl = document.getElementById('ptSummary');
   if (!area) return;
-  const mode = document.getElementById('ptMode')?.value || 'assigned';
-  const uid  = document.getElementById('ptUser')?.value || me?.id || '';
-  const q    = nm(document.getElementById('ptSearch')?.value || '');
+  const uid   = document.getElementById('ptUser')?.value || me?.id || '';
+  const scope = document.getElementById('ptOtherScope')?.value || 'requested';
+  const q     = nm(document.getElementById('ptSearch')?.value || '');
+  const uname = id => users.find(u=>String(u.id)===String(id))?.name || '—';
+  const selfName = uname(uid);
 
-  let list = personalTasks;
-  if (mode === 'assigned')       list = list.filter(t => String(t.assignee_user_id||'') === String(uid));
-  else if (mode === 'requested') list = list.filter(t => String(t.requester_user_id||'') === String(uid));
-  if (q) list = list.filter(t => nm(t.title||'').includes(q) || nm(t.note||'').includes(q));
+  const bySearch = t => !q || nm(t.title||'').includes(q) || nm(t.note||'').includes(q);
+  const mine   = personalTasks.filter(t => String(t.assignee_user_id||'') === String(uid)).filter(bySearch);
+  const others = personalTasks.filter(t => String(t.assignee_user_id||'') !== String(uid))
+    .filter(t => scope === 'all' || String(t.requester_user_id||'') === String(uid))
+    .filter(bySearch);
 
-  const overdueN = list.filter(ptIsOverdue).length;
-  const todayN   = list.filter(ptIsToday).length;
-  const doneN    = list.filter(t => t.status === 'done').length;
+  // 未確認の依頼＝自分あてに来ていて、まだレ点を付けていないもの
+  const unack = mine.filter(t => ptIsRequestTo(t, uid) && !t.acknowledged_at).length;
+
   if (sumEl) {
+    const all = [...mine, ...others];
+    const overdueN = all.filter(ptIsOverdue).length;
+    const todayN   = all.filter(ptIsToday).length;
     sumEl.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:11.5px">
-      <span>全 <b>${list.length}</b>件</span>
-      <span>完了 <b style="color:var(--green-text)">${doneN}</b> / 未完了 <b style="color:var(--amber-text)">${list.length-doneN}</b></span>
+      <span>自分の分 <b>${mine.length}</b>件（未完了 <b style="color:var(--amber-text)">${mine.filter(t=>t.status!=='done').length}</b>）</span>
+      <span>他人の分 <b>${others.length}</b>件（未完了 <b style="color:var(--amber-text)">${others.filter(t=>t.status!=='done').length}</b>）</span>
+      ${unack?`<span style="color:var(--red-text);font-weight:600">🙋 未確認の依頼 ${unack}件</span>`:''}
       ${overdueN?`<span style="color:var(--red-text);font-weight:600">⚠ 期限超過 ${overdueN}件</span>`:''}
       ${todayN?`<span style="color:var(--amber-text);font-weight:600">本日期限 ${todayN}件</span>`:''}
     </div>`;
   }
-  if (!list.length) { area.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:14px 0">該当するタスクがありません</div>'; return; }
-
-  // 期限超過 → 本日 → 期限あり（近い順）→ 期限なし → 完了 の順に並べる
-  const rank = t => t.status === 'done' ? 4 : ptIsOverdue(t) ? 0 : ptIsToday(t) ? 1 : t.due_date ? 2 : 3;
-  const sorted = [...list].sort((a,b) => rank(a)-rank(b)
-    || String(a.due_date||'9999').localeCompare(String(b.due_date||'9999'))
-    || String(a.title||'').localeCompare(String(b.title||''),'ja'));
 
   const th = 'padding:6px 8px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;white-space:nowrap;position:sticky;top:0';
   const td = 'padding:4px 6px;border:0.5px solid var(--border);font-size:11.5px';
   const inp = 'padding:3px 5px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)';
-  const uname = id => users.find(u=>String(u.id)===String(id))?.name || '—';
 
-  area.innerHTML = `<table style="width:100%;border-collapse:collapse;min-width:760px">
-    <thead><tr>
-      <th style="${th};text-align:left">タスク</th>
-      <th style="${th}">ステータス</th>
-      <th style="${th}">担当者</th>
-      <th style="${th}">依頼者</th>
-      <th style="${th}">期限</th>
-      <th style="${th};text-align:left">メモ</th>
-      <th style="${th};width:40px"></th>
-    </tr></thead>
-    <tbody>${sorted.map(t => {
-      const sc = PT_STATUS_COLOR[t.status] || PT_STATUS_COLOR.not_started;
-      const over = ptIsOverdue(t), today = ptIsToday(t);
-      return `<tr style="${t.status==='done'?'opacity:.6':''}">
-        <td style="${td};text-align:left"><span style="font-weight:600">${escHtml(t.title||'')}</span></td>
-        <td style="${td};text-align:center">
-          <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="savePtField(${t.id},'status',this.value)">
-            ${Object.entries(PT_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}
-          </select>
-        </td>
-        <td style="${td};text-align:center;white-space:nowrap">${escHtml(uname(t.assignee_user_id))}</td>
-        <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${escHtml(uname(t.requester_user_id))}</td>
-        <td style="${td};text-align:center;white-space:nowrap;${over?'color:var(--red-text);font-weight:700':today?'color:var(--amber-text);font-weight:700':''}">
-          ${t.due_date ? escHtml(t.due_date) + (over?'<div style="font-size:9px">⚠ 期限超過</div>':today?'<div style="font-size:9px">本日</div>':'') : '<span style="color:var(--text3)">期限なし</span>'}
-        </td>
-        <td style="${td};max-width:220px"><span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t.note||'')}">${escHtml(t.note||'')||'—'}</span></td>
-        <td style="${td};text-align:center">${me&&me.role!=='viewer'?`<button class="ibtn" onclick="openPtM(${t.id})" title="編集">✎</button>`:''}</td>
-      </tr>`;
-    }).join('')}</tbody></table>`;
+  // 期限超過 → 本日 → 期限あり（近い順）→ 期限なし → 完了 の順に並べる
+  const rank = t => t.status === 'done' ? 4 : ptIsOverdue(t) ? 0 : ptIsToday(t) ? 1 : t.due_date ? 2 : 3;
+  const sortRows = list => [...list].sort((a,b) => rank(a)-rank(b)
+    || String(a.due_date||'9999').localeCompare(String(b.due_date||'9999'))
+    || String(a.title||'').localeCompare(String(b.title||''),'ja'));
+
+  const rowHtml = (t, isMine) => {
+    const sc = PT_STATUS_COLOR[t.status] || PT_STATUS_COLOR.not_started;
+    const over = ptIsOverdue(t), today = ptIsToday(t);
+    const isRequest = ptIsRequestTo(t, t.assignee_user_id);   // 依頼者が担当者と別＝誰かからの依頼
+    const acked = !!t.acknowledged_at;
+    // レ点は担当者本人だけが操作できる。他人の分では状態の表示だけにする
+    const canAck = isMine && String(uid) === String(me?.id||'');
+    return `<tr style="${t.status==='done'?'opacity:.6':''}${!isMine||acked||!isRequest?'':';background:var(--amber-bg)'}">
+      <td style="${td};text-align:left"><span style="font-weight:600">${escHtml(t.title||'')}</span>
+        ${isRequest&&!acked?'<span class="bdg" style="background:var(--red-bg);color:var(--red-text);margin-left:5px">未確認</span>':''}</td>
+      <td style="${td};text-align:center">
+        <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="savePtField(${t.id},'status',this.value)">
+          ${Object.entries(PT_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </td>
+      <td style="${td};text-align:center;white-space:nowrap">${escHtml(uname(t.assignee_user_id))}</td>
+      <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${escHtml(uname(t.requester_user_id))}</td>
+      <td style="${td};text-align:center">${isRequest
+        ? `<input type="checkbox" ${acked?'checked':''} ${canAck?'':'disabled'} onchange="togglePtAck(${t.id},this.checked)"
+             title="${canAck?'依頼を確認したらレ点を付けます（ダッシュボードのお知らせが消えます）':`確認のレ点は担当者本人（${escHtml(uname(t.assignee_user_id))}）だけが付けられます`}"
+             style="width:16px;height:16px;cursor:${canAck?'pointer':'not-allowed'};accent-color:var(--green)">`
+        : '<span style="color:var(--text3)">—</span>'}</td>
+      <td style="${td};text-align:center;white-space:nowrap;${over?'color:var(--red-text);font-weight:700':today?'color:var(--amber-text);font-weight:700':''}">
+        ${t.due_date ? escHtml(t.due_date) + (over?'<div style="font-size:9px">⚠ 期限超過</div>':today?'<div style="font-size:9px">本日</div>':'') : '<span style="color:var(--text3)">期限なし</span>'}
+      </td>
+      <td style="${td};max-width:220px"><span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t.note||'')}">${escHtml(t.note||'')||'—'}</span></td>
+      <td style="${td};text-align:center">${me&&me.role!=='viewer'?`<button class="ibtn" onclick="openPtM(${t.id})" title="編集">✎</button>`:''}</td>
+    </tr>`;
+  };
+
+  const tableHtml = (list, isMine, emptyMsg) => !list.length
+    ? `<div style="color:var(--text2);font-size:12px;padding:10px 0 16px">${emptyMsg}</div>`
+    : `<table style="width:100%;border-collapse:collapse;min-width:820px;margin-bottom:16px">
+        <thead><tr>
+          <th style="${th};text-align:left">タスク</th>
+          <th style="${th}">ステータス</th>
+          <th style="${th}">担当者</th>
+          <th style="${th}">依頼者</th>
+          <th style="${th}">チェック</th>
+          <th style="${th}">期限</th>
+          <th style="${th};text-align:left">メモ</th>
+          <th style="${th};width:40px"></th>
+        </tr></thead>
+        <tbody>${sortRows(list).map(t => rowHtml(t, isMine)).join('')}</tbody></table>`;
+
+  area.innerHTML =
+    `<div class="ctitle" style="margin-top:10px">👤 自分の分
+       <span style="font-weight:400;color:var(--text2);font-size:11px">${escHtml(selfName)}が担当・${mine.length}件${unack?` / 未確認の依頼 ${unack}件`:''}</span></div>`
+    + tableHtml(mine, true, '自分が担当のタスクはありません')
+    + `<div class="ctitle">👥 他人の分
+       <span style="font-weight:400;color:var(--text2);font-size:11px">${scope==='requested'?`${escHtml(selfName)}が依頼した分`:'すべて'}・${others.length}件</span></div>`
+    + tableHtml(others, false, scope==='requested' ? '自分が依頼したタスクはありません' : '他の人が担当のタスクはありません');
 }
 const renderPersonalTasksDebounced = debounce(renderPersonalTasks, 250);
+/* 依頼の確認レ点。担当者本人だけが付け外しできる（依頼した側が勝手に確認済みにしない） */
+async function togglePtAck(id, on) {
+  if (!sb) return;
+  const t = personalTasks.find(x => x.id === id);
+  if (!t) return;
+  if (String(t.assignee_user_id||'') !== String(me?.id||'')) {
+    showT('確認のレ点は担当者本人だけが付けられます', 'twa');
+    renderPersonalTasks();
+    return;
+  }
+  const val = on ? new Date().toISOString() : null;
+  try {
+    const {data, error} = await sb.from('tasks').update({acknowledged_at: val}).eq('id', id).select().single();
+    if (error) throw error;
+    const i = personalTasks.findIndex(x => x.id === id);
+    if (i >= 0) personalTasks[i] = data;
+    renderPersonalTasks();
+    renderDashWarningsIfVisible();
+  } catch(e) { showT('保存エラー: '+e.message, 'ter'); renderPersonalTasks(); }
+}
+// ダッシュボードを開いたままレ点を付けた場合に、警告パネルもその場で更新する
+function renderDashWarningsIfVisible() {
+  if (document.getElementById('dashWarnings')) renderDashWarnings();
+}
+
 async function savePtField(id, field, value) {
   if (!sb) return;
   const patch = { [field]: value === '' ? null : value };
@@ -11249,7 +11295,6 @@ function renderTaskTop() {
   const myOver  = myTasks.filter(ptIsOverdue);
   const myToday = myTasks.filter(ptIsToday);
   const incoming = ptIncomingRequests();
-  const incomingNew = incoming.filter(t => (+t.id||0) > ptSeenMaxId());
   const uname = id => users.find(u=>String(u.id)===String(id))?.name || '';
 
   const card = (n, label, warn) => `<div class="kpi-card"><div class="kpi-label">${label}</div>
@@ -11273,9 +11318,9 @@ function renderTaskTop() {
         background:var(${incoming.some(ptIsOverdue)?'--red-bg':'--amber-bg'});color:var(${incoming.some(ptIsOverdue)?'--red-text':'--amber-text'})"
         onclick="goTaskPage(33)" title="クリックで個人タスクを開きます">
       <span style="font-size:15px">🙋</span>
-      <span style="font-size:12px;font-weight:600">自分あての依頼が ${incoming.length}件 あります</span>
-      ${incomingNew.length?`<span class="bdg" style="background:var(--bg);color:var(--red-text)">新着 ${incomingNew.length}件</span>`:''}
-      <span style="font-size:11px;font-weight:400">${escHtml([...new Set(incoming.map(t=>uname(t.requester_user_id)).filter(Boolean))].join('、'))} から</span>
+      <span style="font-size:12px;font-weight:600">未確認の依頼が ${incoming.length}件 あります</span>
+      <span style="font-size:11px;font-weight:400">${escHtml([...new Set(incoming.map(t=>uname(t.requester_user_id)).filter(Boolean))].join('、'))} から
+        ／ 個人タスクでレ点を付けると消えます</span>
     </div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:14px">
       ${card(sB.n + sD.n, '対象（請求＋支払）')}
@@ -11301,7 +11346,7 @@ function renderTaskTop() {
         <div style="font-size:11.5px;color:var(--text2)">未完了 ${myTasks.filter(t=>t.status!=='done').length}件
           ${myOver.length?`<span style="color:var(--red-text);font-weight:600">　⚠ 期限超過 ${myOver.length}件</span>`:''}
           ${myToday.length?`<span style="color:var(--amber-text);font-weight:600">　本日 ${myToday.length}件</span>`:''}
-          ${incoming.length?`<span style="color:var(--amber-text);font-weight:600">　🙋 依頼 ${incoming.length}件</span>`:''}</div>
+          ${incoming.length?`<span style="color:var(--amber-text);font-weight:600">　🙋 未確認の依頼 ${incoming.length}件</span>`:''}</div>
       </div>
     </div>
 
@@ -19311,7 +19356,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   note text,
   created_by text,
   created_at timestamptz DEFAULT now(),
-  completed_at timestamptz
+  completed_at timestamptz,
+  requester_user_id text REFERENCES users(id),  -- 依頼者。担当者と別なら「依頼」として扱う
+  acknowledged_at timestamptz  -- 依頼を受け取った担当者本人がレ点を付けた日時。未入力の依頼だけがダッシュボードのお知らせに出る
 );
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "tasks_select" ON tasks FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
