@@ -1638,18 +1638,20 @@ try {
         <input type="text" id="drName" readonly style="background:var(--bg2);color:var(--text2)">
       </div>
 
-      <!-- セクション2: 乗務時刻・走行距離 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">② 乗務記録</div>
+      <!-- セクション2: 1日の乗務枠。個々の運行は⑥で追加する -->
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">② 1日の乗務</div>
+      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">日報は1日1枚です。1日に何度か走る場合も、点呼はここで1回、個々の運行は⑥に追加してください</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>乗務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
-        <div class="fld"><label>乗務終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drEnd"></div>
+        <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
+        <div class="fld"><label>業務終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drEnd"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="fld"><label>出発地点 <span style="color:var(--red)">*</span></label><input type="text" id="drStartLoc" placeholder="例: 仙台営業所"></div>
-        <div class="fld"><label>到着地点 <span style="color:var(--red)">*</span></label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
+        <div class="fld"><label>帰着地点 <span style="color:var(--red)">*</span></label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
       </div>
+      <div style="font-size:10px;color:var(--text2);margin:-4px 0 8px">運行を追加すると、時刻は最初の運行の開始〜最後の運行の終了で自動的に埋まります</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>走行距離（km） <span style="color:var(--red)">*</span></label><input type="number" id="drKm" placeholder="0" min="0" step="0.1"></div>
+        <div class="fld"><label>走行距離（1日の合計・km） <span style="color:var(--red)">*</span></label><input type="number" id="drKm" placeholder="0" min="0" step="0.1"></div>
         <div class="fld"><label>乗務形態</label>
           <select id="drType">
             <option value="regular">定期集配(個人・企業)</option>
@@ -1773,18 +1775,34 @@ try {
       </div>
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="drShipperConfirmed"> 上記の記録を荷主が確認した</label>
 
-      <!-- セクション6: 業務内容 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 業務内容</div>
-      <div class="fld"><label>取引先 / センター</label>
-        <input type="text" id="drCli" list="drCliList" placeholder="取引先名を入力（候補から選択可）">
-        <datalist id="drCliList"></datalist>
+      <!-- セクション6: 運行（1日に複数回。チャーターを午前・午後で別の取引先など） -->
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 運行（1件以上）</div>
+      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">走った分だけ「＋ 運行を追加」してください。取引先ごとに分けて記録します。時間が空いても点呼は1日1回で構いません</div>
+      <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px;margin-bottom:8px">
+        <div class="fld"><label>取引先 / センター <span style="color:var(--red)">*</span></label>
+          <input type="text" id="drCli" list="drCliList" placeholder="取引先名を入力（候補から選択）">
+          <datalist id="drCliList"></datalist>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripStart"></div>
+          <div class="fld"><label>終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripEnd"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>出発地点</label><input type="text" id="drTripStartLoc" placeholder="例: 仙台営業所"></div>
+          <div class="fld"><label>到着地点</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+          <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
+          <div class="fld"><label>ポスト便（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
+          <div class="fld"><label>チャーター便（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
+          <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end">
+          <div class="fld" style="margin-bottom:0"><label>この運行のメモ（任意）</label><input type="text" id="drTripNote" placeholder="例: 積込待ち40分"></div>
+          <button class="btn sml grn" type="button" onclick="addDrTrip()">＋ 運行を追加</button>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-        <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
-        <div class="fld"><label>ポスト便（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
-        <div class="fld"><label>チャーター便（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
-        <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
-      </div>
+      <div id="drTripList" style="margin-bottom:10px"></div>
 
       <!-- セクション7: 車両日常点検 -->
       <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 車両日常点検（道路運送車両法 第47条の2）</div>
@@ -11888,6 +11906,26 @@ async function bulkUnmarkSchedDone(){
 // deleteSchedItem → v9新実装に移行済み（async版）
 
 /* ===== ⑤ 法定乗務日報 ===== */
+/* 運行の配列を取り出す。trips が無い旧データは、それまでの平坦な項目から1件ぶんに見立てる。
+   一覧・印刷・CSVがどちらの形式でも同じように扱えるようにするため */
+function dailyTrips(r) {
+  if (Array.isArray(r.trips) && r.trips.length) {
+    return [...r.trips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+  }
+  if (!r.cli && !r.start_time) return [];
+  return [{
+    cli_id: r.cli ?? null, cli_name: lkC(r.cli)?.name || '',
+    start: (r.start_time||'').slice(0,5), end: (r.end_time||'').slice(0,5),
+    start_loc: r.start_location||'', end_loc: r.end_location||'',
+    qty_tak: r.qty_takkyubin||0, qty_neko: r.qty_nekopos||0,
+    qty_charter: r.qty_charter||0, qty_other: r.qty_other||0, note: '',
+  }];
+}
+// 運行に出てくる取引先名を重複なく並べる
+function dailyTripClients(r) {
+  return [...new Set(dailyTrips(r).map(t => t.cli_name || lkC(t.cli_id)?.name || '').filter(Boolean))];
+}
+
 // 点呼方法の表示名。対面以外は具体的方法の記録が必要（輸送安全規則 第7条 ⑤ロ）
 const TENKO_METHOD_LABEL = {face:'対面', phone:'電話', remote:'遠隔点呼', auto:'業務後自動点呼', other:'その他'};
 let dailyReports = []; // Supabaseから読み込む
@@ -12026,6 +12064,8 @@ async function initDailyForm(reportId=null) {
       document.getElementById('drEnd').value = r.end_time || '';
       document.getElementById('drKm').value = r.distance_km || '';
       document.getElementById('drType').value = r.type || 'regular';
+      // クライアント名解決: 管理者はclients、ドライバーはRPCで取得したdriverClientNamesから引く
+      const cliName = r.cli ? (isDriver ? (driverClientNames||[]).find(c=>c.id===r.cli)?.name : lkC(r.cli)?.name) : '';
       document.getElementById('drAlcBefore').value = r.alc_before ?? '';
       document.getElementById('drAlcAfter').value = r.alc_after ?? '';
       document.getElementById('drAlcDevice').value = r.alc_device || '';
@@ -12045,13 +12085,17 @@ async function initDailyForm(reportId=null) {
       document.getElementById('drRouteReport').value = r.route_report || '';
       document.getElementById('drHandoverNote').value = r.handover_note || '';
       onDrTenkoMethodChange();
-      // クライアント名解決: 管理者はclients、ドライバーはRPCで取得したdriverClientNamesから引く
-      const cliName = r.cli ? (isDriver ? (driverClientNames||[]).find(c=>c.id===r.cli)?.name : lkC(r.cli)?.name) : '';
-      document.getElementById('drCli').value = cliName || '';
-      document.getElementById('drQtyTak').value = r.qty_takkyubin || '';
-      document.getElementById('drQtyNeko').value = r.qty_nekopos || '';
-      document.getElementById('drQtyCharter').value = r.qty_charter || '';
-      document.getElementById('drQtyOther').value = r.qty_other || '';
+      document.getElementById('drCli').value = '';
+      // 運行。旧データ（trips が無い）は、それまでの平坦な項目から1件ぶんに組み立てる
+      pendDrTrips = Array.isArray(r.trips) && r.trips.length ? r.trips.map(t=>({...t}))
+        : (r.cli || r.start_time ? [{
+            cli_id: r.cli ?? null, cli_name: cliName || '',
+            start: (r.start_time||'').slice(0,5), end: (r.end_time||'').slice(0,5),
+            start_loc: r.start_location||'', end_loc: r.end_location||'',
+            qty_tak: r.qty_takkyubin||0, qty_neko: r.qty_nekopos||0,
+            qty_charter: r.qty_charter||0, qty_other: r.qty_other||0, note: '',
+          }] : []);
+      renderDrTrips();
       document.getElementById('drNote').value = r.note || '';
       // 出発・到着地点、休憩（貨物自動車運送事業輸送安全規則第8条）
       document.getElementById('drStartLoc').value = r.start_location || '';
@@ -12091,14 +12135,17 @@ async function initDailyForm(reportId=null) {
      'drWaitStart','drWaitEnd','drWaitLoc','drCargoWorkStart','drCargoWorkEnd',
      'drIncidentCause','drIncidentPrevention',
      'drTenkoMethodNote','drTenkoBeforeAt','drTenkoAfterAt',
-     'drTenkoInstructions','drRouteReport','drHandoverNote'].forEach(id => {
+     'drTenkoInstructions','drRouteReport','drHandoverNote',
+     'drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripNote'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
     ['drWaitFlag','drCargoWorkFlag','drShipperConfirmed','drIncidentFlag'].forEach(id => {
       const el = document.getElementById(id); if(el) el.checked = false;
     });
     pendDrRests = [];
+    pendDrTrips = [];
     renderDrRests();
+    renderDrTrips();
     toggleDrWaitFields();
     toggleDrIncidentFields();
     document.getElementById('drHealthBefore').value = 'good';
@@ -12205,6 +12252,98 @@ function renderDrRests() {
   </div>`).join('');
 }
 
+/* ===== 運行（1日に複数回） =====
+   チャーターを午前と午後で別の取引先に走るような日は、運行ごとに日報を分けると
+   点呼記録まで分かれてしまう。日報は1日1枚のままにして、運行だけを配列で持つ。
+   既存の集計（月報・分析・CSV・印刷）は start_time / end_time / cli / qty_* を見ているため、
+   保存時にこの配列から積み上げてそれらの列にも入れておく。 */
+let pendDrTrips = [];
+
+// 入力欄の取引先名から登録済みの取引先を引く。ドライバーはclientsを直接読めないためRPCの結果を使う
+function drResolveClient(name) {
+  const src = (me?.role === 'driver') ? (driverClientNames||[]) : clients;
+  return name ? (src.find(c => nm(c.name) === nm(name)) || null) : null;
+}
+
+function addDrTrip() {
+  const cliInput = document.getElementById('drCli').value.trim();
+  const start = document.getElementById('drTripStart').value;
+  const end   = document.getElementById('drTripEnd').value;
+  if (!cliInput) { showT('取引先を入力してください', 'twa'); return; }
+  const cli = drResolveClient(cliInput);
+  if (!cli) { showT(`「${cliInput}」は登録済みの取引先と一致しません`, 'ter'); return; }
+  if (!start || !end) { showT('運行の開始・終了時刻を入力してください', 'twa'); return; }
+  pendDrTrips.push({
+    cli_id: cli.id, cli_name: cli.name,
+    start, end,
+    start_loc: document.getElementById('drTripStartLoc').value.trim(),
+    end_loc:   document.getElementById('drTripEndLoc').value.trim(),
+    qty_tak:     +document.getElementById('drQtyTak').value || 0,
+    qty_neko:    +document.getElementById('drQtyNeko').value || 0,
+    qty_charter: +document.getElementById('drQtyCharter').value || 0,
+    qty_other:   +document.getElementById('drQtyOther').value || 0,
+    note: document.getElementById('drTripNote').value.trim(),
+  });
+  ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc',
+   'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drTripNote']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  renderDrTrips();
+  applyDrTripRollup();
+}
+function rmDrTrip(i) { pendDrTrips.splice(i,1); renderDrTrips(); applyDrTripRollup(); }
+
+function renderDrTrips() {
+  const el = document.getElementById('drTripList');
+  if (!el) return;
+  if (!pendDrTrips.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--amber-text);background:var(--amber-bg);border-radius:var(--radius);padding:6px 8px">運行が1件も追加されていません。上の欄を埋めて「＋ 運行を追加」を押してください</div>';
+    return;
+  }
+  const qty = t => [t.qty_tak?`宅${t.qty_tak}`:'', t.qty_neko?`ポ${t.qty_neko}`:'',
+                    t.qty_charter?`チ${t.qty_charter}`:'', t.qty_other?`他${t.qty_other}`:''].filter(Boolean).join(' ');
+  el.innerHTML = pendDrTrips
+    .map((t,i) => ({t,i}))
+    .sort((a,b) => String(a.t.start||'').localeCompare(String(b.t.start||'')))
+    .map(({t,i}) => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;margin-bottom:4px;background:var(--bg2);border-radius:var(--radius)">
+      <span style="font-weight:600;white-space:nowrap">${t.start||''}〜${t.end||''}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.cli_name||'')}${(t.start_loc||t.end_loc)?`（${escHtml(t.start_loc||'')}→${escHtml(t.end_loc||'')}）`:''}${t.note?`　${escHtml(t.note)}`:''}</span>
+      <span style="color:var(--text2);white-space:nowrap">${qty(t)}</span>
+      <button class="ibtn" onclick="rmDrTrip(${i})" title="削除">🗑</button>
+    </div>`).join('');
+}
+
+/* 運行から1日の枠を組み立てて、上の②へ自動で反映する。
+   終わってから正確な時刻を書き直す手間をなくすため、運行を足すたびに埋め直す */
+function applyDrTripRollup() {
+  if (!pendDrTrips.length) return;
+  const starts = pendDrTrips.map(t=>t.start).filter(Boolean).sort();
+  const ends   = pendDrTrips.map(t=>t.end).filter(Boolean).sort();
+  const byStart = [...pendDrTrips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+  const set = (id,v) => { const el=document.getElementById(id); if (el && v) el.value = v; };
+  // 運行を足すたびに入れ直す。1日の出発地点＝最初の運行の出発、帰着地点＝最後の運行の到着なので、
+  // 前の運行の値が残らないよう毎回上書きする
+  set('drStart', starts[0]);
+  set('drEnd', ends[ends.length-1]);
+  set('drStartLoc', byStart[0]?.start_loc);
+  set('drEndLoc', byStart[byStart.length-1]?.end_loc);
+}
+
+// 保存する日報に、運行から積み上げた値を載せる（既存の集計がそのまま動くようにするため）
+function drTripTotals(trips) {
+  const t = trips || [];
+  const starts = t.map(x=>x.start).filter(Boolean).sort();
+  const ends   = t.map(x=>x.end).filter(Boolean).sort();
+  return {
+    cli: t[0]?.cli_id ?? null,
+    start_time: starts[0] || null,
+    end_time: ends[ends.length-1] || null,
+    qty_takkyubin: t.reduce((a,x)=>a+(+x.qty_tak||0),0),
+    qty_nekopos:   t.reduce((a,x)=>a+(+x.qty_neko||0),0),
+    qty_charter:   t.reduce((a,x)=>a+(+x.qty_charter||0),0),
+    qty_other:     t.reduce((a,x)=>a+(+x.qty_other||0),0),
+  };
+}
+
 function toggleDrWaitFields() {
   document.getElementById('drWaitFields').style.display = document.getElementById('drWaitFlag').checked ? 'block' : 'none';
   document.getElementById('drCargoWorkFields').style.display = document.getElementById('drCargoWorkFlag').checked ? 'block' : 'none';
@@ -12237,6 +12376,13 @@ async function submitDailyReport() {
 
   // 貨物自動車運送事業輸送安全規則 第8条：乗務の開始・終了の地点・日時は乗務記録の必須記載事項
   if (!date || !car) { resultEl.textContent = '⚠ 乗務日と車両番号は必須です'; resultEl.style.color='var(--red)'; return; }
+  // 運行は1件以上。取引先はその中で必須にしているため、ここを満たせば取引先も必ず入る
+  if (!pendDrTrips.length) {
+    resultEl.innerHTML = '⚠ 運行が1件も追加されていません。<b>⑥ 運行</b>で取引先と時刻を入れて「＋ 運行を追加」を押してください';
+    resultEl.style.color='var(--red)';
+    document.getElementById('drTripList')?.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   if (!km || isNaN(+km)) { resultEl.textContent = '⚠ 走行距離を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (!startTime || !endTime) { resultEl.textContent = '⚠ 乗務開始時刻・乗務終了時刻は必須です'; resultEl.style.color='var(--red)'; return; }
   if (!startLoc || !endLoc) { resultEl.textContent = '⚠ 出発地点・到着地点は必須です'; resultEl.style.color='var(--red)'; return; }
@@ -12261,13 +12407,12 @@ async function submitDailyReport() {
   if (drivingWarning) {
     if (!confirm(drivingWarning + '\n\nこのまま提出しますか？')) return;
   }
-  // 取引先は名前で手入力のため、入力文字列から候補と一致するクライアントを解決する
-  // （ドライバーはclientsを直接読めないため、RPCで取得したdriverClientNamesを使う）
-  const cliInput = document.getElementById('drCli').value.trim();
-  const cliSource = (me?.role === 'driver') ? (driverClientNames||[]) : clients;
-  const cliMatch = cliInput ? cliSource.find(c => nm(c.name) === nm(cliInput)) : null;
-  if (cliInput && !cliMatch) {
-    if (!confirm(`⚠ 取引先「${cliInput}」が登録済みの取引先名と一致しませんでした。取引先を未設定のまま提出しますか？`)) return;
+  // 取引先は運行を追加するときに必ず登録済みのものと照合しているため、ここでの確認は不要。
+  // 入力欄に打ちかけのまま「追加」を押し忘れているケースだけ拾う
+  const leftover = document.getElementById('drCli').value.trim();
+  if (leftover) {
+    if (!confirm(`⚠ 取引先「${leftover}」が入力欄に残っていますが、運行として追加されていません。
+この分を除いて提出しますか？`)) return;
   }
   // 車番も同様にチェックする。ドライバー本人は自分の登録車両としか比較できない（RLSで他ドライバーの車両は見えないため）。
   // 車両プルダウンの候補（登録車両＋乗務履歴で割り当て中の代車）から選んだ場合は、
@@ -12315,11 +12460,10 @@ async function submitDailyReport() {
     tenko_instructions: document.getElementById('drTenkoInstructions').value.trim() || null,
     route_report: document.getElementById('drRouteReport').value.trim() || null,
     handover_note: document.getElementById('drHandoverNote').value.trim() || null,
-    cli: cliMatch ? cliMatch.id : null,
-    qty_takkyubin: +document.getElementById('drQtyTak').value || 0,
-    qty_nekopos: +document.getElementById('drQtyNeko').value || 0,
-    qty_charter: +document.getElementById('drQtyCharter').value || 0,
-    qty_other: +document.getElementById('drQtyOther').value || 0,
+    // 運行の明細と、そこから積み上げた1日ぶんの値。
+    // 積み上げた値は月報・分析・CSV・印刷が従来どおり参照する
+    trips: pendDrTrips,
+    ...drTripTotals(pendDrTrips),
     note: document.getElementById('drNote').value.trim(),
     // 個人事業主のドライバーが自分の記録として提出するもので、会社の承認を必要としないため提出=確定とする。
     // 内容に不備があれば管理側が「差戻し」でマークし、ドライバーに修正を促す
@@ -12487,7 +12631,13 @@ function renderDailyList() {
             ${(r.start_location||r.end_location)?`<span>📍 ${escHtml(r.start_location)||'?'}→${escHtml(r.end_location)||'?'}</span>`:''}
             <span>🍺 前:${r.alc_before??'—'} 後:${r.alc_after??'—'} mg/L</span>
             ${(r.qty_takkyubin||r.qty_nekopos||r.qty_charter)?`<span>📦 宅配便:${r.qty_takkyubin||0} ポスト便:${r.qty_nekopos||0} チャーター便:${r.qty_charter||0}</span>`:''}
-            ${cli?`<span>🏢 ${escHtml(cli.name)}</span>`:''}
+            ${(() => {
+              const names = dailyTripClients(r);
+              if (!names.length) return '';
+              const trips = dailyTrips(r);
+              const tip = trips.map(t=>`${t.start||''}〜${t.end||''} ${t.cli_name||''}`).join('\n');
+              return `<span title="${escHtml(tip)}">🏢 ${escHtml(names.join('、'))}${trips.length>1?`（運行${trips.length}件）`:''}</span>`;
+            })()}
           </div>
           ${r.note?`<div style="font-size:11px;color:var(--text2);margin-top:3px">📝 ${escHtml(r.note)}</div>`:''}
         </div>
@@ -12580,6 +12730,7 @@ function downloadDailyReportCsv(list, filenameLabel) {
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器の使用','検知器ID','体調(前)','体調(後)',
     '疾病','疲労','睡眠','指示事項','運行の状況','交替運転者への通告',
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
+    '運行件数','取引先','運行明細',
     '宅配便','ポスト便','チャーター便','その他','備考',
     '事故あり','事故原因','再発防止策','ステータス'];
   const rows = list.map(r=>[
@@ -12598,6 +12749,8 @@ function downloadDailyReportCsv(list, filenameLabel) {
     r.wait_flag?'あり':'', r.wait_start||'', r.wait_end||'', r.wait_location||'',
     r.cargo_work_flag?'あり':'', r.cargo_work_start||'', r.cargo_work_end||'',
     r.shipper_confirmed?'確認済':'',
+    dailyTrips(r).length, dailyTripClients(r).join('、'),
+    dailyTrips(r).map(t=>`${t.start||''}-${t.end||''} ${t.cli_name||''}`).join(' / '),
     r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_charter||0,r.qty_other||0,
     (r.note||'').replace(/\n/g,' '),
     r.incident_flag?'あり':'', r.incident_cause||'', r.incident_prevention||'',
@@ -12691,10 +12844,21 @@ function buildDailyReportHtml(r) {
       <tr><th>荷主確認</th><td>${r.shipper_confirmed?'確認済':'未確認'}</td></tr>
     </table>` : ''}
 
-    <div class="drp-section-title">④ 業務内容</div>
-    <table class="drp-table">
-      <tr><th>取引先</th><td>${cli?escHtml(cli.name):'—'}</td><th>個数</th><td>宅配便${r.qty_takkyubin||0} ／ ポスト便${r.qty_nekopos||0} ／ チャーター便${r.qty_charter||0} ／ その他${r.qty_other||0}</td></tr>
-    </table>
+    <div class="drp-section-title">④ 運行の記録</div>
+    ${(() => {
+      const trips = dailyTrips(r);
+      if (!trips.length) return '<table class="drp-table"><tr><td>—</td></tr></table>';
+      return `<table class="drp-table">
+        <tr><th style="width:100px">時刻</th><th>取引先</th><th style="width:150px">区間</th><th style="width:150px">個数</th></tr>
+        ${trips.map(t => `<tr>
+          <td>${t.start||''}〜${t.end||''}</td>
+          <td>${escHtml(t.cli_name || lkC(t.cli_id)?.name || '')}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
+          <td>${escHtml(t.start_loc||'')}${(t.start_loc||t.end_loc)?' → ':''}${escHtml(t.end_loc||'')}</td>
+          <td>${[t.qty_tak?`宅配便${t.qty_tak}`:'', t.qty_neko?`ポスト便${t.qty_neko}`:'', t.qty_charter?`チャーター${t.qty_charter}`:'', t.qty_other?`その他${t.qty_other}`:''].filter(Boolean).join(' ／ ')||'—'}</td>
+        </tr>`).join('')}
+        <tr><th>合計</th><td colspan="3">運行${trips.length}件　宅配便${r.qty_takkyubin||0} ／ ポスト便${r.qty_nekopos||0} ／ チャーター便${r.qty_charter||0} ／ その他${r.qty_other||0}</td></tr>
+      </table>`;
+    })()}
 
     <div class="drp-section-title">⑤ 車両日常点検</div>
     <div class="drp-insp">${inspHtml}</div>
@@ -19369,6 +19533,12 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   start_location text, end_location text,
   rest_start time, rest_end time, rest_location text, -- 旧形式（後方互換用）。新規記録はrestsを使用
   rests jsonb DEFAULT '[]', -- 複数回の休憩を[{start,end,location}]の配列で記録
+  -- 1日に複数回の運行（チャーターを午前・午後で別の取引先など）。
+  -- 運行ごとに日報を分けると点呼記録まで分かれてしまうため、日報は1日1枚のままにして運行だけを配列で持つ。
+  -- [{cli_id, cli_name, start, end, start_loc, end_loc, qty_tak, qty_neko, qty_charter, qty_other, note}]
+  -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
+  -- 月報・分析・CSV・印刷は従来どおりそちらを参照する。取引先は運行ごとに必須。
+  trips jsonb NOT NULL DEFAULT '[]',
   wait_flag boolean DEFAULT false, wait_start time, wait_end time, wait_location text,
   cargo_work_flag boolean DEFAULT false, cargo_work_start time, cargo_work_end time,
   shipper_confirmed boolean DEFAULT false,
