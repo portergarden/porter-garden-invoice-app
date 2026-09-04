@@ -1623,217 +1623,229 @@ try {
   <div id="dailyFormArea" style="display:none;overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 160px)">
     <div class="mob-form" style="max-width:560px">
 
-      <!-- セクション1: 基本情報 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">① 基本情報</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>乗務日 <span style="color:var(--red)">*</span></label><input type="date" id="drD"></div>
-        <div class="fld"><label>車両番号 <span style="color:var(--red)">*</span></label>
-          <select id="drCar" onchange="onDrCarChange()">
-            <option value="">選択</option>
-          </select>
-          <input type="text" id="drCarCustom" placeholder="車両番号を入力" style="display:none;margin-top:4px">
-        </div>
-      </div>
-      <div class="fld"><label>乗務員名</label>
-        <input type="text" id="drName" readonly style="background:var(--bg2);color:var(--text2)">
-      </div>
+      <!-- ステップ表示。1日の流れ（出発前の点呼 → 走る → 帰着後の点呼）に合わせている -->
+      <div id="drSteps" style="display:flex;gap:4px;margin-bottom:12px"></div>
 
-      <!-- セクション2: 1日の乗務枠。個々の運行は⑥で追加する -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">② 1日の乗務</div>
-      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">日報は1日1枚です。1日に何度か走る場合も、点呼はここで1回、個々の運行は⑥に追加してください</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
-        <div class="fld"><label>業務終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drEnd"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>出発地点 <span style="color:var(--red)">*</span></label><input type="text" id="drStartLoc" placeholder="例: 仙台営業所"></div>
-        <div class="fld"><label>帰着地点 <span style="color:var(--red)">*</span></label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
-      </div>
-      <div style="font-size:10px;color:var(--text2);margin:-4px 0 8px">運行を追加すると、時刻は最初の運行の開始〜最後の運行の終了で自動的に埋まります</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>走行距離（1日の合計・km） <span style="color:var(--red)">*</span></label><input type="number" id="drKm" placeholder="0" min="0" step="0.1"></div>
-        <div class="fld"><label>乗務形態</label>
-          <select id="drType">
-            <option value="regular">定期集配(個人・企業)</option>
-            <option value="charter">チャーター・スポット便</option>
-          </select>
+      <!-- ============ ステップ1: 乗務前点呼 ============ -->
+      <div class="dr-step" data-step="1">
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">① 基本情報</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>乗務日 <span style="color:var(--red)">*</span></label><input type="date" id="drD"></div>
+          <div class="fld"><label>車両番号 <span style="color:var(--red)">*</span></label>
+            <select id="drCar" onchange="onDrCarChange()">
+              <option value="">選択</option>
+            </select>
+            <input type="text" id="drCarCustom" placeholder="車両番号を入力" style="display:none;margin-top:4px">
+          </div>
         </div>
-      </div>
-      <div class="fld"><label>休憩・睡眠時刻（10分未満の休憩は記録省略可・長時間稼働で複数回ある場合は都度「追加」）</label>
-        <div style="font-size:10px;color:var(--amber-text);background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);padding:5px 8px;margin-bottom:6px">
-          ⚠️ 改善基準告示により、連続運転4時間ごとに合計30分以上の休憩が必要です
+        <div class="fld"><label>乗務員名</label>
+          <input type="text" id="drName" readonly style="background:var(--bg2);color:var(--text2)">
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:6px;align-items:end">
-          <div><label style="font-size:10px;color:var(--text2)">開始</label><input type="time" id="drRestStart"></div>
-          <div><label style="font-size:10px;color:var(--text2)">終了</label><input type="time" id="drRestEnd"></div>
-          <div><label style="font-size:10px;color:var(--text2)">休憩地点</label><input type="text" id="drRestLoc" placeholder="例: 〇〇パーキングエリア"></div>
-          <button class="btn sml" type="button" onclick="addDrRest()">＋ 追加</button>
-        </div>
-        <div id="drRestList" style="margin-top:6px"></div>
-      </div>
 
-      <!-- セクション3: 点呼記録（貨物自動車運送事業輸送安全規則 第7条の記録事項） -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③ 点呼記録</div>
-      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">点呼記録簿として保存する項目です。一人で事業を営む場合は自ら点呼を行い「対面」で記録します</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>点呼執行者 <span style="color:var(--red)">*</span></label>
-          <input type="text" id="drTenkoExecutor" placeholder="点呼を行った人の氏名">
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">② 乗務前点呼</div>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px">点呼記録簿として保存する項目です。一人で事業を営む場合は自ら点呼を行い「対面」で記録します</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>点呼執行者 <span style="color:var(--red)">*</span></label>
+            <input type="text" id="drTenkoExecutor" placeholder="点呼を行った人の氏名">
+          </div>
+          <div class="fld"><label>点呼方法 <span style="color:var(--red)">*</span></label>
+            <select id="drTenkoMethod" onchange="onDrTenkoMethodChange()">
+              <option value="face">対面</option>
+              <option value="phone">電話</option>
+              <option value="remote">遠隔点呼</option>
+              <option value="auto">業務後自動点呼</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
         </div>
-        <div class="fld"><label>点呼方法 <span style="color:var(--red)">*</span></label>
-          <select id="drTenkoMethod" onchange="onDrTenkoMethodChange()">
-            <option value="face">対面</option>
-            <option value="phone">電話</option>
-            <option value="remote">遠隔点呼</option>
-            <option value="auto">業務後自動点呼</option>
-            <option value="other">その他</option>
-          </select>
+        <div class="fld" id="drTenkoMethodNoteWrap" style="display:none">
+          <label>点呼の具体的方法 <span style="color:var(--red)">*</span></label>
+          <input type="text" id="drTenkoMethodNote" placeholder="例: 携帯電話で通話し、検知器の測定値を写真で受信">
+          <div style="font-size:10px;color:var(--text2);margin-top:2px">対面以外のときは、どのように点呼したかの記録が必要です</div>
         </div>
-      </div>
-      <div class="fld" id="drTenkoMethodNoteWrap" style="display:none">
-        <label>点呼の具体的方法 <span style="color:var(--red)">*</span></label>
-        <input type="text" id="drTenkoMethodNote" placeholder="例: 携帯電話で通話し、検知器の測定値を写真で受信">
-        <div style="font-size:10px;color:var(--text2);margin-top:2px">対面以外のときは、どのように点呼したかの記録が必要です</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>乗務前 点呼日時</label><input type="time" id="drTenkoBeforeAt"></div>
-        <div class="fld"><label>乗務後 点呼日時</label><input type="time" id="drTenkoAfterAt"></div>
-      </div>
+        <div class="fld"><label>乗務前 点呼時刻</label><input type="time" id="drTenkoBeforeAt"></div>
 
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③-2 アルコール検知記録</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld">
+            <label>乗務前アルコール（mg/L） <span style="color:var(--red)">*</span></label>
+            <input type="number" id="drAlcBefore" placeholder="0.00" min="0" max="2" step="0.01" oninput="checkAlc(this,'drAlcBeforeWarn')">
+            <div id="drAlcBeforeWarn" style="font-size:10px;color:var(--red);margin-top:2px;display:none">⚠ 0.15mg/L以上 — 乗務禁止</div>
+          </div>
+          <div class="fld"><label>検知器ID</label><input type="text" id="drAlcDevice" placeholder="例: AL-001"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px">
+          <input type="checkbox" id="drAlcDetectorUsed" checked> アルコール検知器を使用した
+        </label>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:8px">検知器の使用有無は点呼記録簿の必須項目です。外すと未使用として記録されます</div>
+
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px">健康状態の確認。問題がなければチェックを付けたままにしてください</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthIllness" checked> 疾病なし</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthFatigue" checked> 疲労なし</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthSleep" checked> 睡眠十分</label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>乗務前 体調（総合） <span style="color:var(--red)">*</span></label>
+            <select id="drHealthBefore">
+              <option value="good">良好</option>
+              <option value="normal">普通</option>
+              <option value="bad">不調</option>
+            </select>
+          </div>
+          <div class="fld"><label>乗務形態</label>
+            <select id="drType">
+              <option value="regular">定期集配(個人・企業)</option>
+              <option value="charter">チャーター・スポット便</option>
+            </select>
+          </div>
+        </div>
+        <div class="fld"><label>指示事項（任意）</label>
+          <input type="text" id="drTenkoInstructions" placeholder="例: 積雪のため速度を控えること">
+        </div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③ 出発時の記録</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
+          <div class="fld"><label>出発地点 <span style="color:var(--red)">*</span></label><input type="text" id="drStartLoc" placeholder="例: 仙台営業所"></div>
+        </div>
+        <div class="fld"><label>出発時のメーター（km・任意）</label>
+          <input type="number" id="drOdoStart" placeholder="例: 45230" min="0" step="1" oninput="onDrOdoChange()">
+          <div style="font-size:10px;color:var(--text2);margin-top:2px">車のメーターの数字をそのまま入れてください。帰着時にも入れると走行距離が自動で計算されます</div>
+        </div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">④ 車両日常点検（道路運送車両法 第47条の2）</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px" id="inspChecks">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp1" checked> タイヤ（空気圧・亀裂・磨耗）</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp2" checked> ブレーキ（効き・液量）</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp3" checked> 灯火類（ヘッド・ウインカー・ブレーキ灯）</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp4" checked> ワイパー・ウォッシャー液</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp5" checked> エンジン（オイル・冷却水・異音）</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp6" checked> ミラー・窓ガラス（汚れ・調整）</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp7" checked> ホーン・警告灯</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp8" checked> バッテリー・電気装置</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp9" checked> 荷台・固縛装置</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp10" checked> 燃料残量</label>
+        </div>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:8px">✅ 異常なし = チェック / 未チェックは点検要確認として記録されます</div>
         <div class="fld">
-          <label>乗務前（mg/L） <span style="color:var(--red)">*</span></label>
-          <input type="number" id="drAlcBefore" placeholder="0.00" min="0" max="2" step="0.01" oninput="checkAlc(this,'drAlcBeforeWarn')">
-          <div id="drAlcBeforeWarn" style="font-size:10px;color:var(--red);margin-top:2px;display:none">⚠ 0.15mg/L以上 — 乗務禁止</div>
+          <label>点検異常内容（異常がある場合のみ記入）</label>
+          <input type="text" id="inspNote" placeholder="例: 左前タイヤ空気圧低め" style="padding:8px 10px;font-size:14px">
         </div>
+      </div>
+
+      <!-- ============ ステップ2: 稼働 ============ -->
+      <div class="dr-step" data-step="2" style="display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑤ 運行（1件以上）</div>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px">走った分だけ「＋ 運行を追加」してください。取引先ごとに分けて記録します。時間が空いても点呼は1日1回で構いません</div>
+        <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px;margin-bottom:8px">
+          <div class="fld"><label>取引先 / センター <span style="color:var(--red)">*</span></label>
+            <input type="text" id="drCli" list="drCliList" placeholder="取引先名を入力（候補から選択）">
+            <datalist id="drCliList"></datalist>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="fld"><label>開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripStart"></div>
+            <div class="fld"><label>終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripEnd"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="fld"><label>出発地点</label><input type="text" id="drTripStartLoc" placeholder="例: 仙台営業所"></div>
+            <div class="fld"><label>到着地点</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+            <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
+            <div class="fld"><label>ポスト便（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
+            <div class="fld"><label>チャーター便（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
+            <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
+          </div>
+          <div class="fld"><label>この運行のメモ（任意）</label><input type="text" id="drTripNote" placeholder="例: 積込待ち40分"></div>
+          <button class="btn sml grn" type="button" style="width:100%;justify-content:center" onclick="addDrTrip()">＋ 運行を追加</button>
+        </div>
+        <div id="drTripList" style="margin-bottom:12px"></div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 休憩</div>
+        <div class="fld"><label>休憩・睡眠時刻（10分未満の休憩は記録省略可・複数回ある場合は都度「追加」）</label>
+          <div style="font-size:10px;color:var(--amber-text);background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);padding:5px 8px;margin-bottom:6px">
+            ⚠️ 改善基準告示により、連続運転4時間ごとに合計30分以上の休憩が必要です
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:6px;align-items:end">
+            <div><label style="font-size:10px;color:var(--text2)">開始</label><input type="time" id="drRestStart"></div>
+            <div><label style="font-size:10px;color:var(--text2)">終了</label><input type="time" id="drRestEnd"></div>
+            <div><label style="font-size:10px;color:var(--text2)">休憩地点</label><input type="text" id="drRestLoc" placeholder="例: 〇〇パーキングエリア"></div>
+            <button class="btn sml" type="button" onclick="addDrRest()">＋ 追加</button>
+          </div>
+          <div id="drRestList" style="margin-top:6px"></div>
+        </div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 荷待ち・付帯作業</div>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px">荷主都合で30分以上待機した場合、または荷役・付帯作業を行った場合に記録してください</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drWaitFlag" onchange="toggleDrWaitFields()"> 荷待ち（30分以上）があった</label>
+        <div id="drWaitFields" style="display:none;margin-bottom:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="fld"><label>荷待ち開始</label><input type="time" id="drWaitStart"></div>
+            <div class="fld"><label>荷待ち終了</label><input type="time" id="drWaitEnd"></div>
+          </div>
+          <div class="fld"><label>荷待ち地点</label><input type="text" id="drWaitLoc" placeholder="例: 〇〇センター"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drCargoWorkFlag" onchange="toggleDrWaitFields()"> 荷役・付帯作業を行った</label>
+        <div id="drCargoWorkFields" style="display:none;margin-bottom:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="fld"><label>作業開始</label><input type="time" id="drCargoWorkStart"></div>
+            <div class="fld"><label>作業終了</label><input type="time" id="drCargoWorkEnd"></div>
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drShipperConfirmed"> 荷主の確認を得た</label>
+      </div>
+
+      <!-- ============ ステップ3: 乗務後点呼 ============ -->
+      <div class="dr-step" data-step="3" style="display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑧ 帰着時の記録</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld"><label>業務終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drEnd"></div>
+          <div class="fld"><label>帰着地点 <span style="color:var(--red)">*</span></label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
+        </div>
+        <div class="fld"><label>帰着時のメーター（km・任意）</label>
+          <input type="number" id="drOdoEnd" placeholder="例: 45572" min="0" step="1" oninput="onDrOdoChange()">
+        </div>
+        <div class="fld"><label>走行距離（1日の合計・km） <span style="color:var(--red)">*</span></label>
+          <input type="number" id="drKm" placeholder="0" min="0" step="0.1">
+          <div style="font-size:10px;color:var(--text2);margin-top:2px" id="drKmHint">メーターを両方入れると自動で計算されます</div>
+        </div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑨ 乗務後点呼</div>
+        <div class="fld"><label>乗務後 点呼時刻</label><input type="time" id="drTenkoAfterAt"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="fld">
+            <label>乗務後アルコール（mg/L） <span style="color:var(--red)">*</span></label>
+            <input type="number" id="drAlcAfter" placeholder="0.00" min="0" max="2" step="0.01" oninput="checkAlc(this,'drAlcAfterWarn')">
+            <div id="drAlcAfterWarn" style="font-size:10px;color:var(--red);margin-top:2px;display:none">⚠ 0.15mg/L以上 — 要報告</div>
+          </div>
+          <div class="fld"><label>乗務後 体調（総合）</label>
+            <select id="drHealthAfter">
+              <option value="good">良好</option>
+              <option value="normal">普通</option>
+              <option value="bad">不調</option>
+            </select>
+          </div>
+        </div>
+        <div class="fld"><label>自動車・道路及び運行の状況（任意）</label>
+          <input type="text" id="drRouteReport" placeholder="例: 国道4号で渋滞。車両に異常なし">
+        </div>
+        <div class="fld"><label>交替運転者への通告（任意）</label>
+          <input type="text" id="drHandoverNote" placeholder="交替する運転者がいる場合に記録します">
+        </div>
+
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑩ 特記事項</div>
         <div class="fld">
-          <label>乗務後（mg/L） <span style="color:var(--red)">*</span></label>
-          <input type="number" id="drAlcAfter" placeholder="0.00" min="0" max="2" step="0.01" oninput="checkAlc(this,'drAlcAfterWarn')">
-          <div id="drAlcAfterWarn" style="font-size:10px;color:var(--red);margin-top:2px;display:none">⚠ 0.15mg/L以上 — 要報告</div>
+          <label>事故・ヒヤリハット・車両異常・その他</label>
+          <textarea id="drNote" rows="3" style="width:100%;padding:8px 10px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);resize:vertical"></textarea>
         </div>
-      </div>
-      <div class="fld">
-        <label>検知器ID</label>
-        <input type="text" id="drAlcDevice" placeholder="例: AL-001">
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px">
-        <input type="checkbox" id="drAlcDetectorUsed" checked> アルコール検知器を使用した
-      </label>
-      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">検知器の使用有無は点呼記録簿の必須項目です。外すと未使用として記録されます</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drIncidentFlag" onchange="toggleDrIncidentFields()"> 事故・違反があった</label>
+        <div id="drIncidentFields" style="display:none">
+          <div class="fld"><label>原因</label><input type="text" id="drIncidentCause" placeholder="例: 前方不注意による接触"></div>
+          <div class="fld"><label>再発防止策</label><input type="text" id="drIncidentPrevention" placeholder="例: 車間距離確保の徹底"></div>
+        </div>
 
-      <!-- セクション4: 健康状態（疾病・疲労・睡眠不足は点呼記録簿で個別に記録する項目） -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">④ 健康・体調確認</div>
-      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">乗務前の点呼で確認する項目です。問題がなければチェックを付けたままにしてください</div>
-      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthIllness" checked> 疾病なし</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthFatigue" checked> 疲労なし</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthSleep" checked> 睡眠十分</label>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>乗務前 体調（総合） <span style="color:var(--red)">*</span></label>
-          <select id="drHealthBefore">
-            <option value="good">良好</option>
-            <option value="normal">普通</option>
-            <option value="bad">不調</option>
-          </select>
-        </div>
-        <div class="fld"><label>乗務後 体調（総合）</label>
-          <select id="drHealthAfter">
-            <option value="good">良好</option>
-            <option value="normal">普通</option>
-            <option value="bad">不調</option>
-          </select>
-        </div>
-      </div>
-      <div class="fld"><label>指示事項（任意）</label>
-        <input type="text" id="drTenkoInstructions" placeholder="例: 積雪のため速度を控えること">
-      </div>
-      <div class="fld"><label>自動車・道路及び運行の状況（乗務後・任意）</label>
-        <input type="text" id="drRouteReport" placeholder="例: 国道4号で渋滞。車両に異常なし">
-      </div>
-      <div class="fld"><label>交替運転者への通告（任意）</label>
-        <input type="text" id="drHandoverNote" placeholder="交替する運転者がいる場合に記録します">
-      </div>
-
-      <!-- セクション5: 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象） -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑤ 荷待ち・付帯作業</div>
-      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">荷主都合で30分以上待機した場合、または荷役・付帯作業を行った場合に記録してください</div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drWaitFlag" onchange="toggleDrWaitFields()"> 荷待ち（30分以上）があった</label>
-      <div id="drWaitFields" style="display:none;margin-bottom:8px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="fld"><label>荷待ち開始</label><input type="time" id="drWaitStart"></div>
-          <div class="fld"><label>荷待ち終了</label><input type="time" id="drWaitEnd"></div>
-        </div>
-        <div class="fld"><label>集貨地点等</label><input type="text" id="drWaitLoc" placeholder="例: 〇〇センター"></div>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drCargoWorkFlag" onchange="toggleDrWaitFields()"> 荷役作業・付帯業務を行った</label>
-      <div id="drCargoWorkFields" style="display:none;margin-bottom:8px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="fld"><label>作業開始</label><input type="time" id="drCargoWorkStart"></div>
-          <div class="fld"><label>作業終了</label><input type="time" id="drCargoWorkEnd"></div>
-        </div>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="drShipperConfirmed"> 上記の記録を荷主が確認した</label>
-
-      <!-- セクション6: 運行（1日に複数回。チャーターを午前・午後で別の取引先など） -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 運行（1件以上）</div>
-      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">走った分だけ「＋ 運行を追加」してください。取引先ごとに分けて記録します。時間が空いても点呼は1日1回で構いません</div>
-      <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px;margin-bottom:8px">
-        <div class="fld"><label>取引先 / センター <span style="color:var(--red)">*</span></label>
-          <input type="text" id="drCli" list="drCliList" placeholder="取引先名を入力（候補から選択）">
-          <datalist id="drCliList"></datalist>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="fld"><label>開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripStart"></div>
-          <div class="fld"><label>終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripEnd"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="fld"><label>出発地点</label><input type="text" id="drTripStartLoc" placeholder="例: 仙台営業所"></div>
-          <div class="fld"><label>到着地点</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
-          <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
-          <div class="fld"><label>ポスト便（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
-          <div class="fld"><label>チャーター便（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
-          <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end">
-          <div class="fld" style="margin-bottom:0"><label>この運行のメモ（任意）</label><input type="text" id="drTripNote" placeholder="例: 積込待ち40分"></div>
-          <button class="btn sml grn" type="button" onclick="addDrTrip()">＋ 運行を追加</button>
-        </div>
-      </div>
-      <div id="drTripList" style="margin-bottom:10px"></div>
-
-      <!-- セクション7: 車両日常点検 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 車両日常点検（道路運送車両法 第47条の2）</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px" id="inspChecks">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp1" value="tire"> タイヤ（空気圧・亀裂・磨耗）</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp2" value="brake"> ブレーキ（効き・液量）</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp3" value="light"> 灯火類（ヘッド・ウインカー・ブレーキ灯）</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp4" value="wiper"> ワイパー・ウォッシャー液</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp5" value="engine"> エンジン（オイル・冷却水・異音）</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp6" value="mirror"> ミラー・窓ガラス（汚れ・調整）</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp7" value="horn"> ホーン・警報装置</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp8" value="battery"> バッテリー・充電警告灯</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp9" value="cargo"> 積載装置・荷締め</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp10" value="fuel"> 燃料（残量・漏れ）</label>
-      </div>
-      <div style="font-size:10px;color:var(--text2);margin-bottom:8px">✅ 異常なし = チェック / 未チェックは点検要確認として記録されます</div>
-      <div class="fld">
-        <label>点検異常内容（異常がある場合のみ記入）</label>
-        <input type="text" id="inspNote" placeholder="例: 左前タイヤ空気圧低め" style="padding:8px 10px;font-size:14px">
-      </div>
-
-      <!-- セクション8: 備考 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑧ 特記事項</div>
-      <div class="fld">
-        <label>事故・ヒヤリハット・車両異常・その他</label>
-        <textarea id="drNote" rows="3" style="width:100%;padding:8px 10px;font-size:14px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);resize:vertical" placeholder="異常なし、またはヒヤリハット内容・事故状況等を記入"></textarea>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drIncidentFlag" onchange="toggleDrIncidentFields()"> 事故が発生した（保存期間3年）</label>
-      <div id="drIncidentFields" style="display:none">
-        <div class="fld"><label>原因</label><input type="text" id="drIncidentCause" placeholder="例: 前方不注意による接触"></div>
-        <div class="fld"><label>再発防止策</label><input type="text" id="drIncidentPrevention" placeholder="例: 車間距離確保の徹底"></div>
+        <!-- 提出前の確認 -->
+        <div id="drSummary" style="font-size:11.5px;background:var(--bg2);border-radius:var(--radius);padding:9px 11px;margin-bottom:10px"></div>
       </div>
 
       <!-- アルコール異常時警告ボックス -->
@@ -1841,9 +1853,13 @@ try {
         ⚠️ アルコール検知値が基準値（0.15mg/L）を超えています。管理者へ即時報告し、乗務を中止してください。
       </div>
 
-      <!-- 送信ボタン -->
+      <!-- ステップ移動・送信 -->
       <div id="drResult" style="font-size:12px;text-align:center;min-height:18px;margin-bottom:6px"></div>
-      <button class="big-btn" onclick="submitDailyReport()">✔ 日報を提出する</button>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <button class="btn" id="drPrevBtn" style="flex:1;justify-content:center;display:none" onclick="goDrStep(drStep-1)">← 戻る</button>
+        <button class="btn pri" id="drNextBtn" style="flex:2;justify-content:center" onclick="goDrStep(drStep+1)">次へ →</button>
+      </div>
+      <button class="big-btn" id="drSubmitBtn" style="display:none" onclick="submitDailyReport()">✔ 日報を提出する</button>
       <button class="btn" style="width:100%;margin-top:6px;justify-content:center" onclick="showDailyList()">← 一覧に戻る</button>
     </div>
   </div>
@@ -11945,13 +11961,26 @@ function ensureDailyFormPlacement() {
     if (host && host.nextElementSibling !== formArea) host.insertAdjacentElement('afterend', formArea);
   }
 }
-function showDailyForm(reportId=null) {
+async function showDailyForm(reportId=null) {
   editDailyId = reportId;
   ensureDailyFormPlacement();
   document.getElementById('dailyFormArea').style.display = 'block';
   const listArea = document.getElementById(me?.role === 'driver' ? 'drvDailyListArea' : 'dailyListArea');
   if (listArea) listArea.style.display = 'none';
-  initDailyForm(reportId);
+  // initDailyForm は車両候補の取得で非同期に動くため、必ず終わってから下書きを扱う。
+  // 待たずに進めると、復元した下書きが後から終わる初期化に消される
+  await initDailyForm(reportId);
+  drStep = 1;
+  // 新規入力のときだけ、同じ日の書きかけがあれば続きから再開できるようにする
+  if (!reportId) {
+    const draft = loadDrDraft();
+    if (draft && confirm('入力途中の日報が残っています。続きから再開しますか？\n（いいえを選ぶと新しく入力し直します）')) {
+      applyDrDraft(draft);
+    } else if (draft) {
+      clearDrDraft();
+    }
+  }
+  renderDrSteps();
 }
 
 function showDailyList() {
@@ -12063,6 +12092,8 @@ async function initDailyForm(reportId=null) {
       document.getElementById('drStart').value = r.start_time || '';
       document.getElementById('drEnd').value = r.end_time || '';
       document.getElementById('drKm').value = r.distance_km || '';
+      document.getElementById('drOdoStart').value = r.start_odometer ?? '';
+      document.getElementById('drOdoEnd').value = r.end_odometer ?? '';
       document.getElementById('drType').value = r.type || 'regular';
       // クライアント名解決: 管理者はclients、ドライバーはRPCで取得したdriverClientNamesから引く
       const cliName = r.cli ? (isDriver ? (driverClientNames||[]).find(c=>c.id===r.cli)?.name : lkC(r.cli)?.name) : '';
@@ -12136,7 +12167,8 @@ async function initDailyForm(reportId=null) {
      'drIncidentCause','drIncidentPrevention',
      'drTenkoMethodNote','drTenkoBeforeAt','drTenkoAfterAt',
      'drTenkoInstructions','drRouteReport','drHandoverNote',
-     'drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripNote'].forEach(id => {
+     'drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripNote',
+     'drOdoStart','drOdoEnd'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
     ['drWaitFlag','drCargoWorkFlag','drShipperConfirmed','drIncidentFlag'].forEach(id => {
@@ -12314,18 +12346,26 @@ function renderDrTrips() {
 
 /* 運行から1日の枠を組み立てて、上の②へ自動で反映する。
    終わってから正確な時刻を書き直す手間をなくすため、運行を足すたびに埋め直す */
+/* 運行から1日の枠を埋める。
+   業務開始時刻と出発地点は乗務前点呼（ステップ1）で本人が入れているため、空のときだけ補う。
+   点呼をしてから最初の運行に出るまで時間が空くので、上書きすると実際の業務開始時刻が消えてしまう。
+   業務終了時刻と帰着地点は、全ての運行が出そろうステップ3に入った時点で埋める */
 function applyDrTripRollup() {
   if (!pendDrTrips.length) return;
   const starts = pendDrTrips.map(t=>t.start).filter(Boolean).sort();
-  const ends   = pendDrTrips.map(t=>t.end).filter(Boolean).sort();
   const byStart = [...pendDrTrips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
-  const set = (id,v) => { const el=document.getElementById(id); if (el && v) el.value = v; };
-  // 運行を足すたびに入れ直す。1日の出発地点＝最初の運行の出発、帰着地点＝最後の運行の到着なので、
-  // 前の運行の値が残らないよう毎回上書きする
-  set('drStart', starts[0]);
-  set('drEnd', ends[ends.length-1]);
-  set('drStartLoc', byStart[0]?.start_loc);
-  set('drEndLoc', byStart[byStart.length-1]?.end_loc);
+  const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
+  fillIfEmpty('drStart', starts[0]);
+  fillIfEmpty('drStartLoc', byStart[0]?.start_loc);
+}
+// ステップ3に入った時点で、最後の運行から業務終了時刻・帰着地点を補う（空のときだけ）
+function applyDrTripEndRollup() {
+  if (!pendDrTrips.length) return;
+  const ends = pendDrTrips.map(t=>t.end).filter(Boolean).sort();
+  const byStart = [...pendDrTrips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+  const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
+  fillIfEmpty('drEnd', ends[ends.length-1]);
+  fillIfEmpty('drEndLoc', byStart[byStart.length-1]?.end_loc);
 }
 
 // 保存する日報に、運行から積み上げた値を載せる（既存の集計がそのまま動くようにするため）
@@ -12333,10 +12373,14 @@ function drTripTotals(trips) {
   const t = trips || [];
   const starts = t.map(x=>x.start).filter(Boolean).sort();
   const ends   = t.map(x=>x.end).filter(Boolean).sort();
+  // 業務開始・終了は本人が点呼のときに入れた値を優先する（点呼から出発まで、
+  // 帰着から点呼までの時間も業務時間に含まれるため、運行の時刻とは一致しない）
+  const formStart = document.getElementById('drStart')?.value || '';
+  const formEnd   = document.getElementById('drEnd')?.value || '';
   return {
     cli: t[0]?.cli_id ?? null,
-    start_time: starts[0] || null,
-    end_time: ends[ends.length-1] || null,
+    start_time: formStart || starts[0] || null,
+    end_time: formEnd || ends[ends.length-1] || null,
     qty_takkyubin: t.reduce((a,x)=>a+(+x.qty_tak||0),0),
     qty_nekopos:   t.reduce((a,x)=>a+(+x.qty_neko||0),0),
     qty_charter:   t.reduce((a,x)=>a+(+x.qty_charter||0),0),
@@ -12354,6 +12398,144 @@ function onDrTenkoMethodChange() {
   const m = document.getElementById('drTenkoMethod')?.value || 'face';
   const w = document.getElementById('drTenkoMethodNoteWrap');
   if (w) w.style.display = m === 'face' ? 'none' : 'block';
+}
+
+/* ===== 日報の3ステップ =====
+   1日の流れ（出発前に点呼 → 走る → 帰着後に点呼）に合わせている。
+   走り終わるまで確定しない項目（走行距離・帰着時刻・乗務後アルコール）を最後にまとめ、
+   出発前に分かることだけ先に入れられるようにするため。
+   途中で画面を閉じても失わないよう、ステップを移るたびに下書きを端末に保存する */
+const DR_STEPS = [
+  {n:1, label:'乗務前点呼'},
+  {n:2, label:'稼働'},
+  {n:3, label:'乗務後点呼'},
+];
+let drStep = 1;
+
+function renderDrSteps() {
+  const el = document.getElementById('drSteps');
+  if (!el) return;
+  el.innerHTML = DR_STEPS.map(st => {
+    const done = st.n < drStep, cur = st.n === drStep;
+    const bg = cur ? 'var(--blue)' : done ? 'var(--green-bg)' : 'var(--bg2)';
+    const fg = cur ? '#fff' : done ? 'var(--green-text)' : 'var(--text2)';
+    return `<div style="flex:1;text-align:center;padding:6px 4px;border-radius:var(--radius);background:${bg};color:${fg};font-size:11px;font-weight:600;cursor:pointer" onclick="goDrStep(${st.n})">
+      ${done?'✓':st.n} ${st.label}</div>`;
+  }).join('');
+  document.querySelectorAll('.dr-step').forEach(d => {
+    d.style.display = (+d.dataset.step === drStep) ? '' : 'none';
+  });
+  document.getElementById('drPrevBtn').style.display = drStep > 1 ? '' : 'none';
+  document.getElementById('drNextBtn').style.display = drStep < 3 ? '' : 'none';
+  document.getElementById('drSubmitBtn').style.display = drStep === 3 ? '' : 'none';
+  if (drStep === 3) { applyDrTripEndRollup(); renderDrSummary(); }
+  document.getElementById('dailyFormArea').scrollTop = 0;
+}
+
+/* ステップを移る。前に進むときだけ、そのステップで必要な項目が入っているかを確認する
+   （戻るときや、既に通ったステップに飛ぶときは止めない） */
+function goDrStep(n) {
+  n = Math.max(1, Math.min(3, n));
+  const resultEl = document.getElementById('drResult');
+  if (n > drStep) {
+    const err = validateDrStep(drStep);
+    if (err) {
+      resultEl.textContent = '⚠ ' + err;
+      resultEl.style.color = 'var(--red)';
+      return;
+    }
+  }
+  resultEl.textContent = '';
+  drStep = n;
+  renderDrSteps();
+  saveDrDraft();
+}
+
+function validateDrStep(step) {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  if (step === 1) {
+    let car = v('drCar');
+    if (car === '__custom__') car = v('drCarCustom');
+    if (!v('drD') || !car) return '乗務日と車両番号は必須です';
+    if (!v('drTenkoExecutor')) return '点呼執行者を入力してください（点呼記録簿の必須項目です）';
+    if (v('drTenkoMethod') !== 'face' && !v('drTenkoMethodNote')) return '対面以外の点呼は、具体的な方法の記録が必要です';
+    if (v('drAlcBefore') === '' || isNaN(+v('drAlcBefore'))) return '乗務前アルコール検知値を入力してください';
+    if (!v('drHealthBefore')) return '乗務前の体調を選択してください';
+    if (!v('drStart')) return '業務開始時刻を入力してください';
+    if (!v('drStartLoc')) return '出発地点を入力してください';
+  }
+  if (step === 2) {
+    if (!pendDrTrips.length) return '運行が1件も追加されていません。取引先と時刻を入れて「＋ 運行を追加」を押してください';
+  }
+  return '';
+}
+
+// メーターを両方入れたら走行距離を自動で入れる
+function onDrOdoChange() {
+  const a = document.getElementById('drOdoStart').value;
+  const b = document.getElementById('drOdoEnd').value;
+  const hint = document.getElementById('drKmHint');
+  if (a === '' || b === '') { if (hint) hint.textContent = 'メーターを両方入れると自動で計算されます'; return; }
+  const d = +b - +a;
+  if (d < 0) { if (hint) { hint.textContent = '⚠ 帰着時のメーターが出発時より小さくなっています'; hint.style.color = 'var(--red)'; } return; }
+  document.getElementById('drKm').value = d;
+  if (hint) { hint.textContent = `メーターの差から自動計算しました（${b} − ${a}）`; hint.style.color = 'var(--text2)'; }
+}
+
+// 提出前の内容確認
+function renderDrSummary() {
+  const el = document.getElementById('drSummary');
+  if (!el) return;
+  const v = id => document.getElementById(id)?.value || '';
+  const trips = pendDrTrips.length;
+  const names = [...new Set(pendDrTrips.map(t=>t.cli_name).filter(Boolean))];
+  el.innerHTML = `<div style="font-weight:600;margin-bottom:4px">提出内容の確認</div>
+    <div>${escHtml(v('drD'))}　${escHtml(v('drCar')==='__custom__'?v('drCarCustom'):v('drCar'))}　${escHtml(v('drName'))}</div>
+    <div>業務 ${escHtml(v('drStart'))}〜${escHtml(v('drEnd'))||'（未入力）'}　走行 ${escHtml(v('drKm'))||'—'}km</div>
+    <div>運行 ${trips}件${names.length?`（${escHtml(names.join('、'))}）`:''}　休憩 ${pendDrRests.length}回</div>
+    <div>アルコール 前 ${escHtml(v('drAlcBefore'))||'—'} ／ 後 ${escHtml(v('drAlcAfter'))||'（未入力）'} mg/L</div>`;
+}
+
+/* 下書きの保存。DBには入れず端末のlocalStorageに置くだけなので、
+   途中の中途半端な記録がサーバーに残らない */
+const DR_DRAFT_KEY = () => `drDraft:${me?.id||''}`;
+function drFormFieldIds() {
+  return [...document.querySelectorAll('#dailyFormArea input, #dailyFormArea select, #dailyFormArea textarea')]
+    .map(el => el.id).filter(Boolean);
+}
+function saveDrDraft() {
+  if (editDailyId) return;   // 既存の日報を編集中は下書きを作らない
+  try {
+    const f = {};
+    drFormFieldIds().forEach(id => {
+      const el = document.getElementById(id);
+      f[id] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    localStorage.setItem(DR_DRAFT_KEY(), JSON.stringify({step:drStep, f, trips:pendDrTrips, rests:pendDrRests, at:Date.now()}));
+  } catch(e) { /* 保存できなくても入力は続けられるようにする */ }
+}
+function loadDrDraft() {
+  try {
+    const raw = localStorage.getItem(DR_DRAFT_KEY());
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    // 日付が変わった下書きは古いものとみなす
+    if (d?.f?.drD && d.f.drD !== fmtLocalDate(new Date())) return null;
+    return d;
+  } catch(e) { return null; }
+}
+function clearDrDraft() { try { localStorage.removeItem(DR_DRAFT_KEY()); } catch(e) {} }
+function applyDrDraft(d) {
+  Object.entries(d.f || {}).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
+  });
+  pendDrTrips = Array.isArray(d.trips) ? d.trips : [];
+  pendDrRests = Array.isArray(d.rests) ? d.rests : [];
+  renderDrTrips(); renderDrRests();
+  onDrTenkoMethodChange(); toggleDrWaitFields(); toggleDrIncidentFields(); onDrOdoChange();
+  drStep = d.step || 1;
 }
 
 function toggleDrIncidentFields() {
@@ -12374,14 +12556,16 @@ async function submitDailyReport() {
   const healthBefore = document.getElementById('drHealthBefore').value;
   const resultEl = document.getElementById('drResult');
 
-  // 貨物自動車運送事業輸送安全規則 第8条：乗務の開始・終了の地点・日時は乗務記録の必須記載事項
-  if (!date || !car) { resultEl.textContent = '⚠ 乗務日と車両番号は必須です'; resultEl.style.color='var(--red)'; return; }
-  // 運行は1件以上。取引先はその中で必須にしているため、ここを満たせば取引先も必ず入る
-  if (!pendDrTrips.length) {
-    resultEl.innerHTML = '⚠ 運行が1件も追加されていません。<b>⑥ 運行</b>で取引先と時刻を入れて「＋ 運行を追加」を押してください';
-    resultEl.style.color='var(--red)';
-    document.getElementById('drTripList')?.scrollIntoView({behavior:'smooth', block:'center'});
-    return;
+  // 貨物自動車運送事業輸送安全規則 第8条：乗務の開始・終了の地点・日時は乗務記録の必須記載事項。
+  // ステップ1・2の必須項目は各ステップで確認済みだが、戻って消された場合に備えてここでも通す
+  for (const st of [1, 2]) {
+    const err = validateDrStep(st);
+    if (err) {
+      resultEl.textContent = `⚠ ${err}（${DR_STEPS[st-1].label}に戻って直してください）`;
+      resultEl.style.color='var(--red)';
+      goDrStep(st);
+      return;
+    }
   }
   if (!km || isNaN(+km)) { resultEl.textContent = '⚠ 走行距離を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (!startTime || !endTime) { resultEl.textContent = '⚠ 乗務開始時刻・乗務終了時刻は必須です'; resultEl.style.color='var(--red)'; return; }
@@ -12441,6 +12625,9 @@ async function submitDailyReport() {
     start_time: startTime,
     end_time: endTime,
     distance_km: +km,
+    // メーターは任意。代車への乗り換えなどで連続しない日もあるため、入っていれば残す程度にとどめる
+    start_odometer: document.getElementById('drOdoStart').value === '' ? null : +document.getElementById('drOdoStart').value,
+    end_odometer:   document.getElementById('drOdoEnd').value   === '' ? null : +document.getElementById('drOdoEnd').value,
     type: document.getElementById('drType').value,
     alc_before: +alcBefore,
     alc_after: +alcAfter,
@@ -12518,6 +12705,7 @@ async function submitDailyReport() {
       dailyReports.unshift(data);
       addLog('日報提出', `${car} ${date} ${km}km アルコール前:${alcBefore}`);
     }
+    clearDrDraft();
     resultEl.textContent = '✔ 提出しました'; resultEl.style.color='var(--green)';
     setTimeout(() => showDailyList(), 1200);
   } catch(e) {
@@ -19539,6 +19727,13 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
   -- 月報・分析・CSV・印刷は従来どおりそちらを参照する。取引先は運行ごとに必須。
   trips jsonb NOT NULL DEFAULT '[]',
+  -- 車のメーター（オドメーター）。乗務前・乗務後の点呼のときはドライバーが車の前にいるので、
+  -- その場で読み取れる。両方入っていれば distance_km は差分から自動計算する。
+  -- 代車への乗り換えなどでメーターが連続しない日もあるため、メーターは任意・距離は必須のまま。
+  start_odometer integer,
+  end_odometer integer,
+  CONSTRAINT daily_reports_odometer_check
+    CHECK (start_odometer IS NULL OR end_odometer IS NULL OR end_odometer >= start_odometer),
   wait_flag boolean DEFAULT false, wait_start time, wait_end time, wait_location text,
   cargo_work_flag boolean DEFAULT false, cargo_work_start time, cargo_work_end time,
   shipper_confirmed boolean DEFAULT false,
