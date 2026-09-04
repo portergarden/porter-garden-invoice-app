@@ -12,179 +12,22 @@
 
 <!--
   ============================================================
-  請求書管理システム v7 — Supabase連携版
+  PG Base — 業務管理システム（Supabase連携・単一HTML）
   ============================================================
 
   【セットアップ手順】
 
-  1. Supabase (https://supabase.com) で無料アカウントを作成
-  2. 新しいプロジェクトを作成
-  3. Project Settings > API から以下をコピー:
-     - Project URL  → 下の SUPABASE_URL に貼り付け
-     - anon public key → 下の SUPABASE_ANON_KEY に貼り付け
-  4. SQL Editor で下記のSQLを実行してテーブルを作成
-  5. このファイルをそのままブラウザで開くか、
-     GitHub Pages / Netlify / Vercel にアップロード
+  1. Supabase (https://supabase.com) で無料アカウントとプロジェクトを作成
+  2. Project Settings > API から Project URL と anon public key をコピーし、
+     下の SUPABASE_URL / SUPABASE_ANON_KEY に貼り付ける
+  3. アプリを開き、⚙ セットアップタブの「② Supabase テーブル一括セットアップ」から
+     SQLを全文コピーして SQL Editor で実行する
+  4. 同じタブの「🔍 テーブル存在確認」で作成できたかを確認する
 
-  【Supabase SQL — テーブル作成】
-
-  -- ユーザーテーブル
-  CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    pw TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'viewer'
-  );
-
-  -- 取引先テーブル
-  CREATE TABLE clients (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    short TEXT,
-    person TEXT,
-    tel TEXT,
-    note TEXT,
-    closing_day TEXT DEFAULT 'end',
-    fee_rate NUMERIC DEFAULT 0
-  );
-
-  -- ドライバーテーブル
-  CREATE TABLE drivers (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    cars TEXT[] DEFAULT '{}',
-    tel TEXT,
-    supplier_id TEXT,
-    fee_rate NUMERIC DEFAULT -0.15,
-    admin_fee INTEGER DEFAULT -10000,
-    vehicle_rental INTEGER DEFAULT -30000
-  );
-
-  -- ★ 既存テーブルに追加する場合は以下を実行:
-  -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS supplier_id TEXT;
-  -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS fee_rate NUMERIC DEFAULT -0.15;
-  -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS admin_fee INTEGER DEFAULT -10000;
-  -- ALTER TABLE drivers ADD COLUMN IF NOT EXISTS vehicle_rental INTEGER DEFAULT -30000;
-
-  -- ★ 既存のclientsテーブルに締日・手数料率カラムを追加する場合は以下を実行:
-  -- ALTER TABLE clients ADD COLUMN IF NOT EXISTS closing_day TEXT DEFAULT 'end';
-  -- ALTER TABLE clients ADD COLUMN IF NOT EXISTS fee_rate NUMERIC DEFAULT 0;
-
-  -- ★ 既存のinvoicesテーブルに支払運賃カラムを追加する場合は以下を実行:
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_fare INTEGER DEFAULT 0;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_hw INTEGER DEFAULT 0;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_oth INTEGER DEFAULT 0;
-
-  -- ★ 受注入力フォームのComtruck準拠拡張項目を追加する場合は以下を実行:
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS delivery_status TEXT DEFAULT 'unconfirmed';
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS call_number TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS requester TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS shipper TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pickup_date TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pickup_time TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pickup_done BOOLEAN DEFAULT false;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pickup_location TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS delivery_time TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS delivery_done BOOLEAN DEFAULT false;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS delivery_location TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS task_name TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS qty NUMERIC;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS distance_time TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_count_note TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receiver TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS fare_calc_method TEXT DEFAULT 'qty';
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_calc_method TEXT DEFAULT 'qty';
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS fare_tax_class TEXT DEFAULT 'excl';
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS pay_tax_class TEXT DEFAULT 'excl';
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS extra_fees JSONB DEFAULT '[]';
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS driver_note TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sales_date TEXT;
-  -- ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_payment_date TEXT;
-
-  -- 請求書テーブル
-  CREATE TABLE invoices (
-    id SERIAL PRIMARY KEY,
-    date TEXT NOT NULL,
-    car TEXT NOT NULL,
-    type TEXT NOT NULL DEFAULT 'regular',
-    fare INTEGER DEFAULT 0,
-    hw INTEGER DEFAULT 0,
-    oth INTEGER DEFAULT 0,
-    pay_fare INTEGER DEFAULT 0,
-    pay_hw INTEGER DEFAULT 0,
-    pay_oth INTEGER DEFAULT 0,
-    tax INTEGER DEFAULT 10,
-    st INTEGER DEFAULT 0,
-    cli INTEGER REFERENCES clients(id) ON DELETE SET NULL,
-    note TEXT,
-    -- Comtruck準拠 拡張項目（受注入力フォーム）
-    delivery_status TEXT DEFAULT 'unconfirmed',
-    call_number TEXT,
-    requester TEXT,
-    shipper TEXT,
-    pickup_date TEXT,
-    pickup_time TEXT,
-    pickup_done BOOLEAN DEFAULT false,
-    pickup_location TEXT,
-    delivery_time TEXT,
-    delivery_done BOOLEAN DEFAULT false,
-    delivery_location TEXT,
-    task_name TEXT,
-    qty NUMERIC,
-    distance_time TEXT,
-    pay_count_note TEXT,
-    receiver TEXT,
-    fare_calc_method TEXT DEFAULT 'qty',
-    pay_calc_method TEXT DEFAULT 'qty',
-    fare_tax_class TEXT DEFAULT 'excl',
-    pay_tax_class TEXT DEFAULT 'excl',
-    extra_fees JSONB DEFAULT '[]',
-    driver_note TEXT,
-    sales_date TEXT,
-    invoice_payment_date TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  );
-
-  -- 操作ログテーブル
-  CREATE TABLE audit_logs (
-    id SERIAL PRIMARY KEY,
-    ts TEXT NOT NULL,
-    who TEXT,
-    action TEXT,
-    detail TEXT,
-    role TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  );
-
-  -- Row Level Security を無効化（簡易設定、必要に応じて設定してください）
-  ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-
-  CREATE POLICY "allow_all_users" ON users FOR ALL USING (true) WITH CHECK (true);
-  CREATE POLICY "allow_all_clients" ON clients FOR ALL USING (true) WITH CHECK (true);
-  CREATE POLICY "allow_all_drivers" ON drivers FOR ALL USING (true) WITH CHECK (true);
-  CREATE POLICY "allow_all_invoices" ON invoices FOR ALL USING (true) WITH CHECK (true);
-  CREATE POLICY "allow_all_logs" ON audit_logs FOR ALL USING (true) WITH CHECK (true);
-
-  -- 初期ユーザーデータ
-  INSERT INTO users (id, name, pw, role) VALUES
-    ('admin', '管理者', '1234', 'admin'),
-    ('editor', '編集者 太郎', '1234', 'editor'),
-    ('viewer', '閲覧者 花子', '1234', 'viewer');
-
-  -- 初期取引先データ
-  INSERT INTO clients (name, short, person, tel, note) VALUES
-    ('〇〇運輸', '運輸', '担当者名', '000-000-0000', 'メモ'),
-    ('ポーターガーデン', 'PG', '', '', '自社');
-
-  -- 初期ドライバーデータ
-  INSERT INTO drivers (name, cars, tel) VALUES
-    ('サンプル 太郎', ARRAY['品川300あ1234'], '090-0000-0000'),
-    ('サンプル 花子', ARRAY['品川400い5678','品川400い5679'], '090-0000-0001');
-
+  テーブル定義とRLSポリシーはセットアップタブのSQLが唯一の正です。
+  （以前はここに v7 当時のCREATE TABLE文を載せていたが、列が古いうえ
+   RLSが allow_all（全員が全件読み書き可）で、パスワードも平文列だった。
+   実行すると危険なため削除し、案内だけを残している）
   ============================================================
 -->
 
@@ -9694,21 +9537,7 @@ async function deleteInvoiceSlip(id, btn) {
   }
 }
 
-function showSlipTableSql() {
-  const sql = `-- Supabase SQL Editorで実行してください
-CREATE TABLE payment_slips (
-  id         bigserial PRIMARY KEY,
-  label      text NOT NULL,
-  pay_month  text,
-  rows       jsonb NOT NULL DEFAULT '[]',
-  saved_at   timestamptz NOT NULL DEFAULT now(),
-  saved_by   text
-);
-ALTER TABLE payment_slips ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow all" ON payment_slips FOR ALL USING (true) WITH CHECK (true);`;
-  const w = window.open('','_blank','width=640,height=320');
-  w.document.write(`<html><body style="font-family:monospace;padding:16px;background:#1e1e1e;color:#d4d4d4"><pre>${sql}</pre><button onclick="navigator.clipboard.writeText(document.querySelector('pre').innerText).then(()=>alert('コピーしました'))">コピー</button></body></html>`);
-}
+function showSlipTableSql() { openSetupSqlGuide('payment_slips'); }
 
 const CSV_COLS_PAYMENT = ['ドライバーID','業務手数料率','備考','事務手数料','車両レンタル','請求明細書番号','支払実行日','№','月日','車番・名前','作業明細','高速代他','距離/時間','数量','単価'];
 function downloadPayCsv() {
@@ -12561,18 +12390,20 @@ async function submitDailyReport() {
   showLoad(false);
 }
 
-/* daily_reports が未作成のときの案内。
-   以前はこの関数の中にCREATE TABLE文を直接持っていたが、列を足すたびに更新されず
-   本来のスキーマから25列ほど欠けたうえ、RLSも allow_all（全員が全件読み書き可）に
-   なっていた。これを実行すると壊れたテーブルができてしまうため、
-   常に最新のセットアップSQLが載っているセットアップタブへ誘導するだけにした。 */
-function showDailyTableSql() {
+/* テーブル未作成のときの共通案内。
+   以前は各機能がそれぞれCREATE TABLE文を関数の中に持っていたが、列を足しても更新されず
+   本来のスキーマから乖離し、しかもRLSが allow_all（全員が全件読み書き可）のままだった。
+   これを実行すると、列の欠けた無防備なテーブルができてしまう。しかも
+   CREATE TABLE IF NOT EXISTS のため、後から正しいセットアップSQLを流しても直らない。
+   独自SQLは全て廃止し、常に最新が載っているセットアップタブへ誘導するだけにした。 */
+function openSetupSqlGuide(tableName) {
   goPage(17, document.getElementById('nt17'));
   setTimeout(() => {
     document.getElementById('setupSql')?.scrollIntoView({behavior:'smooth', block:'center'});
-    showT('セットアップタブのSQLを全文コピーしてSupabaseで実行してください');
+    showT(`${tableName} が未作成です。セットアップタブのSQLを全文コピーしてSupabaseで実行してください`);
   }, 120);
 }
+function showDailyTableSql() { openSetupSqlGuide('daily_reports'); }
 
 
 async function loadDailyReports() {
@@ -15805,24 +15636,7 @@ async function deleteBoardPost(id) {
 }
 
 
-function showSchedSql() {
-  const sql = `-- payment_schedules テーブル作成SQL
-CREATE TABLE IF NOT EXISTS payment_schedules (
-  id bigserial PRIMARY KEY,
-  drv_id bigint,
-  drv_name text,
-  date date NOT NULL,
-  amt int DEFAULT 0,
-  month text,
-  note text,
-  done boolean DEFAULT false,
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE payment_schedules ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON payment_schedules FOR ALL USING (true) WITH CHECK (true);`;
-  const win = window.open('','_blank','width=680,height=420');
-  win.document.write('<html><body style="font-family:monospace;padding:20px"><h3>Supabase SQL Editorで実行してください</h3><pre style="background:#f5f5f5;padding:12px;font-size:12px;overflow:auto">' + sql + '</pre><button onclick="navigator.clipboard.writeText(document.querySelector(\'pre\').textContent)">コピー</button></body></html>');
-}
+function showSchedSql() { openSetupSqlGuide('payment_schedules'); }
 function showBoardSql() {
   const sql = `-- board_posts テーブル作成SQL
 CREATE TABLE IF NOT EXISTS board_posts (
@@ -18820,49 +18634,7 @@ async function migrateMappingsFromLocal(localData) {
 }
 
 /* ===== SQL案内 ===== */
-function showTemplateSql() {
-  const sql = `-- input_templates テーブル作成SQL
-CREATE TABLE IF NOT EXISTS input_templates (
-  id bigserial PRIMARY KEY,
-  name text NOT NULL,
-  cli bigint,
-  car text,
-  type text DEFAULT 'regular',
-  fare int DEFAULT 0,
-  hw int DEFAULT 0,
-  oth int DEFAULT 0,
-  tax int DEFAULT 10,
-  note text,
-  created_by text,
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE input_templates ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON input_templates FOR ALL USING (true) WITH CHECK (true);
-
--- file_mappings テーブル作成SQL
-CREATE TABLE IF NOT EXISTS file_mappings (
-  id bigserial PRIMARY KEY,
-  cli_id bigint UNIQUE NOT NULL,
-  col_date int DEFAULT 0,
-  col_driver int DEFAULT 0,
-  col_fare int DEFAULT 0,
-  col_hw int DEFAULT 0,
-  col_note int DEFAULT 0,
-  skip_rows int DEFAULT 1,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-ALTER TABLE file_mappings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON file_mappings FOR ALL USING (true) WITH CHECK (true);`;
-
-  const win = window.open('','_blank','width=720,height=520');
-  win.document.write(`<html><head><meta charset="UTF-8"><title>SQL</title></head>
-    <body style="font-family:monospace;padding:20px">
-    <h3>Supabase SQL Editorで実行してください</h3>
-    <pre id="sql" style="background:#f5f5f5;padding:14px;font-size:11px;overflow:auto;border-radius:6px">${sql}</pre>
-    <button onclick="navigator.clipboard.writeText(document.getElementById('sql').textContent).then(()=>alert('コピーしました'))">📋 コピー</button>
-    </body></html>`);
-}
+function showTemplateSql() { openSetupSqlGuide('input_templates / file_mappings'); }
 
 function showMappingSql() { showTemplateSql(); }
 </script>
@@ -19207,21 +18979,7 @@ function applyPriceItem(price) {
   calcQ0Total();
 }
 
-function showPriceMasterSql() {
-  const sql = `CREATE TABLE IF NOT EXISTS price_master (
-  id bigserial PRIMARY KEY,
-  cli_id bigint NOT NULL,
-  service_name text NOT NULL,
-  unit_price int NOT NULL,
-  unit text DEFAULT '個',
-  created_at timestamptz DEFAULT now(),
-  UNIQUE(cli_id, service_name)
-);
-ALTER TABLE price_master ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON price_master FOR ALL USING (true) WITH CHECK (true);`;
-  const win = window.open('','_blank','width=680,height=400');
-  win.document.write(`<html><body style="font-family:monospace;padding:20px"><h3>price_master テーブル作成SQL</h3><pre style="background:#f5f5f5;padding:12px;font-size:12px">${sql}</pre><button onclick="navigator.clipboard.writeText(document.querySelector('pre').textContent).then(()=>alert('コピーしました'))">コピー</button></body></html>`);
-}
+function showPriceMasterSql() { openSetupSqlGuide('price_master'); }
 
 /* ===== ⑦ ドライバー稼働統計（pg2に追加） ===== */
 async function showDriverStats(drvId) {
