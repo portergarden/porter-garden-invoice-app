@@ -1704,9 +1704,15 @@ try {
         </div>
 
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③ 出発時の記録</div>
+        <div style="font-size:10px;color:var(--text2);background:var(--bg2);border-radius:var(--radius);padding:6px 8px;margin-bottom:8px">
+          ここは<b>その日の業務を始めた場所</b>です。業務委託の方は自宅、社員の方は配属先の店舗・営業所が基本になります。<br>
+          最初に向かったセンターや配達先ではありません（そちらは⑤の運行に入れてください）。
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
-          <div class="fld"><label>出発地点 <span style="color:var(--red)">*</span></label><input type="text" id="drStartLoc" placeholder="例: 仙台営業所"></div>
+          <div class="fld"><label>出発地点（業務を始めた場所） <span style="color:var(--red)">*</span></label>
+            <input type="text" id="drStartLoc" placeholder="例: 自宅 ／ 仙台営業所">
+          </div>
         </div>
         <div class="fld"><label>出発時のメーター（km・任意）</label>
           <input type="number" id="drOdoStart" placeholder="例: 45230" min="0" step="1" oninput="onDrOdoChange()">
@@ -1747,8 +1753,8 @@ try {
             <div class="fld"><label>終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripEnd"></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="fld"><label>出発地点</label><input type="text" id="drTripStartLoc" placeholder="例: 仙台営業所"></div>
-            <div class="fld"><label>到着地点</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター"></div>
+            <div class="fld"><label>積込・出発の場所</label><input type="text" id="drTripStartLoc" placeholder="例: 〇〇センター"></div>
+            <div class="fld"><label>納品・到着の場所</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター ／ 配達エリア"></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
             <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
@@ -1798,9 +1804,14 @@ try {
       <!-- ============ ステップ3: 乗務後点呼 ============ -->
       <div class="dr-step" data-step="3" style="display:none">
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑧ 帰着時の記録</div>
+        <div style="font-size:10px;color:var(--text2);background:var(--bg2);border-radius:var(--radius);padding:6px 8px;margin-bottom:8px">
+          ここは<b>その日の業務を終えた場所</b>です。出発地点と同じく、自宅や配属先の店舗・営業所が基本になります。
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="fld"><label>業務終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drEnd"></div>
-          <div class="fld"><label>帰着地点 <span style="color:var(--red)">*</span></label><input type="text" id="drEndLoc" placeholder="例: 仙台営業所"></div>
+          <div class="fld"><label>帰着地点（業務を終えた場所） <span style="color:var(--red)">*</span></label>
+            <input type="text" id="drEndLoc" placeholder="例: 自宅 ／ 仙台営業所">
+          </div>
         </div>
         <div class="fld"><label>帰着時のメーター（km・任意）</label>
           <input type="number" id="drOdoEnd" placeholder="例: 45572" min="0" step="1" oninput="onDrOdoChange()">
@@ -12364,26 +12375,25 @@ function renderDrTrips() {
 
 /* 運行から1日の枠を組み立てて、上の②へ自動で反映する。
    終わってから正確な時刻を書き直す手間をなくすため、運行を足すたびに埋め直す */
-/* 運行から1日の枠を埋める。
-   業務開始時刻と出発地点は乗務前点呼（ステップ1）で本人が入れているため、空のときだけ補う。
-   点呼をしてから最初の運行に出るまで時間が空くので、上書きすると実際の業務開始時刻が消えてしまう。
-   業務終了時刻と帰着地点は、全ての運行が出そろうステップ3に入った時点で埋める */
+/* 運行から1日の枠を埋める。埋めるのは時刻だけにしている。
+   地点は種類が違うため運行からは持ってこない。1日の出発・帰着地点は自宅や配属先の
+   店舗（業務を始めた／終えた場所）で、運行の場所はセンターや配達エリアだから。
+   業務開始時刻も、乗務前点呼で本人が入れていれば触らない（点呼から出発までの時間が消えるため） */
 function applyDrTripRollup() {
   if (!pendDrTrips.length) return;
   const starts = pendDrTrips.map(t=>t.start).filter(Boolean).sort();
-  const byStart = [...pendDrTrips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
   const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
   fillIfEmpty('drStart', starts[0]);
-  fillIfEmpty('drStartLoc', byStart[0]?.start_loc);
 }
-// ステップ3に入った時点で、最後の運行から業務終了時刻・帰着地点を補う（空のときだけ）
+/* ステップ3に入った時点で、業務終了時刻を最後の運行から補う。
+   帰着地点は運行の到着先ではなく、出発地点と同じ場所（自宅・営業所）に戻ることが
+   ほとんどなので、出発地点をそのまま候補として入れる */
 function applyDrTripEndRollup() {
   if (!pendDrTrips.length) return;
   const ends = pendDrTrips.map(t=>t.end).filter(Boolean).sort();
-  const byStart = [...pendDrTrips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
   const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
   fillIfEmpty('drEnd', ends[ends.length-1]);
-  fillIfEmpty('drEndLoc', byStart[byStart.length-1]?.end_loc);
+  fillIfEmpty('drEndLoc', document.getElementById('drStartLoc')?.value || '');
 }
 
 // 保存する日報に、運行から積み上げた値を載せる（既存の集計がそのまま動くようにするため）
@@ -12480,7 +12490,7 @@ function validateDrStep(step) {
     if (v('drAlcBefore') === '' || isNaN(+v('drAlcBefore'))) return '乗務前アルコール検知値を入力してください';
     if (!v('drHealthBefore')) return '乗務前の体調を選択してください';
     if (!v('drStart')) return '業務開始時刻を入力してください';
-    if (!v('drStartLoc')) return '出発地点を入力してください';
+    if (!v('drStartLoc')) return '出発地点（業務を始めた場所）を入力してください';
   }
   if (step === 2) {
     if (!pendDrTrips.length) return '運行が1件も追加されていません。取引先と時刻を入れて「＋ 運行を追加」を押してください';
@@ -12628,7 +12638,7 @@ async function submitDailyReport() {
   }
   if (!km || isNaN(+km)) { resultEl.textContent = '⚠ 走行距離を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (!startTime || !endTime) { resultEl.textContent = '⚠ 乗務開始時刻・乗務終了時刻は必須です'; resultEl.style.color='var(--red)'; return; }
-  if (!startLoc || !endLoc) { resultEl.textContent = '⚠ 出発地点・到着地点は必須です'; resultEl.style.color='var(--red)'; return; }
+  if (!startLoc || !endLoc) { resultEl.textContent = '⚠ 出発地点（業務を始めた場所）と帰着地点（業務を終えた場所）は必須です'; resultEl.style.color='var(--red)'; return; }
   if (alcBefore === '' || isNaN(+alcBefore)) { resultEl.textContent = '⚠ 乗務前アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (alcAfter === '' || isNaN(+alcAfter)) { resultEl.textContent = '⚠ 乗務後アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (!healthBefore) { resultEl.textContent = '⚠ 乗務前の体調を選択してください'; resultEl.style.color='var(--red)'; return; }
@@ -12971,7 +12981,7 @@ function formatRests(r) {
 // 日報一覧（list）をCSVとしてダウンロードする。管理画面・ドライバーポータル両方の日報CSV出力で共有する
 function downloadDailyReportCsv(list, filenameLabel) {
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
-  const headers = ['日付','車番','乗務員','出発地点','出発時刻','到着地点','到着時刻','走行距離(km)','種別',
+  const headers = ['日付','車番','乗務員','出発地点','出発時刻','帰着地点','帰着時刻','走行距離(km)','種別',
     '休憩',
     '点呼執行者','点呼方法','点呼方法の詳細','点呼日時(前)','点呼日時(後)',
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器の使用','検知器ID','体調(前)','体調(後)',
@@ -13061,8 +13071,8 @@ function buildDailyReportHtml(r) {
 
     <div class="drp-section-title">① 乗務記録</div>
     <table class="drp-table">
-      <tr><th>乗務開始</th><td>${r.start_time||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
-          <th>乗務終了</th><td>${r.end_time||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
+      <tr><th>業務開始</th><td>${r.start_time||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
+          <th>業務終了</th><td>${r.end_time||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
       <tr><th>走行距離</th><td>${r.distance_km??''} km</td>
           <th>休憩</th><td>${escHtml(formatRests(r)) || '—'}</td></tr>
     </table>
