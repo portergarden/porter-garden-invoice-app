@@ -1827,8 +1827,34 @@ try {
         <div id="drRestList" style="margin-top:6px"></div>
       </div>
 
-      <!-- セクション3: アルコール検知 -->
-      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③ アルコール検知記録</div>
+      <!-- セクション3: 点呼記録（貨物自動車運送事業輸送安全規則 第7条の記録事項） -->
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③ 点呼記録</div>
+      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">点呼記録簿として保存する項目です。一人で事業を営む場合は自ら点呼を行い「対面」で記録します</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld"><label>点呼執行者 <span style="color:var(--red)">*</span></label>
+          <input type="text" id="drTenkoExecutor" placeholder="点呼を行った人の氏名">
+        </div>
+        <div class="fld"><label>点呼方法 <span style="color:var(--red)">*</span></label>
+          <select id="drTenkoMethod" onchange="onDrTenkoMethodChange()">
+            <option value="face">対面</option>
+            <option value="phone">電話</option>
+            <option value="remote">遠隔点呼</option>
+            <option value="auto">業務後自動点呼</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+      </div>
+      <div class="fld" id="drTenkoMethodNoteWrap" style="display:none">
+        <label>点呼の具体的方法 <span style="color:var(--red)">*</span></label>
+        <input type="text" id="drTenkoMethodNote" placeholder="例: 携帯電話で通話し、検知器の測定値を写真で受信">
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">対面以外のときは、どのように点呼したかの記録が必要です</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="fld"><label>乗務前 点呼日時</label><input type="time" id="drTenkoBeforeAt"></div>
+        <div class="fld"><label>乗務後 点呼日時</label><input type="time" id="drTenkoAfterAt"></div>
+      </div>
+
+      <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">③-2 アルコール検知記録</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="fld">
           <label>乗務前（mg/L） <span style="color:var(--red)">*</span></label>
@@ -1842,27 +1868,46 @@ try {
         </div>
       </div>
       <div class="fld">
-        <label>検知器ID / 測定者</label>
-        <input type="text" id="drAlcDevice" placeholder="例: AL-001 / 山田">
+        <label>検知器ID</label>
+        <input type="text" id="drAlcDevice" placeholder="例: AL-001">
       </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px">
+        <input type="checkbox" id="drAlcDetectorUsed" checked> アルコール検知器を使用した
+      </label>
+      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">検知器の使用有無は点呼記録簿の必須項目です。外すと未使用として記録されます</div>
 
-      <!-- セクション4: 健康状態 -->
+      <!-- セクション4: 健康状態（疾病・疲労・睡眠不足は点呼記録簿で個別に記録する項目） -->
       <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">④ 健康・体調確認</div>
+      <div style="font-size:10px;color:var(--text2);margin-bottom:6px">乗務前の点呼で確認する項目です。問題がなければチェックを付けたままにしてください</div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthIllness" checked> 疾病なし</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthFatigue" checked> 疲労なし</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" id="drHealthSleep" checked> 睡眠十分</label>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="fld"><label>乗務前 体調 <span style="color:var(--red)">*</span></label>
+        <div class="fld"><label>乗務前 体調（総合） <span style="color:var(--red)">*</span></label>
           <select id="drHealthBefore">
             <option value="good">良好</option>
             <option value="normal">普通</option>
             <option value="bad">不調</option>
           </select>
         </div>
-        <div class="fld"><label>乗務後 体調</label>
+        <div class="fld"><label>乗務後 体調（総合）</label>
           <select id="drHealthAfter">
             <option value="good">良好</option>
             <option value="normal">普通</option>
             <option value="bad">不調</option>
           </select>
         </div>
+      </div>
+      <div class="fld"><label>指示事項（任意）</label>
+        <input type="text" id="drTenkoInstructions" placeholder="例: 積雪のため速度を控えること">
+      </div>
+      <div class="fld"><label>自動車・道路及び運行の状況（乗務後・任意）</label>
+        <input type="text" id="drRouteReport" placeholder="例: 国道4号で渋滞。車両に異常なし">
+      </div>
+      <div class="fld"><label>交替運転者への通告（任意）</label>
+        <input type="text" id="drHandoverNote" placeholder="交替する運転者がいる場合に記録します">
       </div>
 
       <!-- セクション5: 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象） -->
@@ -12014,6 +12059,8 @@ async function bulkUnmarkSchedDone(){
 // deleteSchedItem → v9新実装に移行済み（async版）
 
 /* ===== ⑤ 法定乗務日報 ===== */
+// 点呼方法の表示名。対面以外は具体的方法の記録が必要（輸送安全規則 第7条 ⑤ロ）
+const TENKO_METHOD_LABEL = {face:'対面', phone:'電話', remote:'遠隔点呼', auto:'業務後自動点呼', other:'その他'};
 let dailyReports = []; // Supabaseから読み込む
 let editDailyId = null;
 
@@ -12155,6 +12202,20 @@ async function initDailyForm(reportId=null) {
       document.getElementById('drAlcDevice').value = r.alc_device || '';
       document.getElementById('drHealthBefore').value = r.health_before || 'good';
       document.getElementById('drHealthAfter').value = r.health_after || 'good';
+      // 点呼記録
+      document.getElementById('drTenkoExecutor').value = r.tenko_executor || '';
+      document.getElementById('drTenkoMethod').value = r.tenko_method || 'face';
+      document.getElementById('drTenkoMethodNote').value = r.tenko_method_note || '';
+      document.getElementById('drTenkoBeforeAt').value = r.tenko_before_at || '';
+      document.getElementById('drTenkoAfterAt').value = r.tenko_after_at || '';
+      document.getElementById('drAlcDetectorUsed').checked = r.alc_detector_used !== false;
+      document.getElementById('drHealthIllness').checked = r.health_illness_ok !== false;
+      document.getElementById('drHealthFatigue').checked = r.health_fatigue_ok !== false;
+      document.getElementById('drHealthSleep').checked = r.health_sleep_ok !== false;
+      document.getElementById('drTenkoInstructions').value = r.tenko_instructions || '';
+      document.getElementById('drRouteReport').value = r.route_report || '';
+      document.getElementById('drHandoverNote').value = r.handover_note || '';
+      onDrTenkoMethodChange();
       // クライアント名解決: 管理者はclients、ドライバーはRPCで取得したdriverClientNamesから引く
       const cliName = r.cli ? (isDriver ? (driverClientNames||[]).find(c=>c.id===r.cli)?.name : lkC(r.cli)?.name) : '';
       document.getElementById('drCli').value = cliName || '';
@@ -12199,7 +12260,9 @@ async function initDailyForm(reportId=null) {
      'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drNote',
      'drStartLoc','drEndLoc','drRestStart','drRestEnd','drRestLoc',
      'drWaitStart','drWaitEnd','drWaitLoc','drCargoWorkStart','drCargoWorkEnd',
-     'drIncidentCause','drIncidentPrevention'].forEach(id => {
+     'drIncidentCause','drIncidentPrevention',
+     'drTenkoMethodNote','drTenkoBeforeAt','drTenkoAfterAt',
+     'drTenkoInstructions','drRouteReport','drHandoverNote'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
     ['drWaitFlag','drCargoWorkFlag','drShipperConfirmed','drIncidentFlag'].forEach(id => {
@@ -12212,6 +12275,13 @@ async function initDailyForm(reportId=null) {
     document.getElementById('drHealthBefore').value = 'good';
     document.getElementById('drHealthAfter').value = 'good';
     document.getElementById('drType').value = 'regular';
+    // 点呼記録の初期値。貨物軽の一人事業者は自ら点呼して対面扱いになるため、執行者は自分を既定にする
+    document.getElementById('drTenkoExecutor').value = me?.name || '';
+    document.getElementById('drTenkoMethod').value = 'face';
+    ['drAlcDetectorUsed','drHealthIllness','drHealthFatigue','drHealthSleep'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.checked = true;
+    });
+    onDrTenkoMethodChange();
     document.getElementById('drResult').textContent = '';
   }
 
@@ -12310,6 +12380,14 @@ function toggleDrWaitFields() {
   document.getElementById('drWaitFields').style.display = document.getElementById('drWaitFlag').checked ? 'block' : 'none';
   document.getElementById('drCargoWorkFields').style.display = document.getElementById('drCargoWorkFlag').checked ? 'block' : 'none';
 }
+/* 対面以外の点呼は「具体的にどうやったか」の記録が必要なため、選んだときだけ欄を出す。
+   DB側にも同じ制約を入れてあるので、画面を通さない書き込みでも空では入らない */
+function onDrTenkoMethodChange() {
+  const m = document.getElementById('drTenkoMethod')?.value || 'face';
+  const w = document.getElementById('drTenkoMethodNoteWrap');
+  if (w) w.style.display = m === 'face' ? 'none' : 'block';
+}
+
 function toggleDrIncidentFields() {
   document.getElementById('drIncidentFields').style.display = document.getElementById('drIncidentFlag').checked ? 'block' : 'none';
 }
@@ -12336,6 +12414,17 @@ async function submitDailyReport() {
   if (alcBefore === '' || isNaN(+alcBefore)) { resultEl.textContent = '⚠ 乗務前アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (alcAfter === '' || isNaN(+alcAfter)) { resultEl.textContent = '⚠ 乗務後アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (!healthBefore) { resultEl.textContent = '⚠ 乗務前の体調を選択してください'; resultEl.style.color='var(--red)'; return; }
+  // 点呼記録簿の必須項目
+  const tenkoExecutor = document.getElementById('drTenkoExecutor').value.trim();
+  const tenkoMethod = document.getElementById('drTenkoMethod').value;
+  const tenkoMethodNote = document.getElementById('drTenkoMethodNote').value.trim();
+  if (!tenkoExecutor) { resultEl.textContent = '⚠ 点呼執行者を入力してください（点呼記録簿の必須項目です）'; resultEl.style.color='var(--red)'; return; }
+  if (tenkoMethod !== 'face' && !tenkoMethodNote) {
+    resultEl.textContent = '⚠ 対面以外の点呼は、具体的な方法の記録が必要です'; resultEl.style.color='var(--red)'; return;
+  }
+  if (!document.getElementById('drAlcDetectorUsed').checked) {
+    if (!confirm('⚠ アルコール検知器を使用していない記録になります。\n検知器の使用は義務です。このまま提出しますか？')) return;
+  }
   if (+alcBefore >= 0.15) {
     if (!confirm('⚠ 乗務前アルコール値が0.15mg/L以上です。記録を提出しますか？（管理者に即時報告してください）')) return;
   }
@@ -12384,6 +12473,19 @@ async function submitDailyReport() {
     alc_device: document.getElementById('drAlcDevice').value.trim(),
     health_before: healthBefore,
     health_after: document.getElementById('drHealthAfter').value,
+    // 点呼記録（輸送安全規則 第7条の記録事項）
+    tenko_executor: document.getElementById('drTenkoExecutor').value.trim(),
+    tenko_method: tenkoMethod,
+    tenko_method_note: tenkoMethod === 'face' ? null : tenkoMethodNote,
+    tenko_before_at: document.getElementById('drTenkoBeforeAt').value || null,
+    tenko_after_at: document.getElementById('drTenkoAfterAt').value || null,
+    alc_detector_used: document.getElementById('drAlcDetectorUsed').checked,
+    health_illness_ok: document.getElementById('drHealthIllness').checked,
+    health_fatigue_ok: document.getElementById('drHealthFatigue').checked,
+    health_sleep_ok: document.getElementById('drHealthSleep').checked,
+    tenko_instructions: document.getElementById('drTenkoInstructions').value.trim() || null,
+    route_report: document.getElementById('drRouteReport').value.trim() || null,
+    handover_note: document.getElementById('drHandoverNote').value.trim() || null,
     cli: cliMatch ? cliMatch.id : null,
     qty_takkyubin: +document.getElementById('drQtyTak').value || 0,
     qty_nekopos: +document.getElementById('drQtyNeko').value || 0,
@@ -12448,7 +12550,7 @@ async function submitDailyReport() {
   } catch(e) {
     // テーブル未作成の場合のガイド
     if (e.message && (e.message.includes('does not exist') || e.message.includes('relation'))) {
-      resultEl.innerHTML = `⚠ <b>daily_reportsテーブルが未作成です</b><br>管理者がSupabaseで下記SQLを実行してください`;
+      resultEl.innerHTML = `⚠ <b>daily_reportsテーブルが未作成です</b><br>管理者はセットアップタブのSQLをSupabaseで実行してください`;
       resultEl.style.color='var(--red)';
       showDailyTableSql();
     } else {
@@ -12459,41 +12561,19 @@ async function submitDailyReport() {
   showLoad(false);
 }
 
+/* daily_reports が未作成のときの案内。
+   以前はこの関数の中にCREATE TABLE文を直接持っていたが、列を足すたびに更新されず
+   本来のスキーマから25列ほど欠けたうえ、RLSも allow_all（全員が全件読み書き可）に
+   なっていた。これを実行すると壊れたテーブルができてしまうため、
+   常に最新のセットアップSQLが載っているセットアップタブへ誘導するだけにした。 */
 function showDailyTableSql() {
-  const sql = `-- daily_reports テーブル作成SQL
-CREATE TABLE IF NOT EXISTS daily_reports (
-  id bigserial PRIMARY KEY,
-  date date NOT NULL,
-  car text NOT NULL,
-  driver_name text,
-  start_time time,
-  end_time time,
-  distance_km numeric,
-  type text DEFAULT 'regular',
-  alc_before numeric,
-  alc_after numeric,
-  alc_device text,
-  health_before text DEFAULT 'good',
-  health_after text DEFAULT 'good',
-  cli bigint,
-  qty_takkyubin int DEFAULT 0,
-  qty_nekopos int DEFAULT 0,
-  qty_other int DEFAULT 0,
-  fare int DEFAULT 0,
-  hw int DEFAULT 0,
-  oth int DEFAULT 0,
-  note text,
-  status text DEFAULT 'pending',
-  submitted_by text,
-  reviewed_by text,
-  reviewed_at timestamptz,
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON daily_reports FOR ALL USING (true) WITH CHECK (true);`;
-  const win = window.open('','_blank','width=700,height=500');
-  win.document.write(`<html><head><title>daily_reports SQL</title></head><body style="font-family:monospace;padding:20px"><h3>SupabaseのSQL Editorで実行してください</h3><pre style="background:#f5f5f5;padding:16px;border-radius:6px;overflow:auto;font-size:12px">${sql}</pre><button onclick="navigator.clipboard.writeText(\`${sql.replace(/`/g,"'")}\`)">コピー</button></body></html>`);
+  goPage(17, document.getElementById('nt17'));
+  setTimeout(() => {
+    document.getElementById('setupSql')?.scrollIntoView({behavior:'smooth', block:'center'});
+    showT('セットアップタブのSQLを全文コピーしてSupabaseで実行してください');
+  }, 120);
 }
+
 
 async function loadDailyReports() {
   if (!sb) return;
@@ -12509,8 +12589,8 @@ async function loadDailyReports() {
         document.getElementById('dailyListBody').innerHTML =
           `<div style="padding:20px;color:var(--amber-text);font-size:12px">
             ⚠ daily_reportsテーブルが未作成です。<br>
-            日報を初回提出するとセットアップ案内が表示されます。<br>
-            <button class="btn sml" style="margin-top:8px" onclick="showDailyTableSql()">SQLを確認する</button>
+            セットアップタブのSQLをSupabaseで実行してください。<br>
+            <button class="btn sml" style="margin-top:8px" onclick="showDailyTableSql()">セットアップを開く</button>
           </div>`;
         return;
       }
@@ -12665,7 +12745,9 @@ function downloadDailyReportCsv(list, filenameLabel) {
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
   const headers = ['日付','車番','乗務員','出発地点','出発時刻','到着地点','到着時刻','走行距離(km)','種別',
     '休憩',
-    'アルコール前(mg/L)','アルコール後(mg/L)','検知器','体調(前)','体調(後)',
+    '点呼執行者','点呼方法','点呼方法の詳細','点呼日時(前)','点呼日時(後)',
+    'アルコール前(mg/L)','アルコール後(mg/L)','検知器の使用','検知器ID','体調(前)','体調(後)',
+    '疾病','疲労','睡眠','指示事項','運行の状況','交替運転者への通告',
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
     '宅配便','ポスト便','チャーター便','その他','備考',
     '事故あり','事故原因','再発防止策','ステータス'];
@@ -12674,8 +12756,14 @@ function downloadDailyReportCsv(list, filenameLabel) {
     r.start_location||'',r.start_time||'',r.end_location||'',r.end_time||'',
     r.distance_km||0, typeShort(r.type),
     formatRests(r),
-    r.alc_before??'',r.alc_after??'',r.alc_device||'',
+    r.tenko_executor||'', TENKO_METHOD_LABEL[r.tenko_method||'face'], r.tenko_method_note||'',
+    r.tenko_before_at||'', r.tenko_after_at||'',
+    r.alc_before??'',r.alc_after??'', r.alc_detector_used===false?'無':'有', r.alc_device||'',
     healthLabel[r.health_before||'good'], healthLabel[r.health_after||'good'],
+    r.health_illness_ok===false?'疾病あり':'なし',
+    r.health_fatigue_ok===false?'疲労あり':'なし',
+    r.health_sleep_ok===false?'睡眠不足':'十分',
+    r.tenko_instructions||'', r.route_report||'', r.handover_note||'',
     r.wait_flag?'あり':'', r.wait_start||'', r.wait_end||'', r.wait_location||'',
     r.cargo_work_flag?'あり':'', r.cargo_work_start||'', r.cargo_work_end||'',
     r.shipper_confirmed?'確認済':'',
@@ -12748,10 +12836,20 @@ function buildDailyReportHtml(r) {
           <th>休憩</th><td>${escHtml(formatRests(r)) || '—'}</td></tr>
     </table>
 
-    <div class="drp-section-title">② アルコール検知・健康確認</div>
+    <div class="drp-section-title">② 点呼記録</div>
     <table class="drp-table">
-      <tr><th>アルコール（前）</th><td>${r.alc_before??''} mg/L</td><th>アルコール（後）</th><td>${r.alc_after??''} mg/L</td></tr>
-      <tr><th>検知器/測定者</th><td>${escHtml(r.alc_device)}</td><th>体調（前／後）</th><td>${healthLabel[r.health_before||'good']} ／ ${healthLabel[r.health_after||'good']}</td></tr>
+      <tr><th>点呼執行者</th><td>${escHtml(r.tenko_executor||'')}</td>
+          <th>点呼方法</th><td>${TENKO_METHOD_LABEL[r.tenko_method||'face']}${r.tenko_method_note?`（${escHtml(r.tenko_method_note)}）`:''}</td></tr>
+      <tr><th>点呼日時（前）</th><td>${r.date} ${r.tenko_before_at||'—'}</td>
+          <th>点呼日時（後）</th><td>${r.date} ${r.tenko_after_at||'—'}</td></tr>
+      <tr><th>酒気帯び（前）</th><td>${r.alc_before??''} mg/L　${(+r.alc_before||0)>0?'検出あり':'検出なし'}</td>
+          <th>酒気帯び（後）</th><td>${r.alc_after??''} mg/L　${(+r.alc_after||0)>0?'検出あり':'検出なし'}</td></tr>
+      <tr><th>検知器の使用</th><td>${r.alc_detector_used===false?'無':'有'}${r.alc_device?`（${escHtml(r.alc_device)}）`:''}</td>
+          <th>疾病・疲労・睡眠</th><td>${r.health_illness_ok===false?'疾病あり':'疾病なし'} ／ ${r.health_fatigue_ok===false?'疲労あり':'疲労なし'} ／ ${r.health_sleep_ok===false?'睡眠不足':'睡眠十分'}</td></tr>
+      <tr><th>体調（前／後）</th><td>${healthLabel[r.health_before||'good']} ／ ${healthLabel[r.health_after||'good']}</td>
+          <th>指示事項</th><td>${escHtml(r.tenko_instructions||'')||'—'}</td></tr>
+      <tr><th>自動車・道路及び運行の状況</th><td>${escHtml(r.route_report||'')||'—'}</td>
+          <th>交替運転者への通告</th><td>${escHtml(r.handover_note||'')||'—'}</td></tr>
     </table>
 
     ${(r.wait_flag||r.cargo_work_flag) ? `
@@ -19480,6 +19578,26 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   driver_name text, start_time time, end_time time, distance_km numeric,
   type text DEFAULT 'regular', alc_before numeric, alc_after numeric,
   alc_device text, health_before text DEFAULT 'good', health_after text DEFAULT 'good',
+  -- 点呼記録簿の法定記録事項（貨物自動車運送事業輸送安全規則 第7条／
+  -- 国交省「貨物軽自動車運送事業者の皆様へ（点呼記録簿の例）」）。
+  -- 運転者名・車両番号・酒気帯び・日常点検は上下の既存列で満たしている。
+  -- 中間点呼は一般貨物のみ（貨物軽の様式に欄が無い）ため列を作らない。
+  tenko_executor text,          -- ① 点呼執行者名。貨物軽の一人事業者は自ら実施でき対面扱い
+  tenko_before_at time,         -- ④ 乗務前の点呼日時
+  tenko_after_at time,          -- ④ 乗務後の点呼日時
+  alc_detector_used boolean NOT NULL DEFAULT true,  -- ⑤イ アルコール検知器の使用の有無
+  tenko_method text NOT NULL DEFAULT 'face'
+    CHECK (tenko_method IN ('face','phone','remote','auto','other')),  -- ⑤ロ 点呼方法
+  tenko_method_note text,       -- ⑤ロ 対面でない場合の具体的方法
+  health_illness_ok boolean NOT NULL DEFAULT true,  -- ⑦ 疾病
+  health_fatigue_ok boolean NOT NULL DEFAULT true,  -- ⑦ 疲労
+  health_sleep_ok   boolean NOT NULL DEFAULT true,  -- ⑦ 睡眠不足
+  tenko_instructions text,      -- ⑨ 指示事項
+  route_report text,            -- 業務後⑥ 自動車・道路及び運行の状況
+  handover_note text,           -- 業務後⑦ 交替運転者等に対する通告
+  -- 対面以外を選んだら具体的方法を必ず残す（監査で見られるのは記録そのものなのでDB側で担保する）
+  CONSTRAINT daily_reports_tenko_method_note_check
+    CHECK (tenko_method = 'face' OR COALESCE(btrim(tenko_method_note), '') <> ''),
   cli bigint, qty_takkyubin int DEFAULT 0, qty_nekopos int DEFAULT 0, qty_charter int DEFAULT 0,
   qty_other int DEFAULT 0, fare int DEFAULT 0, hw int DEFAULT 0, oth int DEFAULT 0,
   note text, status text DEFAULT 'pending', submitted_by text,
