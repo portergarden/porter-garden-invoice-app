@@ -3519,6 +3519,25 @@ async function logout(exp=false){
 }
 
 /* ===== DATA LOAD ===== */
+/* PostgRESTは1回の応答を最大1000行に切る（Supabaseの既定値）。
+   .select()の結果をそのまま使うと1001行目以降がエラーも出さずに落ち、
+   件数が増えたある日から古い月のデータが画面に出なくなる。
+   実際、請求データが1894件になった時点で新しい方の999件しか読めなくなっていた。
+   1000件ずつ .range() で読み継いで全件そろえる。
+   buildは呼ぶたびに新しいクエリを返すこと（PostgRESTのクエリは使い回せないため）。
+   並べ替えのキーが重複しうるときは、ページの境目で行が重複・欠落しないよう
+   呼び出し側でidなど一意なキーを第2キーに足しておく。 */
+const PGRST_PAGE = 1000;
+async function fetchAllRows(build) {
+  let out = [], from = 0;
+  for (;;) {
+    const {data, error} = await build().range(from, from + PGRST_PAGE - 1);
+    if (error) return {data: null, error};
+    out = out.concat(data || []);
+    if (!data || data.length < PGRST_PAGE) return {data: out, error: null};
+    from += PGRST_PAGE;
+  }
+}
 async function loadAll(){
   showLoad(true);
   // ドライバーは他ドライバーの請求・取引先・協力会社・銀行口座等の全社データを一切必要としない
@@ -3540,12 +3559,14 @@ async function loadAll(){
     return;
   }
   try{
+    // 1000件を超えても全件読む。日付は同じ値が並ぶのでidを第2キーにして境目をずらさない
     const[invRes,drvRes,cliRes,usrRes]=await Promise.all([
-      sb.from('invoices').select('*').order('date',{ascending:false}),
-      sb.from('drivers').select('*').order('name'),
-      sb.from('clients').select('*').order('name'),
-      sb.from('users').select('*').order('id'),
+      fetchAllRows(()=>sb.from('invoices').select('*').order('date',{ascending:false}).order('id',{ascending:false})),
+      fetchAllRows(()=>sb.from('drivers').select('*').order('name').order('id')),
+      fetchAllRows(()=>sb.from('clients').select('*').order('name').order('id')),
+      fetchAllRows(()=>sb.from('users').select('*').order('id')),
     ]);
+    if (invRes.error) throw invRes.error;
     recs=(invRes.data||[]).map(r=>({...r,hw:r.hw||0,oth:r.oth||0}));
     drvs=drvRes.data||[];
     invalidateDriverIndexes();
@@ -15931,7 +15952,8 @@ async function selectBoardTargetByClient() {
   const cliId = +document.getElementById('boardTargetClientSel')?.value || null;
   if (!cliId) { alert('取引先を選択してください'); return; }
   try {
-    const { data, error } = await sb.from('invoices').select('car').eq('cli', cliId);
+    // 1取引先で1000件を超えるため、ここも読み継がないと車番を取りこぼす
+    const { data, error } = await fetchAllRows(()=>sb.from('invoices').select('car').eq('cli', cliId).order('id'));
     if (error) throw error;
     const cars = [...new Set((data||[]).map(r=>r.car).filter(Boolean))];
     pendBoardTargetIds = new Set(drvs.filter(d => (d.cars||[]).some(c => cars.some(rc=>nm(rc)===nm(c)))).map(d=>d.id));
