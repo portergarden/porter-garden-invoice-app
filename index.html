@@ -1635,7 +1635,7 @@ try {
             <select id="drCar" onchange="onDrCarChange()">
               <option value="">選択</option>
             </select>
-            <input type="text" id="drCarCustom" placeholder="車両番号を入力" style="display:none;margin-top:4px" onchange="prefillOdoStart(this.value.trim())">
+            <input type="text" id="drCarCustom" placeholder="車両番号を入力" style="display:none;margin-top:4px" onchange="prefillOdoStart(this.value.trim());prefillStartLoc()">
           </div>
         </div>
         <div class="fld"><label>乗務員名</label>
@@ -1712,6 +1712,7 @@ try {
           <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
           <div class="fld"><label>出発地点（業務を始めた場所） <span style="color:var(--red)">*</span></label>
             <input type="text" id="drStartLoc" placeholder="例: 自宅 ／ 仙台営業所">
+            <div id="drStartLocHint" style="font-size:10px;color:var(--text2);margin-top:2px"></div>
           </div>
         </div>
         <div class="fld"><label>出発時のメーター（km・任意）</label>
@@ -12215,6 +12216,8 @@ async function initDailyForm(reportId=null) {
   // 開いた時点で車が決まっていれば、その車の前回の帰着メーターを引き継ぐ。
   // 編集で開いたときも呼ぶ（中で値は触らず、案内文だけ既定に戻す）
   if (carSel.value && carSel.value !== '__custom__') await prefillOdoStart(carSel.value);
+  // 出発地点は人に紐づくので、車が未選択でもドライバー本人なら引き継げる
+  await prefillStartLoc();
 }
 
 // 車両番号セレクトの選択変更時: ドライバーは「その他（手入力）」欄の表示切替のみ、
@@ -12232,6 +12235,8 @@ function onDrCarChange() {
   }
   // 車が決まった時点で、その車の前回の帰着メーターを引き継ぐ
   if (carSel.value && carSel.value !== '__custom__') prefillOdoStart(carSel.value);
+  // 管理者の代理入力では車番からドライバーが決まるため、出発地点もここで引き継ぐ
+  if (me?.role !== 'driver') prefillStartLoc();
 }
 
 function checkAlc(input, warnId) {
@@ -12510,6 +12515,7 @@ function onDrDateChange() {
     ? (document.getElementById('drCarCustom')?.value || '').trim()
     : (carSel?.value || '');
   if (car) prefillOdoStart(car);
+  prefillStartLoc();
 }
 async function prefillOdoStart(car) {
   const el = document.getElementById('drOdoStart');
@@ -12537,6 +12543,49 @@ async function prefillOdoStart(car) {
     hint.textContent = `前回（${last.date}）の帰着メーター ${last.end_odometer} を入れました。違っていれば直してください`;
     onDrOdoChange();
   } catch(e) { console.warn('prefillOdoStart:', e.message); }
+}
+
+/* 前回の出発地点を、次回の初期値として入れる。
+   出発地点は業務委託なら自宅、社員なら配属先の店舗でほぼ毎日同じため、
+   毎回打ち直すうちに業務先を書いてしまうのを防ぐ意味もある。
+   メーターと違って車ではなく人に紐づくので、ドライバーIDで前回を探す。
+   IDが分からないとき（管理者が車番未選択で代理入力するなど）は何もしない。
+   他人の自宅が別のドライバーの日報に入ることは避ける。 */
+function drFormDrvId() {
+  if (me?.role === 'driver') return me.driver_id ?? null;
+  const carSel = document.getElementById('drCar');
+  const car = carSel?.value === '__custom__'
+    ? (document.getElementById('drCarCustom')?.value || '').trim()
+    : (carSel?.value || '');
+  if (!car) return null;
+  const date = document.getElementById('drD')?.value || fmtLocalDate(new Date());
+  return lkDByAssign(car, date)?.id ?? lkD(car)?.id ?? null;
+}
+async function prefillStartLoc() {
+  const el = document.getElementById('drStartLoc');
+  const hint = document.getElementById('drStartLocHint');
+  if (!el || !hint) return;
+  if (editDailyId != null) { hint.textContent = ''; return; }  // 編集中は元の値をそのまま残す
+  if (el.value !== '') return;              // 本人が入れた値も、その案内も触らない
+  hint.textContent = '';
+  const drvId = drFormDrvId();
+  if (!sb || drvId == null) return;
+  const date = document.getElementById('drD')?.value || fmtLocalDate(new Date());
+  try {
+    const {data, error} = await sb.from('daily_reports')
+      .select('date,start_location')
+      .eq('drv_id', drvId)
+      .lt('date', date)                      // 同じ日の記録を自分で参照しないように前日以前に限る
+      .not('start_location', 'is', null)
+      .neq('start_location', '')
+      .order('date', {ascending:false})
+      .limit(1);
+    if (error || !data?.length) return;
+    if (el.value !== '') return;             // 問い合わせの間に入力されていたら触らない
+    const last = data[0];
+    el.value = last.start_location;
+    hint.textContent = `前回（${last.date}）と同じ「${last.start_location}」を入れました。違っていれば直してください`;
+  } catch(e) { console.warn('prefillStartLoc:', e.message); }
 }
 
 // メーターを両方入れたら走行距離を自動で入れる
@@ -12600,6 +12649,11 @@ function applyDrDraft(d) {
     if (!el) return;
     if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
   });
+  // 値は下書きから戻したものなので、引き継ぎの案内が残っていると出どころを誤解させる
+  const locHint = document.getElementById('drStartLocHint');
+  if (locHint) locHint.textContent = '';
+  const odoHint = document.getElementById('drOdoStartHint');
+  if (odoHint) odoHint.textContent = DR_ODO_HINT_DEFAULT;
   pendDrTrips = Array.isArray(d.trips) ? d.trips : [];
   pendDrRests = Array.isArray(d.rests) ? d.rests : [];
   renderDrTrips(); renderDrRests();
