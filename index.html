@@ -12331,17 +12331,30 @@ function renderDrTrips() {
     el.innerHTML = '<div style="font-size:11px;color:var(--amber-text);background:var(--amber-bg);border-radius:var(--radius);padding:6px 8px">運行が1件も追加されていません。上の欄を埋めて「＋ 運行を追加」を押してください</div>';
     return;
   }
-  const qty = t => [t.qty_tak?`宅${t.qty_tak}`:'', t.qty_neko?`ポ${t.qty_neko}`:'',
-                    t.qty_charter?`チ${t.qty_charter}`:'', t.qty_other?`他${t.qty_other}`:''].filter(Boolean).join(' ');
+  const qty = t => [t.qty_tak?`宅配便${t.qty_tak}`:'', t.qty_neko?`ポスト便${t.qty_neko}`:'',
+                    t.qty_charter?`チャーター${t.qty_charter}`:'', t.qty_other?`その他${t.qty_other}`:''].filter(Boolean).join('・');
+  // スマホの幅では1行に収まらず取引先名が切れてしまうため、
+  // 「時刻＋取引先」と「区間・個数・メモ」の2段に分けて全文を出す
   el.innerHTML = pendDrTrips
     .map((t,i) => ({t,i}))
     .sort((a,b) => String(a.t.start||'').localeCompare(String(b.t.start||'')))
-    .map(({t,i}) => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;margin-bottom:4px;background:var(--bg2);border-radius:var(--radius)">
-      <span style="font-weight:600;white-space:nowrap">${t.start||''}〜${t.end||''}</span>
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.cli_name||'')}${(t.start_loc||t.end_loc)?`（${escHtml(t.start_loc||'')}→${escHtml(t.end_loc||'')}）`:''}${t.note?`　${escHtml(t.note)}`:''}</span>
-      <span style="color:var(--text2);white-space:nowrap">${qty(t)}</span>
-      <button class="ibtn" onclick="rmDrTrip(${i})" title="削除">🗑</button>
-    </div>`).join('');
+    .map(({t,i}) => {
+      const sub = [
+        (t.start_loc||t.end_loc) ? `${escHtml(t.start_loc||'?')} → ${escHtml(t.end_loc||'?')}` : '',
+        qty(t),
+        t.note ? escHtml(t.note) : '',
+      ].filter(Boolean).join('　');
+      return `<div style="display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:6px 8px;margin-bottom:4px;background:var(--bg2);border-radius:var(--radius)">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
+            <span style="font-weight:600;white-space:nowrap">${t.start||''}〜${t.end||''}</span>
+            <span style="font-weight:600;overflow-wrap:break-word;word-break:break-word">${escHtml(t.cli_name||'')}</span>
+          </div>
+          ${sub?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow-wrap:break-word;word-break:break-word">${sub}</div>`:''}
+        </div>
+        <button class="ibtn" style="flex-shrink:0" onclick="rmDrTrip(${i})" title="削除">🗑</button>
+      </div>`;
+    }).join('');
 }
 
 /* 運行から1日の枠を組み立てて、上の②へ自動で反映する。
