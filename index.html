@@ -2392,7 +2392,8 @@ try {
     <div id="drvInviteSetup">
       <div class="fld" style="text-align:left">
         <label>誰に送る招待ですか <span style="color:var(--red)">*</span></label>
-        <select id="drvInviteTarget"></select>
+        <input type="text" id="drvInviteFilter" placeholder="名前や仕入先IDで絞り込む" oninput="filterDriverInviteTargets()" style="margin-bottom:4px">
+        <select id="drvInviteTarget" size="8"></select>
         <div style="font-size:10px;color:var(--text2);margin-top:4px;background:var(--bg2);border-radius:var(--radius);padding:6px 8px">
           台帳にいる方を選ぶと、<b>この招待はその方専用</b>になります。URLが別の人の手に渡っても、他のドライバーとして登録することはできません。<br>
           新しく迎える方の場合は「新しく迎えるドライバー」を選んでください。
@@ -5165,9 +5166,9 @@ document.querySelectorAll('.overlay').forEach(overlay => {
 
 function rebuildCliFilter(){
   const sel=document.getElementById('scli');
-  if(sel){sel.innerHTML='<option value="">全取引先</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('scli');}
+  if(sel){sel.innerHTML='<option value="">全取引先</option>'+clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');enhanceSelectSearchable('scli');}
   const fm=document.getElementById('fCli');
-  if(fm){fm.innerHTML='<option value="">未設定</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('fCli');}
+  if(fm){fm.innerHTML='<option value="">未設定</option>'+clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');enhanceSelectSearchable('fCli');}
 }
 /* ===== INVOICE LIST ===== */
 // 締日フィルタの選択肢を、登録済み取引先の締日（重複なし）から再構築する
@@ -6246,11 +6247,11 @@ function renderCli(){
       const closingLbl=closingDayLabel(c.closing_day);
       return`<div class="card" style="cursor:pointer;${depth?'border-left:3px solid var(--blue);margin-left:14px':''}${ghost?';opacity:.6':''}" title="ダブルクリックで編集" ondblclick="editCli(${c.id})">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px"><div class="av cli">${ini}</div>${canE?`<div style="display:flex;gap:1px" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"><button class="ibtn" onclick="editCli(${c.id})">✎</button><button class="ibtn" onclick="delCli(${c.id})">🗑</button></div>`:''}</div>
-        <div style="font-weight:600;font-size:13.5px;margin-bottom:3px">${depth?'<span style="color:var(--text2);font-weight:400">└ </span>':''}${c.name}</div>
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:3px">${depth?'<span style="color:var(--text2);font-weight:400">└ </span>':''}${escHtml(c.name)}</div>
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:3px">${cliKindBadge(c)}${cliRoleBadges(c)}${childCnt?`<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text)">🏢 支店・営業所 ${childCnt}件</span>`:''}</div>
-        ${c.client_no?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">会社ID: ${c.client_no}</div>`:''}
-        ${c.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${c.person}</div>`:''}
-        ${c.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${c.tel}</div>`:'<div style="margin-bottom:5px"></div>'}
+        ${c.client_no?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">会社ID: ${escHtml(c.client_no)}</div>`:''}
+        ${c.person?`<div style="font-size:11.5px;color:var(--text2)">担当: ${escHtml(c.person)}</div>`:''}
+        ${c.tel?`<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${escHtml(c.tel)}</div>`:'<div style="margin-bottom:5px"></div>'}
         <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件　締日: ${closingLbl}${c.fee_rate?`　手数料: ${c.fee_rate}%`:''}</div>
         <div style="font-size:11.5px;color:var(--text2)">入金日: ${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
         ${supplied.length?`<div style="font-size:11.5px;color:var(--text2);margin-top:2px">👤 供給ドライバー（${supplied.length}名）: ${escHtml(supplied.map(d=>d.name).join('、'))}</div>`:''}
@@ -6289,13 +6290,13 @@ function renderCli(){
       return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:${depth?'2px':'6px'};gap:12px;cursor:pointer;${depth?'margin-left:20px;border-left:3px solid var(--blue)':''}${ghost?';opacity:.6':''}" title="ダブルクリックで編集" ondblclick="editCli(${c.id})">
         <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av cli" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
-          <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${c.client_no ? 'ID: ' + c.client_no : 'ID: —'}</div>
-          <div style="width:135px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${depth?'<span style="color:var(--text2);font-weight:400">└ </span>':''}${c.name}${childCnt?` <span class="bdg" style="background:var(--blue-bg);color:var(--blue-text)">🏢${childCnt}</span>`:''}</div>
+          <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${escHtml(c.client_no ? 'ID: ' + c.client_no : 'ID: —')}</div>
+          <div style="width:135px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${depth?'<span style="color:var(--text2);font-weight:400">└ </span>':''}${escHtml(c.name)}${childCnt?` <span class="bdg" style="background:var(--blue-bg);color:var(--blue-text)">🏢${childCnt}</span>`:''}</div>
           <div style="width:150px;flex-shrink:0;display:flex;flex-wrap:wrap;gap:2px;align-content:flex-start">${cliKindBadge(c)}${cliRoleBadges(c)}</div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingLbl}</div>
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">入金:${payCycleLabel(c.pay_month_offset, c.pay_day)}</div>
           <div style="width:90px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${c.fee_rate?`手数料:${c.fee_rate}%`:'—'}</div>
-          <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${c.tel || '—'}</div>
+          <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${escHtml(c.tel || '—')}</div>
           <div id="${supId}" style="flex:1;min-width:110px;font-size:11.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${supplied.length?'cursor:pointer':''}" title="${supplied.length?'クリックで全件表示':''}" ${supplied.length?`onclick="event.stopPropagation();toggleFullText('${supId}')" ondblclick="event.stopPropagation()"`:''}>${supplied.length?escHtml(supplied.map(d=>d.name).join('、')):'—'}</div>
           <div style="width:65px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
           <div style="width:95px;font-size:12.5px;font-weight:600;color:var(--blue);text-align:right;flex-shrink:0;">${yen(tot_)}</div>
@@ -6567,7 +6568,7 @@ function onUsrRoleChange(){
 }
 function populateUsrDrvSel(cur){
   const sel=document.getElementById('uDrvSel');
-  sel.innerHTML='<option value="">選択してください</option>'+[...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999)).map(d=>`<option value="${d.id}">${d.name}${d.supplier_id?`（ID:${d.supplier_id}）`:''}</option>`).join('');
+  sel.innerHTML='<option value="">選択してください</option>'+[...drvs].sort((a,b)=>(parseInt(a.supplier_id,10)||999999)-(parseInt(b.supplier_id,10)||999999)).map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}</option>`).join('');
   enhanceSelectSearchable('uDrvSel');
   if(cur)sel.value=cur;
 }
@@ -6683,13 +6684,42 @@ function populateDriverInviteTargets(){
     .map(d=>`<option value="${d.id}">${escHtml(d.name||'')}${d.supplier_id?`（${escHtml(d.supplier_id)}）`:''}${hasLogin.has(String(d.id))?' ※ログイン発行済み':''}</option>`).join('');
   sel.innerHTML = '<option value="">新しく迎えるドライバー（台帳にまだいない方）</option>' + opts;
 }
+// 宛先の絞り込み。人数が多いと一覧から探すのが大変なので名前・仕入先IDで絞れるようにする
+function filterDriverInviteTargets(){
+  const q = nm(document.getElementById('drvInviteFilter')?.value || '');
+  const sel = document.getElementById('drvInviteTarget');
+  if (!sel) return;
+  let firstVisible = null;
+  [...sel.options].forEach(o => {
+    const hit = !q || o.value === '' || nm(o.text).includes(q);
+    o.hidden = !hit;
+    if (hit && o.value !== '' && !firstVisible) firstVisible = o;
+  });
+  // 絞り込んだら、残った先頭の候補を選んでおく（既定の「新規」のままだと選び忘れる）
+  const cur = sel.selectedOptions[0];
+  if (q && firstVisible && (!cur || cur.hidden || cur.value === '')) sel.value = firstVisible.value;
+  if (!q && cur && cur.hidden) sel.value = '';
+}
 // 宛先を選ぶところから始める
 function openDriverInviteM(){
   populateDriverInviteTargets();
   const t = document.getElementById('drvInviteTarget'); if (t) t.value = '';
+  const f = document.getElementById('drvInviteFilter'); if (f) f.value = '';
+  filterDriverInviteTargets();
   document.getElementById('drvInviteSetup').style.display = 'block';
   document.getElementById('drvInviteResult').style.display = 'none';
   document.getElementById('mDrvInvite').classList.add('on');
+}
+/* ドライバー一覧の行から、その人宛の招待をその場で発行する。
+   宛先を決める仕組みを入れた結果、毎回プルダウンから探すことになって手間が増えたため、
+   普段はこちらを使う。プルダウンは新規の方や、一覧を開いていない時のための残り道。 */
+async function createDriverInviteFor(drvId){
+  const d = (drvs||[]).find(x => x.id === drvId);
+  if (!d) { showT('ドライバーが見つかりません', 'ter'); return; }
+  openDriverInviteM();
+  const sel = document.getElementById('drvInviteTarget');
+  if (sel) sel.value = String(drvId);
+  await createDriverInvite();
 }
 /* 1回限りの招待URL/QRコードを発行する。
    target_driver_id を入れておくと、その招待では指定した1人にしか合流できなくなる。
@@ -6964,7 +6994,7 @@ function executeCsvExport(){
 function openPdfM(){
   parsedPdf=[];document.getElementById('pPv').innerHTML='';document.getElementById('pSt').textContent='';document.getElementById('pImp').classList.add('hide');document.getElementById('pFi').value='';
   const sel=document.getElementById('pdfCli');
-  if(sel){sel.innerHTML='<option value="">選択してください</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('pdfCli');}
+  if(sel){sel.innerHTML='<option value="">選択してください</option>'+clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');enhanceSelectSearchable('pdfCli');}
   document.getElementById('mPdf').classList.add('on');
 }
 async function handlePdf(file){
@@ -7007,7 +7037,7 @@ async function importPdf(){
 function openCsvM(){
   parsedCsv=[];document.getElementById('cPv').innerHTML='';document.getElementById('cDups').innerHTML='';document.getElementById('cSt').textContent='';document.getElementById('cImp').classList.add('hide');document.getElementById('cFi').value='';
   const sel=document.getElementById('csvCli');
-  if(sel){sel.innerHTML='<option value="">自動判定（通常CSVの取引先名列を使用）</option>'+clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');enhanceSelectSearchable('csvCli');}
+  if(sel){sel.innerHTML='<option value="">自動判定（通常CSVの取引先名列を使用）</option>'+clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');enhanceSelectSearchable('csvCli');}
   const taxRoundSel=document.getElementById('csvTaxRound');
   if(taxRoundSel) taxRoundSel.value='round';
   const hwAdvanceChk=document.getElementById('csvHwAsAdvance');
@@ -8205,13 +8235,13 @@ function renderDrv() {
       return `<div class="card" style="cursor:pointer" title="ダブルクリックで編集" ondblclick="editDrv(${d.id})">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
           <div class="av drv">${ini}</div>
-          <div style="display:flex;gap:1px" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${chatUnreadBadgeHtml(d.id)}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
+          <div style="display:flex;gap:1px" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${chatUnreadBadgeHtml(d.id)}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="この人宛の招待URLを発行" onclick="createDriverInviteFor(${d.id})">🔗</button><button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
         </div>
-        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${d.name}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">解約済み</span>':''}${d.company?` <span style="font-size:10.5px;font-weight:500;color:var(--text2);padding:1px 5px;background:var(--bg2);border-radius:99px">${d.company}</span>`:''}</div>
-        ${d.supplier_id ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">仕入先ID: ${d.supplier_id}</div>` : ''}
-        ${d.tel ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${d.tel}</div>` : '<div style="margin-bottom:5px"></div>'}
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:2px">${escHtml(d.name)}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">解約済み</span>':''}${d.company?` <span style="font-size:10.5px;font-weight:500;color:var(--text2);padding:1px 5px;background:var(--bg2);border-radius:99px">${escHtml(d.company)}</span>`:''}</div>
+        ${d.supplier_id ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:2px">仕入先ID: ${escHtml(d.supplier_id)}</div>` : ''}
+        ${d.tel ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">${escHtml(d.tel)}</div>` : '<div style="margin-bottom:5px"></div>'}
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px">
-          ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="cursor:pointer" title="クリックで乗務履歴を記録・確認" onclick="event.stopPropagation();openVehicleHistM('${escAttrJs(c)}')" ondblclick="event.stopPropagation()">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
+          ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="cursor:pointer" title="クリックで乗務履歴を記録・確認" onclick="event.stopPropagation();openVehicleHistM('${escAttrJs(c)}')" ondblclick="event.stopPropagation()">🚗 ${escHtml(c)}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
         </div>
         <div style="font-size:11.5px;color:var(--text2);margin-top:3px">締日: ${closingDayLabel(d.closing_day)}　支払日: ${drvPayScheduleLabel(d)}</div>
         <div style="font-size:11.5px;color:var(--text2)">請求明細書: ${cnt}件</div>
@@ -8244,20 +8274,20 @@ function renderDrv() {
       return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;cursor:pointer" title="ダブルクリックで編集" ondblclick="editDrv(${d.id})">
         <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;">
           <div class="av drv" style="width:26px;height:26px;font-size:11px;flex-shrink:0;">${ini}</div>
-          <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${d.supplier_id ? 'ID: ' + d.supplier_id : 'ID: —'}</div>
-          <div style="width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${d.name}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">解約</span>':''}</div>
+          <div style="width:80px;font-weight:700;color:var(--blue);font-size:12.5px;flex-shrink:0;">${escHtml(d.supplier_id ? 'ID: ' + d.supplier_id : 'ID: —')}</div>
+          <div style="width:115px;font-weight:600;font-size:13.5px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">${escHtml(d.name)}${d.status==='terminated'?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">解約</span>':''}</div>
           <div style="flex:1;display:flex;flex-wrap:wrap;gap:3px;min-width:100px;">
-            ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="margin-top:0;cursor:pointer" title="クリックで乗務履歴を記録・確認" onclick="event.stopPropagation();openVehicleHistM('${escAttrJs(c)}')" ondblclick="event.stopPropagation()">🚗 ${c}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
+            ${(d.cars || []).length ? (d.cars || []).map(c => `<span class="cpill" style="margin-top:0;cursor:pointer" title="クリックで乗務履歴を記録・確認" onclick="event.stopPropagation();openVehicleHistM('${escAttrJs(c)}')" ondblclick="event.stopPropagation()">🚗 ${escHtml(c)}</span>`).join('') : '<span style="font-size:11.5px;color:var(--text2)">車番未登録</span>'}
           </div>
-          <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${d.tel || '—'}</div>
+          <div style="width:100px;color:var(--text2);font-size:12px;flex-shrink:0;">${escHtml(d.tel || '—')}</div>
           <div style="font-size:11.5px;color:var(--text2);display:flex;gap:6px;width:170px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">
-            ${d.company ? `<span style="padding:1px 6px;background:var(--bg2);border-radius:99px">${d.company}</span>` : ''}
+            ${d.company ? `<span style="padding:1px 6px;background:var(--bg2);border-radius:99px">${escHtml(d.company)}</span>` : ''}
           </div>
           <div style="width:85px;font-size:11.5px;color:var(--text2);flex-shrink:0;">締日:${closingDayLabel(d.closing_day)}</div>
           <div style="width:110px;font-size:11.5px;color:var(--text2);flex-shrink:0;">${drvPayScheduleLabel(d)}</div>
           <div style="width:70px;font-size:11.5px;color:var(--text2);text-align:right;flex-shrink:0;">請求:${cnt}件</div>
         </div>
-        <div style="display:flex;gap:1px;flex-shrink:0;" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${chatUnreadBadgeHtml(d.id)}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
+        <div style="display:flex;gap:1px;flex-shrink:0;" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()"><button class="ibtn" title="チャット" style="position:relative" onclick="openDrvChatM(${d.id})">💬${chatUnreadBadgeHtml(d.id)}</button><button class="ibtn" title="提出書類" onclick="openDrvDocsM(${d.id})">📄</button>${canE ? `<button class="ibtn" title="この人宛の招待URLを発行" onclick="createDriverInviteFor(${d.id})">🔗</button><button class="ibtn" title="パスワードをリセット" onclick="resetDriverPassword(${d.id})">🔑</button>` : ''}${canE ? `<button class="ibtn" onclick="editDrv(${d.id})">✎</button><button class="ibtn" onclick="delDrv(${d.id})">🗑</button>` : ''}</div>
       </div>`;
     }).join('');
   }
@@ -8484,7 +8514,7 @@ function runAggPay() {
     const execLabel = computePayExecDateLabel(d, sortedRowsForDate[sortedRowsForDate.length-1]?.date || to);
     return `<tr style="border-bottom:0.5px solid var(--border)">
       <td style="padding:6px 8px"><input type="checkbox" class="aggPayChk" value="${d.id}"></td>
-      <td style="padding:6px 8px;color:var(--text2)">${d.supplier_id||'—'}</td>
+      <td style="padding:6px 8px;color:var(--text2)">${escHtml(d.supplier_id||'—')}</td>
       <td id="${carCellId}" style="padding:6px 8px" data-short="${escHtml(carShort)}" data-full="${escHtml(carFull)}" data-state="short">${carShort}</td>
       <td style="padding:6px 8px"><span onclick="jumpToDriverEdit(${g.drv.id})" style="cursor:pointer;color:var(--blue);text-decoration:underline dotted" title="ドライバー管理で開く">${escHtml(d.name)}</span>${d.company?`<div style="font-size:9.5px;color:var(--text2)">${escHtml(d.company)}</div>`:''}</td>
       <td style="padding:6px 8px;white-space:nowrap;color:var(--text2)">${execLabel}</td>
@@ -8570,7 +8600,7 @@ function openKanAte(suggested) {
   return new Promise(resolve => {
     _kanAteResolve = resolve;
     const dl = document.getElementById('kanAteList');
-    dl.innerHTML = clients.map(c=>`<option value="${c.name}">`).join('');
+    dl.innerHTML = clients.map(c=>`<option value="${escHtml(c.name)}">`).join('');
     document.getElementById('kanAteInput').value = suggested||'';
     updateKanAteInfo();
     document.getElementById('mKanAte').classList.add('on');
@@ -9906,7 +9936,7 @@ function initCal() {
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">全員</option>' +
-    activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
+    activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${escHtml(d.name)}</option>`).join('');
   enhanceSelectSearchable('calDrvSel');
 }
 
@@ -11895,7 +11925,7 @@ function exportBillingProgressCsv() {
 
 function openSchedM() {
   const sel = document.getElementById('scDrv');
-  sel.innerHTML = '<option value="">選択</option>' + activeDrvs().map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+  sel.innerHTML = '<option value="">選択</option>' + activeDrvs().map(d=>`<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
   enhanceSelectSearchable('scDrv');
   const now = new Date();
   document.getElementById('scDate').value = '';
@@ -12151,7 +12181,7 @@ async function populateDriverCliList() {
       driverClientNames = error ? [] : (data || []);
     } catch(e) { driverClientNames = []; }
   }
-  listEl.innerHTML = driverClientNames.map(c => `<option value="${c.name}">`).join('');
+  listEl.innerHTML = driverClientNames.map(c => `<option value="${escHtml(c.name)}">`).join('');
 }
 
 async function initDailyForm(reportId=null) {
@@ -12203,7 +12233,7 @@ async function initDailyForm(reportId=null) {
   if (isDriver) {
     await populateDriverCliList();
   } else {
-    document.getElementById('drCliList').innerHTML = clients.map(c => `<option value="${c.name}">`).join('');
+    document.getElementById('drCliList').innerHTML = clients.map(c => `<option value="${escHtml(c.name)}">`).join('');
   }
 
   // 既存データ編集
@@ -13022,7 +13052,7 @@ function renderDailyList() {
   if (drvSel) {
     const cur = drvSel.value;
     drvSel.innerHTML = '<option value="">全ドライバー</option>' +
-      activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${d.name}</option>`).join('');
+      activeDrvs().map(d => `<option value="${d.id}" ${d.id==cur?'selected':''}>${escHtml(d.name)}</option>`).join('');
     enhanceSelectSearchable('drListDrv');
     drvSel.value = cur;
   }
@@ -13564,7 +13594,7 @@ function populateMrDrvSel() {
   const cur = sel.value;
   sel.innerHTML = '<option value="">全ドライバー</option>' +
     [...activeDrvs()].sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
-      .map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${d.supplier_id}）`:''}</option>`).join('');
+      .map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}</option>`).join('');
   enhanceSelectSearchable('mrDrvSel');
   if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
 }
@@ -13688,11 +13718,11 @@ async function renderMonthlyReport() {
       return `<div class="pnl-card" style="${hasDiff?'border-color:var(--amber-border);':''}">
         <div class="pnl-head" onclick="togglePnl(this)">
           <div style="display:flex;align-items:center;gap:10px">
-            <div class="av drv" style="width:24px;height:24px;font-size:10px">${(d.name||'').slice(-2)}</div>
+            <div class="av drv" style="width:24px;height:24px;font-size:10px">${escHtml((d.name||'').slice(-2))}</div>
             <div>
               <div style="font-size:12px;font-weight:500">
                 ${d.name}
-                ${d.supplier_id?`<span style="font-size:10px;color:var(--text2)"> ID:${d.supplier_id}</span>`:''}
+                ${d.supplier_id?`<span style="font-size:10px;color:var(--text2)"> ID:${escHtml(d.supplier_id)}</span>`:''}
                 ${hasDiff?'<span style="font-size:10px;color:var(--amber-text);margin-left:6px">⚠ 差異あり</span>':''}
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
               </div>
@@ -14037,7 +14067,7 @@ async function checkSlipVsDailyReport() {
     // 日報
     const dDailyReps = drReports.filter(r=>dCars.some(c=>nm(c)===nm(r.car)));
     if (!dDailyReps.length) {
-      warnings.push(`<b>${d.name}</b>: 日報の提出がありません`);
+      warnings.push(`<b>${escHtml(d.name)}</b>: 日報の提出がありません`);
       return;
     }
 
@@ -14056,16 +14086,16 @@ async function checkSlipVsDailyReport() {
     const missingPay = [...drDates].filter(d=>!payDates.has(d));
 
     if (missingDr.length) {
-      warnings.push(`<b>${d.name}</b>: 明細書に日報のない日があります（${missingDr.slice(0,3).join('、')}${missingDr.length>3?'…':''}）`);
+      warnings.push(`<b>${escHtml(d.name)}</b>: 明細書に日報のない日があります（${missingDr.slice(0,3).join('、')}${missingDr.length>3?'…':''}）`);
     }
     if (missingPay.length) {
-      warnings.push(`<b>${d.name}</b>: 日報はあるが明細書に含まれていない日があります（${missingPay.slice(0,3).join('、')}${missingPay.length>3?'…':''}）`);
+      warnings.push(`<b>${escHtml(d.name)}</b>: 日報はあるが明細書に含まれていない日があります（${missingPay.slice(0,3).join('、')}${missingPay.length>3?'…':''}）`);
     }
 
     // 差戻し（要修正）のまま放置されている日報がある場合
     const rejected = dDailyReps.filter(r=>r.status==='rejected').length;
     if (rejected) {
-      warnings.push(`<b>${d.name}</b>: 差戻し（要修正）の日報が ${rejected}件 あります`);
+      warnings.push(`<b>${escHtml(d.name)}</b>: 差戻し（要修正）の日報が ${rejected}件 あります`);
     }
   });
 
@@ -14486,7 +14516,7 @@ async function renderDriverPortalDocs() {
 async function openDrvDocsM(drvId) {
   const d = drvs.find(x => x.id === drvId);
   if (!d) return;
-  document.getElementById('mDrvDocsH').innerHTML = `📄 ${d.name} の提出書類 <button class="ibtn" onclick="closeM('mDrvDocs')">✕</button>`;
+  document.getElementById('mDrvDocsH').innerHTML = `📄 ${escHtml(d.name)} の提出書類 <button class="ibtn" onclick="closeM('mDrvDocs')">✕</button>`;
   document.getElementById('mDrvDocs').classList.add('on');
   document.getElementById('drvDocsMBody').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">読み込み中...</div>';
   await loadDriverDocs();
@@ -15448,7 +15478,7 @@ function renderDocStatusBody() {
       <th style="${cellStyle}"></th>
     </tr></thead>
     <tbody>${sorted.map(d => `<tr>
-      <td style="${cellStyle};text-align:left;font-weight:500">${d.name}</td>
+      <td style="${cellStyle};text-align:left;font-weight:500">${escHtml(d.name)}</td>
       ${DRIVER_DOC_TYPES.map(t => {
         const doc = findDriverDoc(d.id, t.key);
         const clickable = !!doc?.file_path;
@@ -16850,11 +16880,11 @@ function getCompanyBlock() {
   const c = companySettings || {};
   const addrLines = formatCompanyAddressLines(c);
   return `
-    <div class="name">${c.name || '株式会社ポーターガーデン'}</div>
+    <div class="name">${escHtml(c.name || '株式会社ポーターガーデン')}</div>
     <div class="meta">
       ${addrLines.map(l=>`${l}<br>`).join('')}
-      ${c.tel ? 'TEL ' + c.tel : ''}<br>
-      ${c.reg_no ? '登録番号　' + c.reg_no : ''}${c.bank ? '<br>' + c.bank : ''}
+      ${escHtml(c.tel ? 'TEL ' + c.tel : '')}<br>
+      ${escHtml(c.reg_no ? '登録番号　' + c.reg_no : '')}${c.bank ? '<br>' + escHtml(c.bank) : ''}
     </div>`;
 }
 
@@ -17369,7 +17399,7 @@ async function scheduleLoadAll(table) {
 /* ===== 入金スケジュール（支払スケジュールと同構造・取引先向け） ===== */
 function openReceiptSchedM() {
   const sel = document.getElementById('rscCli');
-  sel.innerHTML = '<option value="">選択</option>' + clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML = '<option value="">選択</option>' + clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
   enhanceSelectSearchable('rscCli');
   const now = new Date();
   document.getElementById('rscDate').value = '';
@@ -17722,7 +17752,7 @@ function initQ0Form() {
 
   // 取引先（手入力検索用の候補リスト）
   document.getElementById('q0CliList').innerHTML =
-    clients.map(c=>`<option value="${c.name}">`).join('');
+    clients.map(c=>`<option value="${escHtml(c.name)}">`).join('');
 
   // 車番・名前（フル表記「車番（ドライバー名）」の候補のみ表示。数字のみの略式車番は候補から除外）
   const allCars = drvs.flatMap(d=>(d.cars||[]).map(c=>({car:c,name:d.name})))
@@ -18516,7 +18546,7 @@ function initMSelClients(key) {
   const list = document.getElementById(key+'List');
   if (!list) return;
   const prevChecked = new Set(getMSelValues(key));
-  list.innerHTML = clients.map(c => `<label><input type="checkbox" class="${key}Chk" value="${c.id}" ${prevChecked.has(c.id)?'checked':''} onchange="onMSelChange('${key}')"> ${c.name}</label>`).join('');
+  list.innerHTML = clients.map(c => `<label><input type="checkbox" class="${key}Chk" value="${c.id}" ${prevChecked.has(c.id)?'checked':''} onchange="onMSelChange('${key}')"> ${escHtml(c.name)}</label>`).join('');
   updateMSelBtnLabel(key);
 }
 function toggleMSelPanel(key) {
@@ -18787,7 +18817,7 @@ function renderQ0History() {
   el.innerHTML = todayRecs.map(r=>{
     const c=lkC(r.cli); const d=recDrv(r);
     return `<div style="padding:3px 0;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between">
-      <span>${r.car}${d?' ('+d.name+')':''} ${c?'/ '+c.name:''}</span>
+      <span>${escHtml(r.car)}${d?' ('+escHtml(d.name)+')':''} ${c?'/ '+escHtml(c.name):''}</span>
       <span style="font-weight:500">${yen((r.fare||0)+(r.hw||0)+(r.oth||0))}</span>
     </div>`;
   }).join('');
@@ -18803,7 +18833,7 @@ function initF0Form() {
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">選択してください</option>' +
-    clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+    clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
   enhanceSelectSearchable('f0Cli');
   if (cur) sel.value = cur;
 }
@@ -19491,7 +19521,7 @@ async function openPriceMasterModal(cliId) {
 
   const html = `
     <div style="padding:12px">
-      <div style="font-size:13px;font-weight:500;margin-bottom:10px">💰 単価マスタ — ${cli.name}</div>
+      <div style="font-size:13px;font-weight:500;margin-bottom:10px">💰 単価マスタ — ${escHtml(cli.name)}</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
         <thead><tr style="background:var(--bg2)">
           <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">サービス名</th>
@@ -19627,7 +19657,7 @@ async function showDriverStats(drvId) {
   const modal = document.getElementById('mDriverStats');
   if (modal) {
     modal.querySelector('.modal').innerHTML = `
-      <div class="mh">${drv.name} — 稼働統計 <button class="ibtn" onclick="closeM('mDriverStats')">✕</button></div>
+      <div class="mh">${escHtml(drv.name)} — 稼働統計 <button class="ibtn" onclick="closeM('mDriverStats')">✕</button></div>
       <div style="padding:10px 12px">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
           <div class="kpi-card"><div class="kpi-label">直近6ヶ月 走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
@@ -21373,7 +21403,7 @@ function renderPaymentIn() {
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:12px">
       <div style="flex:1">
         <div style="font-weight:500">${p.date} <span style="color:var(--text2);font-size:10px">${typeLabel[p.type]||p.type}</span></div>
-        <div style="font-size:10px;color:var(--text2)">${cli?cli.name:''} ${p.target_month?'/ '+p.target_month+'分':''} ${p.note?'/ '+p.note:''}</div>
+        <div style="font-size:10px;color:var(--text2)">${escHtml(cli?cli.name:'')} ${p.target_month?'/ '+p.target_month+'分':''} ${p.note?'/ '+p.note:''}</div>
       </div>
       <div style="font-size:14px;font-weight:600;color:var(--green)">${yen(p.amt)}</div>
       <button class="ibtn" style="color:var(--red)" onclick="deletePaymentIn(${p.id})">🗑</button>
@@ -21388,7 +21418,7 @@ function openPaymentInM() {
   document.getElementById('piNote').value = '';
   document.getElementById('piTargetMonth').value = (document.getElementById('piFrom')?.value||'').slice(0,7);
   const sel = document.getElementById('piCli');
-  sel.innerHTML = '<option value="">選択</option>' + clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML = '<option value="">選択</option>' + clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
   enhanceSelectSearchable('piCli');
   document.getElementById('mPaymentIn').classList.add('on');
 }
