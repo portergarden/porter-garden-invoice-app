@@ -51,11 +51,11 @@ async function renderMonthlyReport() {
   // 日報データを取得（daily_reports テーブル）
   let drReports = [];
   try {
-    const {data, error} = await sb.from('daily_reports')
+    const {data, error} = await fetchAllRows(() => sb.from('daily_reports')
       .select('*')
       .gte('date', from)
       .lte('date', to)
-      .order('date');
+      .order('date').order('id'));
     if (!error) drReports = data || [];
   } catch(e) {}
 
@@ -471,10 +471,11 @@ async function checkSlipVsDailyReport() {
     const minM = months.sort()[0];
     const maxM = months.sort().pop();
     const [maxY, maxMo] = maxM.split('-');
-    const {data, error} = await sb.from('daily_reports')
+    const {data, error} = await fetchAllRows(() => sb.from('daily_reports')
       .select('date,car,distance_km,qty_takkyubin,qty_nekopos,status')
       .gte('date', `${minM}-01`)
-      .lte('date', fmtLocalDate(new Date(+maxY,+maxMo,0)));
+      .lte('date', fmtLocalDate(new Date(+maxY,+maxMo,0)))
+      .order('date').order('id'));
     if (!error) drReports = data||[];
   } catch(e) { return; }
 

@@ -189,10 +189,11 @@ async function checkDailyReportMissing() {
 
     // 今月の日報日付一覧
     const [y,m] = thisM.split('-');
-    const {data, error} = await sb.from('daily_reports')
+    const {data, error} = await fetchAllRows(() => sb.from('daily_reports')
       .select('date,car,driver_name,status')
       .gte('date', `${y}-${m}-01`)
-      .lte('date', fmtLocalDate(new Date(+y,+m,0)));
+      .lte('date', fmtLocalDate(new Date(+y,+m,0)))
+      .order('date').order('id'));
     if (error) return;
 
     const drDates = new Set((data||[]).map(r=>r.date));
@@ -365,12 +366,12 @@ async function showDriverStats(drvId) {
   let drReports = [];
   try {
     const [y,m] = months[0].split('-');
-    const {data} = await sb.from('daily_reports')
+    const {data} = await fetchAllRows(() => sb.from('daily_reports')
       .select('date,distance_km,alc_before,alc_after,status')
       .in('car', dCars)
       .gte('date', `${y}-${m}-01`)
       .order('date', {ascending:false})
-      .limit(200);
+      .order('id', {ascending:false}));
     drReports = data||[];
   } catch(e) {}
 

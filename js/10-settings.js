@@ -1685,7 +1685,7 @@ async function loadPaymentIns() {
     // 一覧は「請求期間（piFrom/piTo）」では絞り込まない：入金日は請求月より1〜2ヶ月先になるのが
     // 通常のため、請求期間でフィルタすると入金スケジュールから自動記録された実績が
     // 表示範囲外になり、「反映されていない」ように見えてしまう（実際はDBに記録されている）
-    const {data,error} = await sb.from('payment_in').select('*').order('date',{ascending:false}).limit(100);
+    const {data,error} = await fetchAllRows(() => sb.from('payment_in').select('*').order('date',{ascending:false}).order('id',{ascending:false}));
     if (error) {
       if (error.message.includes('does not exist')) {
         document.getElementById('piList').innerHTML = '<div style="padding:16px;color:var(--amber-text);font-size:12px">⚠ payment_inテーブルが未作成です。<br><button class="btn sml" style="margin-top:6px" onclick="goPage(17,document.getElementById(\'nt17\'))">セットアップページへ</button></div>';
@@ -1819,7 +1819,7 @@ async function openBankCsvM(){
   document.getElementById('bankCsvFoot').style.display = 'none';
   bankCsvRows = []; bankCsvDeposits = []; bankCsvCols = null;
   try {
-    const {data} = await sb.from('bank_payer_aliases').select('*');
+    const {data} = await fetchAllRows(() => sb.from('bank_payer_aliases').select('*').order('id'));
     bankPayerAliases = data||[];
   } catch(e) { bankPayerAliases = []; }
   // マッチング先の入金予定と重複チェック用の入金実績を最新化

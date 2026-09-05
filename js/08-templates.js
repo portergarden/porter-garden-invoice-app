@@ -13,7 +13,7 @@
 async function loadTemplates() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('input_templates').select('*').order('name');
+    const {data, error} = await fetchAllRows(() => sb.from('input_templates').select('*').order('name').order('id'));
     if (error) {
       if (error.message.includes('does not exist')||error.message.includes('relation')) {
         // localStorageの旧データを移行
@@ -62,7 +62,7 @@ async function migrateTemplatesFromLocal(localData) {
 async function loadMappings() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('file_mappings').select('*');
+    const {data, error} = await fetchAllRows(() => sb.from('file_mappings').select('*').order('id'));
     if (error) {
       if (error.message.includes('does not exist')||error.message.includes('relation')) {
         // localStorageの旧データを移行

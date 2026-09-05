@@ -30,7 +30,7 @@ let eVehicleId = null;
 async function loadVehicles() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('vehicles').select('*').order('car');
+    const {data, error} = await fetchAllRows(() => sb.from('vehicles').select('*').order('car').order('id'));
     if (error) {
       if (error.message.includes('does not exist')||error.message.includes('relation')) return;
       throw error;
@@ -526,7 +526,7 @@ let vhCurrentCar = null;
 async function loadVehicleAssignments() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('vehicle_assignments').select('*').order('start_date', {ascending:false});
+    const {data, error} = await fetchAllRows(() => sb.from('vehicle_assignments').select('*').order('start_date', {ascending:false}).order('id', {ascending:false}));
     if (error) {
       if (error.message.includes('does not exist')||error.message.includes('relation')) return;
       throw error;
@@ -740,7 +740,7 @@ let payAdjustments = [];
 async function loadPayAdjustments() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('pay_adjustments').select('*');
+    const {data, error} = await fetchAllRows(() => sb.from('pay_adjustments').select('*').order('id'));
     if (error) {
       if (error.message.includes('does not exist')||error.message.includes('relation')) return;
       throw error;
@@ -2189,10 +2189,10 @@ async function saveSlipRow(table, monthField, label, month, rows) {
   if (error) throw error;
 }
 async function listSlipRows(table, monthField) {
-  const { data, error } = await sb.from(table)
+  const { data, error } = await fetchAllRows(() => sb.from(table)
     .select(`id,label,${monthField},saved_at,saved_by`)
     .order('saved_at', { ascending: false })
-    .limit(50);
+    .order('id', { ascending: false }));
   if (error) throw error;
   return data || [];
 }

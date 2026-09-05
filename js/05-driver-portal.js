@@ -99,7 +99,7 @@ let driverDocs = []; // driver_documents全件キャッシュ
 async function loadDriverDocs() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('driver_documents').select('*');
+    const {data, error} = await fetchAllRows(() => sb.from('driver_documents').select('*').order('id'));
     if (error) throw error;
     driverDocs = data || [];
   } catch(e) { console.warn('loadDriverDocs:', e.message); }
@@ -826,7 +826,7 @@ let eChatGroupId = null; // 編集中グループ（新規作成時はnull）
 
 async function loadChatGroups() {
   try {
-    const { data, error } = await sb.from('chat_groups').select('*').order('created_at', {ascending:false});
+    const { data, error } = await fetchAllRows(() => sb.from('chat_groups').select('*').order('created_at', {ascending:false}).order('id', {ascending:false}));
     if (error) throw error;
     chatGroups = data || [];
   } catch(e) { console.warn('loadChatGroups:', e.message); }
@@ -1162,7 +1162,7 @@ async function loadMyChatGroups() {
   if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
   try {
     const [{data:groups, error:e1}, {data:reads, error:e2}] = await Promise.all([
-      sb.from('chat_groups').select('*').order('created_at', {ascending:false}),
+      fetchAllRows(() => sb.from('chat_groups').select('*').order('created_at', {ascending:false}).order('id', {ascending:false})),
       sb.from('chat_group_reads').select('*').eq('member_key', 'driver:'+me.driver_id)
     ]);
     if (e1) throw e1;
@@ -1472,7 +1472,7 @@ async function openStmtStatusM() {
   const el = document.getElementById('stmtStatusBody');
   el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">読み込み中...</div>';
   try {
-    const {data, error} = await sb.from('driver_statements').select('*').order('created_at', {ascending:false}).limit(200);
+    const {data, error} = await fetchAllRows(() => sb.from('driver_statements').select('*').order('created_at', {ascending:false}).order('id', {ascending:false}));
     if (error) throw error;
     if (!data?.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px">配信済みの明細書はありません</div>'; return; }
     const cs = 'padding:6px 8px;border:0.5px solid var(--border)';
@@ -1545,7 +1545,7 @@ async function loadDriverStatements() {
   const el = document.getElementById('drvStmtList');
   if (!el || !me?.driver_id) return;
   try {
-    const {data, error} = await sb.from('driver_statements').select('*').eq('drv_id', me.driver_id).order('created_at', {ascending:false}).limit(24);
+    const {data, error} = await fetchAllRows(() => sb.from('driver_statements').select('*').eq('drv_id', me.driver_id).order('created_at', {ascending:false}).order('id', {ascending:false}));
     if (error) throw error;
     if (!data?.length) { el.innerHTML = '<span style="color:var(--text2)">配信された明細書はまだありません</span>'; return; }
     el.innerHTML = data.map(s => {
@@ -1697,8 +1697,8 @@ async function renderDriverMonthly() {
   el.innerHTML = '<div style="color:var(--text2);font-size:11px;padding:10px">読み込み中...</div>';
   try {
     const [y,m] = month.split('-');
-    const {data, error} = await sb.from('daily_reports').select('*')
-      .in('car', drvData.cars||[]).gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))).order('date');
+    const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*')
+      .in('car', drvData.cars||[]).gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))).order('date').order('id'));
     if (error) throw error;
     const reps = data||[];
     // 月報CSV出力（exportDriverMonthlyCsv）が「今表示中の月」を正しく参照できるよう、共有配列にも反映しておく
@@ -1755,8 +1755,8 @@ async function printDriverMonthlyReportA4() {
 
   let dReports = [];
   try {
-    const {data, error} = await sb.from('daily_reports').select('*')
-      .in('car', d.cars||[]).gte('date', monthFrom).lte('date', monthTo).order('date');
+    const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*')
+      .in('car', d.cars||[]).gte('date', monthFrom).lte('date', monthTo).order('date').order('id'));
     if (error) throw error;
     dReports = data || [];
   } catch(e) { win.close(); showT('日報データの取得に失敗しました: ' + e.message, 'twa'); return; }
@@ -1861,7 +1861,7 @@ let boardPosts = [];
 async function loadBoard(markSeen) {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('board_posts').select('*').order('created_at', {ascending:false}).limit(50);
+    const {data, error} = await fetchAllRows(() => sb.from('board_posts').select('*').order('created_at', {ascending:false}).order('id', {ascending:false}));
     if (error) {
       if (error.message.includes('does not exist')||error.message.includes('relation')) {
         const el = document.getElementById('boardList');
@@ -2624,7 +2624,10 @@ const BACKUP_TABLES = [
 async function backupAllData() {
   showLoad(true);
   try {
-    const results = await Promise.all(BACKUP_TABLES.map(t => sb.from(t).select('*').order('id').limit(20000)));
+    /* .limit(20000) と書いてもPostgRESTが1000行で切るため、
+       これまでバックアップには各表1000行までしか入っていなかった（請求1894件中1000件）。
+       しかも件数が表示されるので、一見それらしく見えてしまう。全件を読み継ぐ。 */
+    const results = await Promise.all(BACKUP_TABLES.map(t => fetchAllRows(() => sb.from(t).select('*').order('id'))));
     for (let i=0;i<BACKUP_TABLES.length;i++) { if (results[i].error) throw results[i].error; }
     const backup = { version: 10, exported_at: new Date().toISOString() };
     BACKUP_TABLES.forEach((t,i) => {

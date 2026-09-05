@@ -191,7 +191,7 @@ async function saveMyScheduleColor(color) {
 async function loadStaffSchedules() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('staff_schedules').select('*').order('date');
+    const {data, error} = await fetchAllRows(() => sb.from('staff_schedules').select('*').order('date').order('id'));
     if (error) { if (error.message.includes('does not exist')||error.message.includes('relation')) return; throw error; }
     staffSchedules = data || [];
   } catch(e) { console.warn('loadStaffSchedules:', e.message); }
@@ -363,7 +363,7 @@ let eTaskId = null;
 async function loadTasks() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('tasks').select('*').order('due_date',{ascending:true, nullsFirst:false});
+    const {data, error} = await fetchAllRows(() => sb.from('tasks').select('*').order('due_date',{ascending:true, nullsFirst:false}).order('id'));
     if (error) { if (error.message.includes('does not exist')||error.message.includes('relation')) return; throw error; }
     tasks = data || [];
   } catch(e) { console.warn('loadTasks:', e.message); }
@@ -1201,7 +1201,7 @@ function initPersonalTasks() {
 async function loadPersonalTasks() {
   if (!sb) return;
   try {
-    const {data, error} = await sb.from('tasks').select('*').order('due_date', {nullsFirst:false});
+    const {data, error} = await fetchAllRows(() => sb.from('tasks').select('*').order('due_date', {nullsFirst:false}).order('id'));
     if (error) { if (/does not exist|relation/.test(error.message)) { personalTasks=[]; return; } throw error; }
     personalTasks = data || [];
   } catch(e) { console.warn('loadPersonalTasks:', e.message); personalTasks = []; }

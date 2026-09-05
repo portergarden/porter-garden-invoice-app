@@ -670,9 +670,14 @@ function enhanceSelectSearchable(selectId) {
     const q = nm(filterText || '');
     const items = optData().filter(o => !o.disabled && (!q || nm(o.text).includes(q)));
     if (!items.length) { list.innerHTML = '<div style="padding:6px 8px;font-size:12px;color:var(--text2)">該当なし</div>'; list.style.display = 'block'; return; }
-    list.innerHTML = items.slice(0, 300).map(o =>
+    // 候補が多すぎると描画が重いので表示は絞るが、切ったことを最後に伝える（黙って消さない）
+    const shown = items.slice(0, 300);
+    list.innerHTML = shown.map(o =>
       `<div data-idx="${o.idx}" style="padding:6px 8px;font-size:12px;cursor:pointer;${o.idx===sel.selectedIndex?'background:var(--blue-bg)':''}">${escHtml(o.text)}</div>`
-    ).join('');
+    ).join('')
+      + (items.length > shown.length
+          ? `<div style="padding:6px 8px;font-size:11px;color:var(--amber-text);background:var(--amber-bg)">ほか${items.length - shown.length}件。文字を入力して絞り込んでください</div>`
+          : '');
     list.style.display = 'block';
   }
   function choose(idx) {
