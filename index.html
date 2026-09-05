@@ -15634,7 +15634,9 @@ async function loadDriverStatements() {
 async function acknowledgeStatement(id) {
   if (!confirm('この支払明細書の内容を確認済みとして記録します。よろしいですか？')) return;
   try {
-    const {error} = await sb.from('driver_statements').update({acknowledged_at: new Date().toISOString()}).eq('id', id);
+    // テーブルを直接更新すると金額や添付まで書き換えられてしまうため、
+    // 既読・受領だけを立てるRPCを通す（自分の明細以外は1行も動かない）
+    const {error} = await sb.rpc('mark_driver_statement', {p_id: id, p_ack: true});
     if (error) throw error;
     showT('受領確認しました。ご確認ありがとうございます');
     loadDriverStatements();
@@ -15653,7 +15655,7 @@ async function openDriverStatement(id, path, isRead) {
     const html = await res.text();
     win.document.open(); win.document.write(html); win.document.close();
     if (!isRead) {
-      await sb.from('driver_statements').update({read_at: new Date().toISOString()}).eq('id', id);
+      await sb.rpc('mark_driver_statement', {p_id: id, p_ack: false});
       loadDriverStatements();
     }
   } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
@@ -15698,7 +15700,7 @@ async function downloadDriverStatement(id, path, title, isRead) {
     const html = await res.text();
     await exportHtmlToPdf(html, title || '支払明細書');
     if (!isRead) {
-      await sb.from('driver_statements').update({read_at: new Date().toISOString()}).eq('id', id);
+      await sb.rpc('mark_driver_statement', {p_id: id, p_ack: false});
       loadDriverStatements();
     }
   } catch(e) { showT('ダウンロードエラー: ' + e.message, 'ter'); }
@@ -20556,7 +20558,8 @@ CREATE POLICY "payment_in_delete" ON payment_in FOR DELETE TO authenticated USIN
 -- 会社設定: 全員閲覧可、編集は社内のみ
 ALTER TABLE company_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "company_settings_select" ON company_settings;
-CREATE POLICY "company_settings_select" ON company_settings FOR SELECT TO authenticated USING (true);
+-- 社印画像・銀行口座・登録番号を持つため社内のみ。ドライバーには get_company_public_info() で必要項目だけ返す
+CREATE POLICY "company_settings_select" ON company_settings FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 DROP POLICY IF EXISTS "company_settings_insert" ON company_settings;
 CREATE POLICY "company_settings_insert" ON company_settings FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "company_settings_update" ON company_settings;
@@ -20605,7 +20608,9 @@ CREATE POLICY "driver_statements_select" ON driver_statements FOR SELECT TO auth
 DROP POLICY IF EXISTS "driver_statements_insert" ON driver_statements;
 CREATE POLICY "driver_statements_insert" ON driver_statements FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "driver_statements_update" ON driver_statements;
-CREATE POLICY "driver_statements_update" ON driver_statements FOR UPDATE TO authenticated USING (drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()) OR "current_role"() = ANY(ARRAY['admin','editor']));
+-- RLSは列を区別できないため、本人に直接UPDATEを与えると金額や添付まで書き換えられる。
+-- 本人の既読・受領は mark_driver_statement() に寄せ、テーブル更新は社内のみにする
+CREATE POLICY "driver_statements_update" ON driver_statements FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "driver_statements_delete" ON driver_statements;
 CREATE POLICY "driver_statements_delete" ON driver_statements FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
@@ -20794,6 +20799,31 @@ END;
 $function$;
 GRANT EXECUTE ON FUNCTION public.get_driver_login_info(text, integer) TO anon, authenticated;
 
+-- ドライバーポータル向け。会社設定のうち公開してよい項目だけを返す
+CREATE OR REPLACE FUNCTION public.get_company_public_info()
+RETURNS TABLE(name text, line_add_url text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $function$
+  SELECT c.name, c.line_add_url FROM company_settings c WHERE c.id = 1
+$function$;
+REVOKE EXECUTE ON FUNCTION public.get_company_public_info() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_company_public_info() TO authenticated;
+
+-- 支払明細書に対して本人ができるのは「既読」と「受領確認」だけ。金額や添付には触れられない
+CREATE OR REPLACE FUNCTION public.mark_driver_statement(p_id integer, p_ack boolean DEFAULT false)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE v_drv integer;
+BEGIN
+  SELECT driver_id INTO v_drv FROM users WHERE auth_uid = auth.uid();
+  IF v_drv IS NULL THEN RAISE EXCEPTION 'not_a_driver'; END IF;
+  UPDATE driver_statements
+     SET read_at = coalesce(read_at, now()),
+         acknowledged_at = CASE WHEN p_ack THEN coalesce(acknowledged_at, now()) ELSE acknowledged_at END
+   WHERE id = p_id AND drv_id = v_drv;
+END;
+$function$;
+REVOKE EXECUTE ON FUNCTION public.mark_driver_statement(integer, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.mark_driver_statement(integer, boolean) TO authenticated;
+
 -- 自己登録フォームの「所属する協力会社」の候補。有効な未使用の招待トークンがある間だけ引ける。
 -- ※未解決の課題: kind で絞っておらず clients を全件返すため、招待URLを持つ人は
 --   取引先を含む全社名を取得できる。画面側は2文字以上入力時のみ候補を出しているが、
@@ -20852,8 +20882,19 @@ let companySettings = {};
 let pendingStampDataUrl = undefined; // undefined=未変更（既存値を維持）, null=削除, 文字列=新しい画像
 let pendingStampOriginalDataUrl = undefined; // 色を変更する前の画像（今回のアップロード分のみ。「元の色に戻す」用）
 
+/* 会社設定を読む。
+   社印画像・銀行口座・登録番号を含むため、テーブルは社内（admin/editor/viewer）だけが読める。
+   ドライバーポータルが必要とするのはLINE友だち追加URLだけなので、
+   ドライバーのときは必要な項目だけ返すRPCを使う。 */
 async function loadCompanySettings() {
   if (!sb) return;
+  if (me?.role === 'driver') {
+    try {
+      const {data} = await sb.rpc('get_company_public_info');
+      companySettings = (Array.isArray(data) ? data[0] : data) || {};
+    } catch(e) { console.warn('loadCompanySettings:', e.message); }
+    return;
+  }
   try {
     const {data} = await sb.from('company_settings').select('*').eq('id',1).single();
     if (data) {
