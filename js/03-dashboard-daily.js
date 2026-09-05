@@ -2212,6 +2212,30 @@ async function bulkUnmarkSchedDone(){
 /* ===== ⑤ 法定乗務日報 ===== */
 /* 運行の配列を取り出す。trips が無い旧データは、それまでの平坦な項目から1件ぶんに見立てる。
    一覧・印刷・CSVがどちらの形式でも同じように扱えるようにするため */
+/* 印刷帳票で、運行の下に荷待ち・荷役作業の行をぶら下げる。
+   どちらも「集貨又は配達を行った地点」ごとの法定記録なので、運行と並べて出す。 */
+function tripWaitCargoRow(t) {
+  const rows = [];
+  if (t.wait) {
+    const w = t.wait;
+    rows.push(`荷待ち: ${escHtml(w.loc||'')} 到着 ${escHtml(w.arrive||'—')} / 出発 ${escHtml(w.depart||'—')}`
+      + (w.appointed ? ` / 到着指定 ${escHtml(w.appointed)}` : ''));
+  }
+  if (t.cargo) {
+    const c = t.cargo;
+    const chk = c.shipper_check === 'yes' ? '荷主確認あり'
+              : c.shipper_check === 'no'  ? '荷主確認が得られなかった' : '';
+    rows.push('荷役作業等: ' + [
+      escHtml(c.loc||''),
+      (c.work_start||c.work_end) ? `荷役 ${escHtml(c.work_start||'')}〜${escHtml(c.work_end||'')}` : '',
+      (c.extra_start||c.extra_end) ? `附帯 ${escHtml(c.extra_start||'')}〜${escHtml(c.extra_end||'')}` : '',
+      escHtml(c.desc||''), chk,
+    ].filter(Boolean).join(' / '));
+  }
+  if (!rows.length) return '';
+  return `<tr><td></td><td colspan="3" style="font-size:10px;color:#555">${rows.join('<br>')}</td></tr>`;
+}
+
 function dailyTrips(r) {
   if (Array.isArray(r.trips) && r.trips.length) {
     return [...r.trips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
@@ -2426,16 +2450,24 @@ async function initDailyForm(reportId=null) {
       document.getElementById('drRestEnd').value = '';
       document.getElementById('drRestLoc').value = '';
       renderDrRests();
-      // 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象）
-      document.getElementById('drWaitFlag').checked = !!r.wait_flag;
-      document.getElementById('drWaitStart').value = r.wait_start || '';
-      document.getElementById('drWaitEnd').value = r.wait_end || '';
-      document.getElementById('drWaitLoc').value = r.wait_location || '';
-      document.getElementById('drCargoWorkFlag').checked = !!r.cargo_work_flag;
-      document.getElementById('drCargoWorkStart').value = r.cargo_work_start || '';
-      document.getElementById('drCargoWorkEnd').value = r.cargo_work_end || '';
-      document.getElementById('drShipperConfirmed').checked = !!r.shipper_confirmed;
+      /* 荷待ち・荷役は運行ごとに移したので、日単位の旧欄はフォームから外してある。
+         過去データを開いたときのために、要素があるときだけ書き戻す */
+      const setIf = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
+      setIf('drWaitFlag',  el => el.checked = !!r.wait_flag);
+      setIf('drWaitStart', el => el.value = r.wait_start || '');
+      setIf('drWaitEnd',   el => el.value = r.wait_end || '');
+      setIf('drWaitLoc',   el => el.value = r.wait_location || '');
+      setIf('drCargoWorkFlag',  el => el.checked = !!r.cargo_work_flag);
+      setIf('drCargoWorkStart', el => el.value = r.cargo_work_start || '');
+      setIf('drCargoWorkEnd',   el => el.value = r.cargo_work_end || '');
+      setIf('drShipperConfirmed', el => el.checked = !!r.shipper_confirmed);
       toggleDrWaitFields();
+      // 業務を交替した場合の地点・日時
+      setIf('drHandoverFlag',     el => el.checked = !!r.handover_flag);
+      setIf('drHandoverDriver',   el => el.value = r.handover_driver || '');
+      setIf('drHandoverLocation', el => el.value = r.handover_location || '');
+      setIf('drHandoverTime',     el => el.value = r.handover_time || '');
+      toggleDrHandoverFields();
       // 事故記録
       document.getElementById('drIncidentFlag').checked = !!r.incident_flag;
       document.getElementById('drIncidentCause').value = r.incident_cause || '';
@@ -2456,10 +2488,15 @@ async function initDailyForm(reportId=null) {
      'drTenkoMethodNote','drTenkoBeforeAt','drTenkoAfterAt',
      'drTenkoInstructions','drRouteReport','drHandoverNote',
      'drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripNote',
+     'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
+     'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
+     'drTripCargoDesc','drTripShipperCheck',
+     'drHandoverDriver','drHandoverLocation','drHandoverTime',
      'drOdoStart','drOdoEnd'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
-    ['drWaitFlag','drCargoWorkFlag','drShipperConfirmed','drIncidentFlag'].forEach(id => {
+    ['drWaitFlag','drCargoWorkFlag','drShipperConfirmed','drIncidentFlag',
+     'drTripWaitFlag','drTripCargoFlag','drHandoverFlag'].forEach(id => {
       const el = document.getElementById(id); if(el) el.checked = false;
     });
     pendDrRests = [];
@@ -2467,6 +2504,8 @@ async function initDailyForm(reportId=null) {
     renderDrRests();
     renderDrTrips();
     toggleDrWaitFields();
+    toggleDrTripSubFields();
+    toggleDrHandoverFields();
     toggleDrIncidentFields();
     document.getElementById('drHealthBefore').value = 'good';
     document.getElementById('drHealthAfter').value = 'good';
@@ -2602,6 +2641,11 @@ function addDrTrip() {
   const cli = drResolveClient(cliInput);
   if (!cli) { showT(`「${cliInput}」は登録済みの取引先と一致しません`, 'ter'); return; }
   if (!start || !end) { showT('運行の開始・終了時刻を入力してください', 'twa'); return; }
+  const waitOn  = document.getElementById('drTripWaitFlag')?.checked;
+  const cargoOn = document.getElementById('drTripCargoFlag')?.checked;
+  if (waitOn && !document.getElementById('drTripWaitArrive').value) {
+    showT('荷待ちの到着日時を入力してください', 'twa'); return;
+  }
   pendDrTrips.push({
     cli_id: cli.id, cli_name: cli.name,
     start, end,
@@ -2612,10 +2656,34 @@ function addDrTrip() {
     qty_charter: +document.getElementById('drQtyCharter').value || 0,
     qty_other:   +document.getElementById('drQtyOther').value || 0,
     note: document.getElementById('drTripNote').value.trim(),
+    /* 荷待ち・荷役は「集貨又は配達を行った地点ごと」の記録なので運行に持たせる。
+       国土交通省の業務記録の様式例（貨物軽自動車運送事業者向け）に合わせている。 */
+    wait: waitOn ? {
+      loc:       document.getElementById('drTripWaitLoc').value.trim(),
+      arrive:    document.getElementById('drTripWaitArrive').value || '',
+      depart:    document.getElementById('drTripWaitDepart').value || '',
+      appointed: document.getElementById('drTripWaitAppointed').value || '',   // 荷主指定の到着日時
+    } : null,
+    cargo: cargoOn ? {
+      loc:         document.getElementById('drTripCargoLoc').value.trim(),
+      work_start:  document.getElementById('drTripCargoStart').value || '',
+      work_end:    document.getElementById('drTripCargoEnd').value || '',
+      extra_start: document.getElementById('drTripExtraStart').value || '',
+      extra_end:   document.getElementById('drTripExtraEnd').value || '',
+      desc:        document.getElementById('drTripCargoDesc').value.trim(),
+      shipper_check: document.getElementById('drTripShipperCheck').value || '',
+    } : null,
   });
   ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc',
-   'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drTripNote']
+   'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drTripNote',
+   'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
+   'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
+   'drTripCargoDesc','drTripShipperCheck']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['drTripWaitFlag','drTripCargoFlag'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.checked = false;
+  });
+  toggleDrTripSubFields();
   renderDrTrips();
   applyDrTripRollup();
 }
@@ -2639,6 +2707,8 @@ function renderDrTrips() {
       const sub = [
         (t.start_loc||t.end_loc) ? `${escHtml(t.start_loc||'?')} → ${escHtml(t.end_loc||'?')}` : '',
         qty(t),
+        t.wait  ? `⏳荷待ち ${escHtml(t.wait.arrive||'')}〜${escHtml(t.wait.depart||'')}` : '',
+        t.cargo ? `📦荷役${escHtml(t.cargo.desc ? '（'+t.cargo.desc+'）' : '')}` : '',
         t.note ? escHtml(t.note) : '',
       ].filter(Boolean).join('　');
       return `<div style="display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:6px 8px;margin-bottom:4px;background:var(--bg2);border-radius:var(--radius)">
@@ -2697,9 +2767,25 @@ function drTripTotals(trips) {
   };
 }
 
+// 運行ごとの荷待ち・荷役の入力欄を出し入れする
+function toggleDrTripSubFields() {
+  const w = document.getElementById('drTripWaitFields');
+  const c = document.getElementById('drTripCargoFields');
+  if (w) w.style.display = document.getElementById('drTripWaitFlag')?.checked ? 'block' : 'none';
+  if (c) c.style.display = document.getElementById('drTripCargoFlag')?.checked ? 'block' : 'none';
+}
+// 業務を交替した場合の入力欄
+function toggleDrHandoverFields() {
+  const el = document.getElementById('drHandoverFields');
+  if (el) el.style.display = document.getElementById('drHandoverFlag')?.checked ? 'block' : 'none';
+}
+/* 旧形式（1日1組）の荷待ち欄。入力欄は無くしたが、過去データの読み込み時に
+   呼ばれても落ちないよう関数は残す */
 function toggleDrWaitFields() {
-  document.getElementById('drWaitFields').style.display = document.getElementById('drWaitFlag').checked ? 'block' : 'none';
-  document.getElementById('drCargoWorkFields').style.display = document.getElementById('drCargoWorkFlag').checked ? 'block' : 'none';
+  const w = document.getElementById('drWaitFields');
+  const c = document.getElementById('drCargoWorkFields');
+  if (w) w.style.display = document.getElementById('drWaitFlag')?.checked ? 'block' : 'none';
+  if (c) c.style.display = document.getElementById('drCargoWorkFlag')?.checked ? 'block' : 'none';
 }
 /* 対面以外の点呼は「具体的にどうやったか」の記録が必要なため、選んだときだけ欄を出す。
    DB側にも同じ制約を入れてあるので、画面を通さない書き込みでも空では入らない */
@@ -3060,14 +3146,19 @@ async function submitDailyReport() {
     end_location: endLoc,
     rests: pendDrRests,
     // 荷待ち・付帯作業（2025年4月法改正：全車両が記録対象）
-    wait_flag: document.getElementById('drWaitFlag').checked,
-    wait_start: document.getElementById('drWaitFlag').checked ? (document.getElementById('drWaitStart').value || null) : null,
-    wait_end: document.getElementById('drWaitFlag').checked ? (document.getElementById('drWaitEnd').value || null) : null,
-    wait_location: document.getElementById('drWaitFlag').checked ? document.getElementById('drWaitLoc').value.trim() : '',
-    cargo_work_flag: document.getElementById('drCargoWorkFlag').checked,
-    cargo_work_start: document.getElementById('drCargoWorkFlag').checked ? (document.getElementById('drCargoWorkStart').value || null) : null,
-    cargo_work_end: document.getElementById('drCargoWorkFlag').checked ? (document.getElementById('drCargoWorkEnd').value || null) : null,
-    shipper_confirmed: document.getElementById('drShipperConfirmed').checked,
+    wait_flag: document.getElementById('drWaitFlag')?.checked || false,
+    wait_start: document.getElementById('drWaitFlag')?.checked ? (document.getElementById('drWaitStart').value || null) : null,
+    wait_end: document.getElementById('drWaitFlag')?.checked ? (document.getElementById('drWaitEnd').value || null) : null,
+    wait_location: document.getElementById('drWaitFlag')?.checked ? document.getElementById('drWaitLoc').value.trim() : '',
+    cargo_work_flag: document.getElementById('drCargoWorkFlag')?.checked || false,
+    cargo_work_start: document.getElementById('drCargoWorkFlag')?.checked ? (document.getElementById('drCargoWorkStart').value || null) : null,
+    cargo_work_end: document.getElementById('drCargoWorkFlag')?.checked ? (document.getElementById('drCargoWorkEnd').value || null) : null,
+    shipper_confirmed: document.getElementById('drShipperConfirmed')?.checked || false,
+    // 業務を交替した場合の地点・日時（業務の記録の法定項目）
+    handover_flag: document.getElementById('drHandoverFlag')?.checked || false,
+    handover_driver:   document.getElementById('drHandoverFlag')?.checked ? document.getElementById('drHandoverDriver').value.trim() : '',
+    handover_location: document.getElementById('drHandoverFlag')?.checked ? document.getElementById('drHandoverLocation').value.trim() : '',
+    handover_time:     document.getElementById('drHandoverFlag')?.checked ? (document.getElementById('drHandoverTime').value || null) : null,
     // 事故記録
     incident_flag: document.getElementById('drIncidentFlag').checked,
     incident_cause: document.getElementById('drIncidentFlag').checked ? document.getElementById('drIncidentCause').value.trim() : '',
@@ -3336,7 +3427,8 @@ function downloadDailyReportCsv(list, filenameLabel) {
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器の使用','検知器ID','体調(前)','体調(後)',
     '疾病','疲労','睡眠','指示事項','運行の状況','交替運転者への通告',
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
-    '運行件数','取引先','運行明細',
+    '業務交替あり','交替地点','交替時刻','交替相手',
+    '運行件数','取引先','運行明細','運行ごとの荷待ち','運行ごとの荷役作業等',
     '宅配便','ポスト便','チャーター便','その他','備考',
     '事故あり','事故原因','再発防止策','ステータス'];
   const rows = list.map(r=>[
@@ -3355,8 +3447,19 @@ function downloadDailyReportCsv(list, filenameLabel) {
     r.wait_flag?'あり':'', r.wait_start||'', r.wait_end||'', r.wait_location||'',
     r.cargo_work_flag?'あり':'', r.cargo_work_start||'', r.cargo_work_end||'',
     r.shipper_confirmed?'確認済':'',
+    r.handover_flag?'あり':'', r.handover_location||'', r.handover_time||'', r.handover_driver||'',
     dailyTrips(r).length, dailyTripClients(r).join('、'),
     dailyTrips(r).map(t=>`${t.start||''}-${t.end||''} ${t.cli_name||''}`).join(' / '),
+    // 荷待ち・荷役は運行ごとの記録なので、地点つきで並べて出す
+    dailyTrips(r).filter(t=>t.wait).map(t=>
+      `${t.wait.loc||''} 到着${t.wait.arrive||''} 出発${t.wait.depart||''}${t.wait.appointed?` 指定${t.wait.appointed}`:''}`).join(' / '),
+    dailyTrips(r).filter(t=>t.cargo).map(t=>{
+      const c=t.cargo;
+      const chk = c.shipper_check==='yes'?'荷主確認あり':c.shipper_check==='no'?'荷主確認なし':'';
+      return [c.loc||'', (c.work_start||c.work_end)?`荷役${c.work_start||''}-${c.work_end||''}`:'',
+              (c.extra_start||c.extra_end)?`附帯${c.extra_start||''}-${c.extra_end||''}`:'',
+              c.desc||'', chk].filter(Boolean).join(' ');
+    }).join(' / '),
     r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_charter||0,r.qty_other||0,
     (r.note||'').replace(/\n/g,' '),
     r.incident_flag?'あり':'', r.incident_cause||'', r.incident_prevention||'',
@@ -3440,6 +3543,7 @@ function buildDailyReportHtml(r) {
           <th>指示事項</th><td>${escHtml(r.tenko_instructions||'')||'—'}</td></tr>
       <tr><th>自動車・道路及び運行の状況</th><td>${escHtml(r.route_report||'')||'—'}</td>
           <th>交替運転者への通告</th><td>${escHtml(r.handover_note||'')||'—'}</td></tr>
+      ${r.handover_flag?`<tr><th>業務を交替した地点・日時</th><td colspan="3">${escHtml(r.handover_location||'')||'—'}　${escHtml(r.handover_time||'')||''}${r.handover_driver?`　交替相手: ${escHtml(r.handover_driver)}`:''}</td></tr>`:''}
     </table>
 
     ${(r.wait_flag||r.cargo_work_flag) ? `
@@ -3461,7 +3565,7 @@ function buildDailyReportHtml(r) {
           <td>${escHtml(t.cli_name || lkC(t.cli_id)?.name || '')}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
           <td>${escHtml(t.start_loc||'')}${(t.start_loc||t.end_loc)?' → ':''}${escHtml(t.end_loc||'')}</td>
           <td>${[t.qty_tak?`宅配便${t.qty_tak}`:'', t.qty_neko?`ポスト便${t.qty_neko}`:'', t.qty_charter?`チャーター${t.qty_charter}`:'', t.qty_other?`その他${t.qty_other}`:''].filter(Boolean).join(' ／ ')||'—'}</td>
-        </tr>`).join('')}
+        </tr>${tripWaitCargoRow(t)}`).join('')}
         <tr><th>合計</th><td colspan="3">運行${trips.length}件　宅配便${r.qty_takkyubin||0} ／ ポスト便${r.qty_nekopos||0} ／ チャーター便${r.qty_charter||0} ／ その他${r.qty_other||0}</td></tr>
       </table>`;
     })()}

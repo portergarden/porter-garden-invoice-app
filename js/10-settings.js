@@ -339,6 +339,10 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- [{cli_id, cli_name, start, end, start_loc, end_loc, qty_tak, qty_neko, qty_charter, qty_other, note}]
   -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
   -- 月報・分析・CSV・印刷は従来どおりそちらを参照する。取引先は運行ごとに必須。
+  -- [{cli_id, cli_name, start, end, start_loc, end_loc, qty_*, note,
+  --   wait:  {loc, arrive, depart, appointed},   荷主都合で30分以上待機した場合
+  --   cargo: {loc, work_start, work_end, extra_start, extra_end, desc, shipper_check}}]
+  --   shipper_check は 'yes'（確認を得た）/'no'（得られなかった）/''（該当なし）
   trips jsonb NOT NULL DEFAULT '[]',
   -- 車のメーター（オドメーター）。乗務前・乗務後の点呼のときはドライバーが車の前にいるので、
   -- その場で読み取れる。両方入っていれば distance_km は差分から自動計算する。
@@ -347,9 +351,16 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   end_odometer integer,
   CONSTRAINT daily_reports_odometer_check
     CHECK (start_odometer IS NULL OR end_odometer IS NULL OR end_odometer >= start_odometer),
+  -- 旧形式（1日1組）の荷待ち・荷役。過去データの表示用に残している。
+  -- 新規入力は trips[].wait / trips[].cargo に記録する
+  --（法令上「集貨又は配達を行った地点ごと」の記録が要るため）
   wait_flag boolean DEFAULT false, wait_start time, wait_end time, wait_location text,
   cargo_work_flag boolean DEFAULT false, cargo_work_start time, cargo_work_end time,
   shipper_confirmed boolean DEFAULT false,
+  -- 業務を交替した場合の地点・日時（業務の記録の法定項目）。
+  -- 上の handover_note は点呼の「交替運転者等に対する通告」で別物
+  handover_flag boolean NOT NULL DEFAULT false,
+  handover_driver text, handover_location text, handover_time time,
   incident_flag boolean DEFAULT false, incident_cause text, incident_prevention text,
   drv_id int REFERENCES drivers(id)
 );

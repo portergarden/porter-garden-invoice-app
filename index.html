@@ -1472,6 +1472,46 @@ try {
             <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
           </div>
           <div class="fld"><label>この運行のメモ（任意）</label><input type="text" id="drTripNote" placeholder="例: 積込待ち40分"></div>
+
+          <!-- 荷待ち・荷役は「集貨又は配達を行った地点」ごとの記録なので、運行にぶら下げる -->
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:8px 0 6px"><input type="checkbox" id="drTripWaitFlag" onchange="toggleDrTripSubFields()"> 荷主の都合で30分以上待たされた</label>
+          <div id="drTripWaitFields" style="display:none;background:var(--bg);border-radius:var(--radius);padding:8px;margin-bottom:6px">
+            <div style="font-size:10px;color:var(--text2);margin-bottom:6px">
+              「荷主の都合」とは、運行計画や運行指示によらない荷主の指示等によるものです。<b>自社の都合で生じた待機は含みません。</b>
+            </div>
+            <div class="fld"><label>集貨地点等（集貨・配達を行った地点）</label><input type="text" id="drTripWaitLoc" placeholder="例: 〇〇物流センター"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <div class="fld"><label>到着日時</label><input type="time" id="drTripWaitArrive"></div>
+              <div class="fld"><label>出発日時</label><input type="time" id="drTripWaitDepart"></div>
+              <div class="fld"><label>到着指定日時<span style="font-weight:400;color:var(--text2)">（荷主指定）</span></label><input type="time" id="drTripWaitAppointed"></div>
+            </div>
+          </div>
+
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px"><input type="checkbox" id="drTripCargoFlag" onchange="toggleDrTripSubFields()"> 荷役作業・附帯業務を行った</label>
+          <div id="drTripCargoFields" style="display:none;background:var(--bg);border-radius:var(--radius);padding:8px;margin-bottom:6px">
+            <div style="font-size:10px;color:var(--text2);margin-bottom:6px">
+              荷役作業＝積込み・取卸し／附帯業務＝荷造り・仕分など。<br>
+              <b>荷主との契約書に実施する荷役作業等がすべて明記されている場合は、要した時間が1時間以上のときだけ記録が要ります。</b>明記がなければ時間に関係なく記録してください。
+            </div>
+            <div class="fld"><label>集貨地点等</label><input type="text" id="drTripCargoLoc" placeholder="例: 〇〇物流センター"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="fld"><label>荷役作業 開始</label><input type="time" id="drTripCargoStart"></div>
+              <div class="fld"><label>荷役作業 終了</label><input type="time" id="drTripCargoEnd"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="fld"><label>附帯業務 開始</label><input type="time" id="drTripExtraStart"></div>
+              <div class="fld"><label>附帯業務 終了</label><input type="time" id="drTripExtraEnd"></div>
+            </div>
+            <div class="fld"><label>荷役作業等の内容</label><input type="text" id="drTripCargoDesc" placeholder="例: 個別に置かれている荷物の荷造り作業"></div>
+            <div class="fld"><label>荷主の確認</label>
+              <select id="drTripShipperCheck">
+                <option value="">—</option>
+                <option value="yes">確認を得た</option>
+                <option value="no">確認が得られなかった</option>
+              </select>
+            </div>
+          </div>
+
           <button class="btn sml grn" type="button" style="width:100%;justify-content:center" onclick="addDrTrip()">＋ 運行を追加</button>
         </div>
         <div id="drTripList" style="margin-bottom:12px"></div>
@@ -1490,29 +1530,25 @@ try {
           <div id="drRestList" style="margin-top:6px"></div>
         </div>
 
-        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 荷待ち・付帯作業</div>
-        <div style="font-size:10px;color:var(--text2);margin-bottom:6px">荷主都合で30分以上待機した場合、または荷役・付帯作業を行った場合に記録してください</div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drWaitFlag" onchange="toggleDrWaitFields()"> 荷待ち（30分以上）があった</label>
-        <div id="drWaitFields" style="display:none;margin-bottom:8px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="fld"><label>荷待ち開始</label><input type="time" id="drWaitStart"></div>
-            <div class="fld"><label>荷待ち終了</label><input type="time" id="drWaitEnd"></div>
-          </div>
-          <div class="fld"><label>荷待ち地点</label><input type="text" id="drWaitLoc" placeholder="例: 〇〇センター"></div>
+        <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 荷待ち・荷役作業</div>
+        <div style="font-size:10px;color:var(--text2);background:var(--bg2);border-radius:var(--radius);padding:6px 8px">
+          荷待ちと荷役作業は<b>⑤の運行それぞれに記録します</b>。法令上「集貨又は配達を行った地点ごと」の記録が求められるためです。<br>
+          該当する運行を追加するときに、運行の入力欄の下にあるチェックを付けてください。
         </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drCargoWorkFlag" onchange="toggleDrWaitFields()"> 荷役・付帯作業を行った</label>
-        <div id="drCargoWorkFields" style="display:none;margin-bottom:8px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="fld"><label>作業開始</label><input type="time" id="drCargoWorkStart"></div>
-            <div class="fld"><label>作業終了</label><input type="time" id="drCargoWorkEnd"></div>
-          </div>
-        </div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px"><input type="checkbox" id="drShipperConfirmed"> 荷主の確認を得た</label>
       </div>
 
       <!-- ============ ステップ3: 乗務後点呼 ============ -->
       <div class="dr-step" data-step="3" style="display:none">
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑧ 帰着時の記録</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px"><input type="checkbox" id="drHandoverFlag" onchange="toggleDrHandoverFields()"> 途中で別の人に業務を交替した</label>
+        <div id="drHandoverFields" style="display:none;background:var(--bg2);border-radius:var(--radius);padding:8px;margin-bottom:10px">
+          <div style="font-size:10px;color:var(--text2);margin-bottom:6px">交替した場合は、その地点と日時を残す必要があります（業務の記録の法定項目）。</div>
+          <div class="fld"><label>交替した相手</label><input type="text" id="drHandoverDriver" placeholder="例: 佐藤 太郎"></div>
+          <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:8px">
+            <div class="fld"><label>交替した地点</label><input type="text" id="drHandoverLocation" placeholder="例: 〇〇センター"></div>
+            <div class="fld"><label>交替した時刻</label><input type="time" id="drHandoverTime"></div>
+          </div>
+        </div>
         <div style="font-size:10px;color:var(--text2);background:var(--bg2);border-radius:var(--radius);padding:6px 8px;margin-bottom:8px">
           ここは<b>その日の業務を終えた場所</b>です。出発地点と同じく、自宅や配属先の店舗・営業所が基本になります。
         </div>
@@ -3047,7 +3083,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=2f002ae9"></script>
+<script src="js/03-dashboard-daily.js?v=d6ba21d6"></script>
 
 
 <script src="js/04-monthly.js?v=9770aaf6"></script>
@@ -3068,6 +3104,6 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=da9778eb"></script>
+<script src="js/10-settings.js?v=09a650f9"></script>
 </body>
 </html>
