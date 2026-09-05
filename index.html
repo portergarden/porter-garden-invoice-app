@@ -64,7 +64,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=9caf49fb">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -1588,11 +1588,11 @@ try {
   <div id="dailyListArea" style="overflow-y:auto;max-height:calc(100vh - 160px)">
     <!-- 絞り込みバー -->
     <div style="padding:6px 14px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:0.5px solid var(--border)">
-      <input type="date" id="drListFrom" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDailyList()">
+      <input type="date" id="drListFrom" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="loadDailyReports()">
       <span style="font-size:11px;color:var(--text2)">〜</span>
-      <input type="date" id="drListTo" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDailyList()">
-      <button class="btn sml" onclick="monthRangeShift('drListFrom','drListTo',-1,renderDailyList)" title="前月">◀</button>
-      <button class="btn sml" onclick="monthRangeShift('drListFrom','drListTo',1,renderDailyList)" title="翌月">▶</button>
+      <input type="date" id="drListTo" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="loadDailyReports()">
+      <button class="btn sml" onclick="monthRangeShift('drListFrom','drListTo',-1,loadDailyReports)" title="前月">◀</button>
+      <button class="btn sml" onclick="monthRangeShift('drListFrom','drListTo',1,loadDailyReports)" title="翌月">▶</button>
       <select id="drListDrv" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDailyList()">
         <option value="">全ドライバー</option>
       </select>
@@ -1602,6 +1602,7 @@ try {
       </select>
       <button class="btn sml" onclick="exportDailyReportCsv()">⬇ CSV</button>
       <button class="btn sml pri" onclick="printDailyReports()" title="表示中の絞り込み条件に一致する日報を、日付順で印刷用書式にまとめます">🖨 印刷</button>
+      <span id="drListCount" style="font-size:11px;color:var(--text2);align-self:center;margin-left:auto"></span>
     </div>
     <div id="dailyListBody" style="padding:6px 14px"></div>
   </div>
@@ -2986,10 +2987,14 @@ try {
      ・順番に意味があります。並べ替えたり、defer / async を付けたりしないでください。
        付けないままなら、以前インラインで書かれていた時と実行順序・タイミングが変わりません。
      ・HTMLの途中に挟まっているのは、元々そうなっていたためです（画面の定義→その画面のJS、の並び）。
-     ・index.html だけを他所へコピーしても動きません。js/ と css/ も一緒に持っていってください。 -->
-<script src="js/01-core.js"></script>
+     ・index.html だけを他所へコピーしても動きません。js/ と css/ も一緒に持っていってください。
+     ・URLの ?v=... は中身から作った版番号です。配信側がJS/CSSをキャッシュするため、
+       これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
+       js/ か css/ を変更したら、コミット前に必ず実行してください:
+           python tools/stamp-assets.py -->
+<script src="js/01-core.js?v=5ca3f8f3"></script>
 
-<script src="js/02-drivers-pay.js"></script>
+<script src="js/02-drivers-pay.js?v=8660cfc2"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
@@ -3042,27 +3047,27 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js"></script>
+<script src="js/03-dashboard-daily.js?v=7159ebea"></script>
 
 
-<script src="js/04-monthly.js"></script>
+<script src="js/04-monthly.js?v=7a2923f9"></script>
 
 
-<script src="js/05-driver-portal.js"></script>
+<script src="js/05-driver-portal.js?v=ef52a99e"></script>
 
 
 
-<script src="js/06-schedules.js"></script>
+<script src="js/06-schedules.js?v=26c80dc5"></script>
 
 
-<script src="js/07-order-entry.js"></script>
+<script src="js/07-order-entry.js?v=b6ab5510"></script>
 
 
-<script src="js/08-templates.js"></script>
+<script src="js/08-templates.js?v=e527de1a"></script>
 
 
-<script src="js/09-analysis.js"></script>
+<script src="js/09-analysis.js?v=c650c530"></script>
 
-<script src="js/10-settings.js"></script>
+<script src="js/10-settings.js?v=7f4b1579"></script>
 </body>
 </html>

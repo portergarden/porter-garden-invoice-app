@@ -3142,10 +3142,16 @@ async function loadDailyReports() {
   try {
     const from = document.getElementById('drListFrom')?.value || '';
     const to = document.getElementById('drListTo')?.value || '';
-    let q = sb.from('daily_reports').select('*').order('date', {ascending:false}).limit(200);
-    if (from) q = q.gte('date', from);
-    if (to) q = q.lte('date', to);
-    const {data, error} = await q;
+    /* 200件で打ち切っていたため、7人が毎日提出すると1か月分（約210件）すら
+       全部は表示できず、しかも黙って切れていた。CSV出力と印刷も同じ配列を使うので、
+       法定記録が欠けたまま出力されてしまう。期間で絞ったぶんは全件読む。 */
+    const build = () => {
+      let q = sb.from('daily_reports').select('*').order('date', {ascending:false}).order('id', {ascending:false});
+      if (from) q = q.gte('date', from);
+      if (to) q = q.lte('date', to);
+      return q;
+    };
+    const {data, error} = await fetchAllRows(build);
     if (error) {
       if (error.message.includes('does not exist') || error.message.includes('relation')) {
         document.getElementById('dailyListBody').innerHTML =
@@ -3161,10 +3167,23 @@ async function loadDailyReports() {
     dailyReports = data || [];
     renderDailyList();
     renderDailySummary();
+    renderDailyListCount(from, to);
   } catch(e) {
     document.getElementById('dailyListBody').innerHTML =
       `<div style="padding:20px;color:var(--red);font-size:12px">読み込みエラー: ${e.message}</div>`;
   }
+}
+
+// 読み込んだ件数を出す。黙って切れる作りに戻さないための歯止めでもある
+function renderDailyListCount(from, to) {
+  const el = document.getElementById('drListCount');
+  if (!el) return;
+  const n = dailyReports.length;
+  const range = (from || to) ? `${from||'最初'} 〜 ${to||'最新'}` : '全期間';
+  el.textContent = `${range}：${n}件`;
+  // 期間を切らずに読むと、年数が経つほど重くなる。目安を超えたら知らせる
+  el.style.color = n >= 3000 ? 'var(--amber-text)' : 'var(--text2)';
+  el.title = n >= 3000 ? '件数が多いため表示に時間がかかります。期間で絞ることをおすすめします' : '';
 }
 
 function renderDailyList() {

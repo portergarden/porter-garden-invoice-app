@@ -1647,11 +1647,16 @@ async function loadDriverDailyList() {
   const drvData = me.driver_data;
   const dCars = (drvData?.cars || []);
   const month = document.getElementById('drvDailyMonth')?.value || '';
-  let q = sb.from('daily_reports').select('*').order('date', {ascending:false});
-  if (dCars.length) q = q.in('car', dCars);
-  if (month) { const [y,m]=month.split('-'); q=q.gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))); }
+  // 60件で打ち切っていたため、月で絞らずに開くと自分の過去の日報が途中から見えなかった。
+  // RLSで自分の分しか返らず、1人あたり年に約250件なので全件読んで問題ない
+  const build = () => {
+    let q = sb.from('daily_reports').select('*').order('date', {ascending:false}).order('id', {ascending:false});
+    if (dCars.length) q = q.in('car', dCars);
+    if (month) { const [y,m]=month.split('-'); q=q.gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))); }
+    return q;
+  };
   try {
-    const {data, error} = await q.limit(60);
+    const {data, error} = await fetchAllRows(build);
     if (error) throw error;
     // 編集ボタン（showDailyForm）はdailyReportsから該当行を探すため、ここでも共有配列に反映しておく
     dailyReports = data || [];
