@@ -39,13 +39,30 @@ let parsedPayCsv = [];
 </script>
 <!-- ▲▲▲ ここを変更してください ▲▲▲ -->
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a0708418cb7b96fc563eacae0fbf77674/qrcode.min.js"></script>
+<!-- 外部ライブラリはすべてバージョンを固定し、integrity（SRI）で中身を検証する。
+     CDN側で内容が差し替わった場合、ハッシュが合わなければブラウザが読み込みを拒否する。
+     supabase-js は @2 の浮動タグだと内容が予告なく変わりSRIを付けられないため版で固定した。
+     ライブラリを更新するときは、新しいURLの中身から sha384 を取り直して一緒に書き換えること。
+       curl -s <URL> | openssl dgst -sha384 -binary | openssl base64 -A -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0"
+        integrity="sha384-EyR2P0dlmjnEGcm9xcjdAn0VedZpRHEwDLP9oSS6wYMvzHBHkUrvgonveazJ/sSx"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+        integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a0708418cb7b96fc563eacae0fbf77674/qrcode.min.js"
+        integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <!-- Excel の読み書き。xlsx-js-style は SheetJS 0.18 系の派生で、同じ XLSX API を提供する -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"
+        integrity="sha384-OUW9euuUyxyHcAhTqbhI+Iyb8LMssXt/cpz0yXhs9UWG2/R/uaWdakx/4cfww7Vb"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"
+        integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+        integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -372,7 +389,7 @@ try {
 <!-- セットアップ未完了バナー -->
 <div class="setup-banner hide" id="setupBanner">
   ⚠️ Supabaseが未設定です。ファイル上部の <code>SUPABASE_URL</code> と <code>SUPABASE_ANON_KEY</code> を設定してください。
-  <a href="https://supabase.com" target="_blank" style="color:var(--blue);margin-left:4px">Supabase →</a>
+  <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" style="color:var(--blue);margin-left:4px">Supabase →</a>
 </div>
 
 <!-- ログイン -->
@@ -6728,13 +6745,34 @@ function copyLoginInfoText(){
 
 // ===== ドライバー自己登録（招待URL/QRコードで開いた場合。ログイン不要のためsb.rpc経由でトークンを検証する） =====
 let currentInviteToken = null;
-let invitePartnerNames = []; // 協力会社の候補名一覧（未入力時は表示しない。絞り込みでヒットした分だけ表示する）
-// 2文字以上入力された時だけ、部分一致する候補を絞り込んで表示する（未入力状態で全件見えると社名一覧の漏洩になるため）
-function onDiPartnerInput() {
+/* 協力会社の候補。
+   以前は一覧をまとめて取ってきてJS側で絞り込んでいたが、それでは
+   RPCを直接叩かれた時に全社名（取引先を含む）が漏れる。
+   入力された文字を毎回サーバへ渡し、向こうで絞り込んだ分だけ受け取る。
+   直前の問い合わせ結果だけを持っておき、同じ語なら問い合わせ直さない。 */
+let invitePartnerCache = { q: null, names: [] };
+async function fetchInvitePartnerNames(q) {
+  const key = nm(q || '');
+  if (key.length < 2) return [];
+  if (invitePartnerCache.q === key) return invitePartnerCache.names;
+  if (!sb || !currentInviteToken) return [];
+  try {
+    const { data } = await sb.rpc('list_partner_names_for_invite', { p_token: currentInviteToken, p_query: q });
+    const names = (data || []).map(r => r.name).filter(Boolean);
+    invitePartnerCache = { q: key, names };
+    return names;
+  } catch(e) { return []; }   // 候補が取れなくても手入力での登録は続けられる
+}
+// 2文字以上入力された時だけ候補を出す
+async function onDiPartnerInput() {
   const box = document.getElementById('diPartnerSuggestions');
-  const q = nm(document.getElementById('diPartner').value);
-  if (q.length < 2 || !invitePartnerNames.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
-  const matches = invitePartnerNames.filter(name => nm(name).includes(q)).slice(0, 8);
+  const raw = document.getElementById('diPartner').value;
+  const q = nm(raw);
+  if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const found = await fetchInvitePartnerNames(raw);
+  // 問い合わせている間に入力が変わっていたら、古い結果は出さない
+  if (nm(document.getElementById('diPartner').value) !== q) return;
+  const matches = found.slice(0, 8);
   if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
   box.innerHTML = matches.map(name => `<div style="padding:6px 8px;font-size:12px;cursor:pointer" onmousedown="selectDiPartner('${escAttrJs(name)}')" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">${escHtml(name)}</div>`).join('');
   box.style.display = 'block';
@@ -6753,12 +6791,13 @@ function normalizePartnerName(s) {
 // 入力された会社名と紛らわしい既存の協力会社を探す。
 // 完全一致は既存に紐づくだけで二重登録にならないため対象外。
 // 正規化して一致するもの、または一方が他方を含むものを「紛らわしい」とみなす
-function findSimilarPartners(input) {
+async function findSimilarPartners(input) {
   const raw = (input || '').trim();
   if (!raw) return [];
   const n = normalizePartnerName(raw);
   if (n.length < 2) return [];
-  return invitePartnerNames.filter(existing => {
+  const candidates = await fetchInvitePartnerNames(raw);
+  return candidates.filter(existing => {
     if (nm(existing) === nm(raw)) return false; // 完全一致は既存が使われるので問題ない
     const e = normalizePartnerName(existing);
     if (!e || e.length < 2) return false;
@@ -6791,14 +6830,8 @@ async function checkDriverInviteToken(token){
     document.getElementById('diPartner').value = '';
     renderTags();
     document.getElementById('driverInviteForm').style.display = 'block';
-    // 協力会社の候補（自由入力＋既存候補からの選択の両方に対応）。
-    // 未入力の状態で候補が全件見えると社名の一覧が漏れてしまうため、入力欄には出さず
-    // JS側に保持しておき、一定文字数以上入力されて絞り込まれた時だけ候補を表示する
-    invitePartnerNames = [];
-    try {
-      const { data: partnerRows } = await sb.rpc('list_partner_names_for_invite', { p_token: token });
-      invitePartnerNames = (partnerRows||[]).map(p=>p.name).filter(Boolean);
-    } catch(e) { /* 候補が取れなくても手入力自体は可能なので握りつぶす */ }
+    // 候補は一括では取らない。入力された文字ごとにサーバへ問い合わせる（fetchInvitePartnerNames）
+    invitePartnerCache = { q: null, names: [] };
   }catch(e){
     statusEl.textContent = '確認中にエラーが発生しました: ' + e.message;
   }
@@ -6848,7 +6881,7 @@ async function submitDriverSelfRegistration(){
   // 協力会社名が既存と紛らわしい場合は確認する。
   // 完全一致なら既存に紐づくが、「〇〇運送」と「〇〇運送株式会社」のような表記ゆれだと
   // 別会社として二重に作られてしまうため、登録前に気づけるようにする
-  const similar = findSimilarPartners(partner);
+  const similar = await findSimilarPartners(partner);
   if (similar.length) {
     const ok = confirm(
       `入力された会社名「${partner}」に似た協力会社が既に登録されています。\n\n` +
@@ -20825,20 +20858,27 @@ REVOKE EXECUTE ON FUNCTION public.mark_driver_statement(integer, boolean) FROM P
 GRANT EXECUTE ON FUNCTION public.mark_driver_statement(integer, boolean) TO authenticated;
 
 -- 自己登録フォームの「所属する協力会社」の候補。有効な未使用の招待トークンがある間だけ引ける。
--- ※未解決の課題: kind で絞っておらず clients を全件返すため、招待URLを持つ人は
---   取引先を含む全社名を取得できる。画面側は2文字以上入力時のみ候補を出しているが、
---   それは表示の制御にすぎずRPCは全件返している。絞り込みはサーバ側へ寄せる必要がある。
-CREATE OR REPLACE FUNCTION public.list_partner_names_for_invite(p_token text)
+-- 絞り込みはサーバ側で行う。画面側だけで絞ると、RPCを直接叩かれた時に全社名が漏れるため。
+-- 引数を増やす前に旧シグネチャを落とす（残すとそちらが全件返したままになる）
+DROP FUNCTION IF EXISTS public.list_partner_names_for_invite(text);
+CREATE OR REPLACE FUNCTION public.list_partner_names_for_invite(p_token text, p_query text DEFAULT NULL)
 RETURNS TABLE(name text) LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE v_q text;
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM driver_invites
-    WHERE token = p_token AND used_at IS NULL AND expires_at >= now()
+    SELECT 1 FROM driver_invites WHERE token = p_token AND used_at IS NULL AND expires_at >= now()
   ) THEN RETURN; END IF;
-  RETURN QUERY SELECT c.name FROM clients c ORDER BY c.name;
+  v_q := lower(regexp_replace(btrim(coalesce(p_query,'')), '\s', '', 'g'));
+  IF length(v_q) < 2 THEN RETURN; END IF;
+  RETURN QUERY
+    SELECT c.name FROM clients c
+     WHERE c.kind IN ('supplier','branch')   -- 所属先になりうるのは協力会社と自社支店だけ
+       AND strpos(lower(regexp_replace(c.name, '\s', '', 'g')), v_q) > 0
+     ORDER BY c.name LIMIT 20;
 END;
 $function$;
-GRANT EXECUTE ON FUNCTION public.list_partner_names_for_invite(text) TO anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.list_partner_names_for_invite(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.list_partner_names_for_invite(text, text) TO anon, authenticated;
 
 -- 自分のスケジュール色だけを変える。自分の行以外は触れない
 CREATE OR REPLACE FUNCTION public.set_my_schedule_color(p_color text)
