@@ -11635,26 +11635,30 @@ function setDpStatusFilter(v) {
   if (sel) sel.value = v;
   renderDriverProgress();
 }
-async function saveDpField(drvId, field, value) {
+/* 支払明細書発行の進捗を1項目だけ保存する。
+   行の単位は会社（取引先レコード）なので cli_id で持つ。一覧を作る dpCompanies() が
+   clients を返しており、dpRow() も cli_id で引いているのに、ここだけ旧名の drv_id を
+   送っていたため保存が常に失敗していた（driver_progress に drv_id 列は無い）。 */
+async function saveDpField(cliId, field, value) {
   if (!sb) return;
   const month = dpCurrentMonth();
   const patch = { [field]: (typeof value === 'boolean') ? value
     : value === '' ? null
     : (field === 'manual_amt' ? Math.round(+value) || null : value) };
   if (field === 'submitted_date' && value) {
-    const cur = dpRow(drvId);
+    const cur = dpRow(cliId);
     if (!['sent','done'].includes(cur?.status || 'todo')) patch.status = 'sent';
   }
   try {
     const {data, error} = await sb.from('driver_progress')
-      .upsert({ month, drv_id: drvId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'month,drv_id' })
+      .upsert({ month, cli_id: cliId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'month,cli_id' })
       .select().single();
     if (error) throw error;
-    const idx = driverProgress.findIndex(b => String(b.drv_id) === String(drvId));
+    const idx = driverProgress.findIndex(b => String(b.cli_id) === String(cliId));
     if (idx >= 0) driverProgress[idx] = data; else driverProgress.push(data);
     renderDriverProgress();
-    const d = drvs.find(x=>x.id===drvId);
-    addLog('支払明細書発行 更新', `${month} ${d?d.name:`drv:${drvId}`} ${field}=${value||'（クリア）'}`);
+    const c = lkCli(cliId);
+    addLog('支払明細書発行 更新', `${month} ${c?c.name:`cli:${cliId}`} ${field}=${value||'（クリア）'}`);
   } catch(e) { showT('保存エラー: '+e.message, 'ter'); }
 }
 /* 行選択（一括削除・翌月繰り越し） */
@@ -20159,9 +20163,9 @@ $function$;
 -- 協力会社名が入力された場合は、既存を探して無ければ partner_companies に作成して紐づける
 -- （新規作成時は協力会社番号(partner_no)も自動採番する）
 CREATE OR REPLACE FUNCTION public.submit_driver_registration(
-  p_token text, p_name text, p_tel text, p_cars text[], p_partner_name text DEFAULT NULL::text)
+  p_token text, p_name text, p_tel text, p_cars text[], p_partner_name text DEFAULT NULL)
 RETURNS TABLE(driver_id integer, merged boolean)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
 DECLARE
   v_row public.driver_invites%rowtype;
   v_existing public.drivers%rowtype;
@@ -20170,10 +20174,10 @@ DECLARE
   v_car text;
   v_tel text;
   v_next_supplier_id integer;
-  v_partner_id integer;
+  v_company_id integer;
   v_partner_name text;
   v_cars_clean text[];
-  v_next_partner_no integer;
+  v_next_client_no integer;
   v_attempt int := 0;
 BEGIN
   SELECT * INTO v_row FROM public.driver_invites WHERE token = p_token FOR UPDATE;
@@ -20185,66 +20189,67 @@ BEGIN
     RAISE EXCEPTION 'token_expired';
   END IF;
 
-  IF p_name IS NULL OR length(trim(p_name)) = 0 THEN
-    RAISE EXCEPTION 'name_required';
-  END IF;
-
+  IF p_name IS NULL OR length(trim(p_name)) = 0 THEN RAISE EXCEPTION 'name_required'; END IF;
   v_tel := nullif(trim(coalesce(p_tel,'')),'');
-  IF v_tel IS NULL THEN
-    RAISE EXCEPTION 'tel_required';
-  END IF;
+  IF v_tel IS NULL THEN RAISE EXCEPTION 'tel_required'; END IF;
 
   SELECT array_agg(trim(x)) INTO v_cars_clean FROM unnest(coalesce(p_cars,'{}')) x WHERE trim(x) <> '';
-  IF v_cars_clean IS NULL OR array_length(v_cars_clean,1) IS NULL THEN
-    RAISE EXCEPTION 'car_required';
-  END IF;
+  IF v_cars_clean IS NULL OR array_length(v_cars_clean,1) IS NULL THEN RAISE EXCEPTION 'car_required'; END IF;
 
-  SELECT * INTO v_existing FROM public.drivers WHERE tel = v_tel LIMIT 1;
-  IF v_existing.id IS NULL THEN
-    SELECT * INTO v_existing FROM public.drivers
-      WHERE regexp_replace(name, '\s', '', 'g') = regexp_replace(trim(p_name), '\s', '', 'g')
-      LIMIT 1;
+  IF v_row.target_driver_id IS NOT NULL THEN
+    -- 宛先が決まっている招待。氏名や電話番号での探索はせず、指定された1人にだけ合流する。
+    -- URLが第三者に渡っても、別のドライバーになりすますことはできない
+    SELECT * INTO v_existing FROM public.drivers WHERE id = v_row.target_driver_id;
+    IF v_existing.id IS NULL THEN RAISE EXCEPTION 'target_driver_missing'; END IF;
+  ELSE
+    -- 宛先未指定の招待。従来どおり電話番号→氏名の順で既存を探すが、
+    -- 既存へ合流した場合はログインを自動発行しない（created_new=false をEdge Functionが見る）
+    SELECT * INTO v_existing FROM public.drivers WHERE tel = v_tel LIMIT 1;
+    IF v_existing.id IS NULL THEN
+      SELECT * INTO v_existing FROM public.drivers
+        WHERE regexp_replace(name, '\s', '', 'g') = regexp_replace(trim(p_name), '\s', '', 'g') LIMIT 1;
+    END IF;
   END IF;
 
   IF v_existing.id IS NOT NULL THEN
-    -- 既存ドライバーには車番だけ追記する（IDは既に付いているので採番しない）
     v_merged_cars := coalesce(v_existing.cars, '{}');
     FOR v_car IN SELECT unnest(v_cars_clean) LOOP
       IF NOT (regexp_replace(v_car, '\s', '', 'g') = ANY(
-           SELECT regexp_replace(x, '\s', '', 'g') FROM unnest(v_merged_cars) x
-         )) THEN
+           SELECT regexp_replace(x, '\s', '', 'g') FROM unnest(v_merged_cars) x)) THEN
         v_merged_cars := array_append(v_merged_cars, v_car);
       END IF;
     END LOOP;
     UPDATE public.drivers
-      SET cars = v_merged_cars,
-          tel = coalesce(nullif(trim(coalesce(v_existing.tel,'')),''), v_tel)
-      WHERE id = v_existing.id;
-    UPDATE public.driver_invites SET used_at = now(), driver_id = v_existing.id WHERE id = v_row.id;
+       SET cars = v_merged_cars,
+           tel = coalesce(nullif(trim(coalesce(v_existing.tel,'')),''), v_tel)
+     WHERE id = v_existing.id;
+    UPDATE public.driver_invites
+       SET used_at = now(), driver_id = v_existing.id, created_new = false
+     WHERE id = v_row.id;
     RETURN QUERY SELECT v_existing.id, true;
   ELSE
     SELECT COALESCE(MAX(supplier_id::int), 0) + 1 INTO v_next_supplier_id
       FROM public.drivers WHERE supplier_id ~ '^\d+$';
 
-    v_partner_id := NULL;
+    v_company_id := NULL;
     v_partner_name := nullif(trim(coalesce(p_partner_name,'')),'');
     IF v_partner_name IS NOT NULL THEN
-      SELECT id INTO v_partner_id FROM public.partner_companies WHERE trim(name) = v_partner_name LIMIT 1;
-      IF v_partner_id IS NULL THEN
-        -- 新規の協力会社は番号(partner_no)も採番して作る（衝突したら採番し直す）
+      -- 空白を無視して同名の会社を探す（「有限会社　小山運送」と「有限会社小山運送」を同じ会社とみなす）
+      SELECT id INTO v_company_id FROM public.clients
+        WHERE regexp_replace(name, '\s', '', 'g') = regexp_replace(v_partner_name, '\s', '', 'g') LIMIT 1;
+      IF v_company_id IS NULL THEN
         LOOP
           v_attempt := v_attempt + 1;
-          SELECT COALESCE(MAX(partner_no::int), 0) + 1 INTO v_next_partner_no
-            FROM public.partner_companies WHERE partner_no ~ '^\d+$';
+          SELECT COALESCE(MAX(client_no::int), 0) + 1 INTO v_next_client_no
+            FROM public.clients WHERE client_no ~ '^\d+$';
           BEGIN
-            INSERT INTO public.partner_companies (name, partner_no)
-            VALUES (v_partner_name, v_next_partner_no::text)
-            RETURNING id INTO v_partner_id;
+            INSERT INTO public.clients (name, client_no, kind)
+            VALUES (v_partner_name, v_next_client_no::text, 'supplier') RETURNING id INTO v_company_id;
             EXIT;
           EXCEPTION WHEN unique_violation THEN
             IF v_attempt >= 20 THEN
-              INSERT INTO public.partner_companies (name)
-              VALUES (v_partner_name) RETURNING id INTO v_partner_id;
+              INSERT INTO public.clients (name, kind)
+              VALUES (v_partner_name, 'supplier') RETURNING id INTO v_company_id;
               EXIT;
             END IF;
           END;
@@ -20252,10 +20257,12 @@ BEGIN
       END IF;
     END IF;
 
-    INSERT INTO public.drivers (name, tel, cars, supplier_id, partner_id, company)
-    VALUES (trim(p_name), v_tel, v_cars_clean, v_next_supplier_id::text, v_partner_id, v_partner_name)
+    INSERT INTO public.drivers (name, tel, cars, supplier_id, company_client_id, company)
+    VALUES (trim(p_name), v_tel, v_cars_clean, v_next_supplier_id::text, v_company_id, v_partner_name)
     RETURNING id INTO v_new_driver_id;
-    UPDATE public.driver_invites SET used_at = now(), driver_id = v_new_driver_id WHERE id = v_row.id;
+    UPDATE public.driver_invites
+       SET used_at = now(), driver_id = v_new_driver_id, created_new = true
+     WHERE id = v_row.id;
     RETURN QUERY SELECT v_new_driver_id, false;
   END IF;
 END;
@@ -20686,6 +20693,141 @@ CREATE POLICY "board_attachments_delete" ON storage.objects FOR DELETE TO authen
   bucket_id = 'board-attachments' AND "current_role"() = ANY(ARRAY['admin','editor'])
 );
 
+
+-- ============================================================
+--  グループチャット・支払明細書発行の進捗
+--  （本番には存在するがセットアップSQLに載っていなかったぶん）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_groups (
+  id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  name text NOT NULL,
+  driver_ids integer[] NOT NULL DEFAULT '{}',
+  staff_user_ids text[] NOT NULL DEFAULT '{}',
+  created_by text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS chat_group_messages (
+  id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  group_id bigint NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+  sender_type text NOT NULL,
+  sender_name text,
+  sender_key text,
+  body text,
+  file_path text, file_name text, file_type text, file_size int,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS chat_group_reads (
+  group_id bigint NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+  member_key text NOT NULL,   -- 'staff:<users.id>' または 'driver:<drivers.id>'
+  last_read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (group_id, member_key)
+);
+-- 支払明細書の発行進捗。行の単位は会社（取引先レコード）なので cli_id で持つ
+CREATE TABLE IF NOT EXISTS driver_progress (
+  id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  month text NOT NULL,
+  cli_id integer NOT NULL,
+  status text NOT NULL DEFAULT 'todo',
+  target boolean NOT NULL DEFAULT true,
+  send_method text,
+  assignee_user_id text,
+  check_user_id text,
+  checked boolean NOT NULL DEFAULT false,
+  submitted_date date, planned_date date,
+  manual boolean NOT NULL DEFAULT false,
+  manual_amt int,
+  note text,
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE (month, cli_id)
+);
+CREATE INDEX IF NOT EXISTS driver_progress_month_idx ON driver_progress(month);
+
+ALTER TABLE chat_groups ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "chat_groups_select" ON chat_groups;
+CREATE POLICY "chat_groups_select" ON chat_groups FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR (SELECT driver_id FROM users WHERE auth_uid = auth.uid()) = ANY(driver_ids));
+DROP POLICY IF EXISTS "chat_groups_insert" ON chat_groups;
+CREATE POLICY "chat_groups_insert" ON chat_groups FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "chat_groups_update" ON chat_groups;
+CREATE POLICY "chat_groups_update" ON chat_groups FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "chat_groups_delete" ON chat_groups;
+CREATE POLICY "chat_groups_delete" ON chat_groups FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+ALTER TABLE chat_group_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "chat_group_messages_select" ON chat_group_messages;
+CREATE POLICY "chat_group_messages_select" ON chat_group_messages FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR EXISTS (SELECT 1 FROM chat_groups cg WHERE cg.id = chat_group_messages.group_id AND (SELECT driver_id FROM users WHERE auth_uid = auth.uid()) = ANY(cg.driver_ids)));
+DROP POLICY IF EXISTS "chat_group_messages_insert" ON chat_group_messages;
+CREATE POLICY "chat_group_messages_insert" ON chat_group_messages FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']) OR EXISTS (SELECT 1 FROM chat_groups cg WHERE cg.id = chat_group_messages.group_id AND (SELECT driver_id FROM users WHERE auth_uid = auth.uid()) = ANY(cg.driver_ids)));
+
+ALTER TABLE chat_group_reads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "chat_group_reads_select" ON chat_group_reads;
+CREATE POLICY "chat_group_reads_select" ON chat_group_reads FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR member_key = 'driver:' || (SELECT driver_id FROM users WHERE auth_uid = auth.uid())::text);
+DROP POLICY IF EXISTS "chat_group_reads_upsert" ON chat_group_reads;
+CREATE POLICY "chat_group_reads_upsert" ON chat_group_reads FOR INSERT TO authenticated WITH CHECK (member_key = 'staff:' || (SELECT id FROM users WHERE auth_uid = auth.uid()) OR member_key = 'driver:' || (SELECT driver_id FROM users WHERE auth_uid = auth.uid())::text);
+DROP POLICY IF EXISTS "chat_group_reads_update" ON chat_group_reads;
+CREATE POLICY "chat_group_reads_update" ON chat_group_reads FOR UPDATE TO authenticated USING (member_key = 'staff:' || (SELECT id FROM users WHERE auth_uid = auth.uid()) OR member_key = 'driver:' || (SELECT driver_id FROM users WHERE auth_uid = auth.uid())::text) WITH CHECK (member_key = 'staff:' || (SELECT id FROM users WHERE auth_uid = auth.uid()) OR member_key = 'driver:' || (SELECT driver_id FROM users WHERE auth_uid = auth.uid())::text);
+
+ALTER TABLE driver_progress ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "driver_progress_select" ON driver_progress;
+CREATE POLICY "driver_progress_select" ON driver_progress FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "driver_progress_insert" ON driver_progress;
+CREATE POLICY "driver_progress_insert" ON driver_progress FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "driver_progress_update" ON driver_progress;
+CREATE POLICY "driver_progress_update" ON driver_progress FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "driver_progress_delete" ON driver_progress;
+CREATE POLICY "driver_progress_delete" ON driver_progress FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
+-- ============================================================
+--  招待まわりの残りの関数（本番にはあるがセットアップSQLに無かったぶん）
+-- ============================================================
+-- 登録直後に、自分のログインIDを1度だけ確認するための窓口。
+-- 期限切れの招待では引けない。宛先が固定された招待か、新規に作られたドライバーに限る
+CREATE OR REPLACE FUNCTION public.get_driver_login_info(p_token text, p_driver_id integer)
+RETURNS TABLE(login_id text) LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM driver_invites
+    WHERE token = p_token AND driver_id = p_driver_id AND used_at IS NOT NULL
+      AND expires_at >= now() AND (target_driver_id = p_driver_id OR created_new IS TRUE)
+  ) THEN RETURN; END IF;
+  RETURN QUERY SELECT u.id FROM users u WHERE u.driver_id = p_driver_id AND u.role = 'driver' LIMIT 1;
+END;
+$function$;
+GRANT EXECUTE ON FUNCTION public.get_driver_login_info(text, integer) TO anon, authenticated;
+
+-- 自己登録フォームの「所属する協力会社」の候補。有効な未使用の招待トークンがある間だけ引ける。
+-- ※未解決の課題: kind で絞っておらず clients を全件返すため、招待URLを持つ人は
+--   取引先を含む全社名を取得できる。画面側は2文字以上入力時のみ候補を出しているが、
+--   それは表示の制御にすぎずRPCは全件返している。絞り込みはサーバ側へ寄せる必要がある。
+CREATE OR REPLACE FUNCTION public.list_partner_names_for_invite(p_token text)
+RETURNS TABLE(name text) LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM driver_invites
+    WHERE token = p_token AND used_at IS NULL AND expires_at >= now()
+  ) THEN RETURN; END IF;
+  RETURN QUERY SELECT c.name FROM clients c ORDER BY c.name;
+END;
+$function$;
+GRANT EXECUTE ON FUNCTION public.list_partner_names_for_invite(text) TO anon, authenticated;
+
+-- 自分のスケジュール色だけを変える。自分の行以外は触れない
+CREATE OR REPLACE FUNCTION public.set_my_schedule_color(p_color text)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE v_id text;
+BEGIN
+  -- NULL は色の解除。それ以外は決め打ちの候補のみ受け付ける
+  IF p_color IS NOT NULL AND p_color NOT IN ('blue','green','amber','purple','red','teal','pink') THEN
+    RAISE EXCEPTION 'invalid_color';
+  END IF;
+  SELECT id INTO v_id FROM users WHERE auth_uid = auth.uid();
+  IF v_id IS NULL THEN RAISE EXCEPTION 'not_logged_in'; END IF;
+  UPDATE users SET schedule_color = p_color WHERE id = v_id;
+  RETURN v_id;
+END;
+$function$;
+REVOKE EXECUTE ON FUNCTION public.set_my_schedule_color(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_my_schedule_color(text) TO authenticated;
+
 -- ============================================================
 -- 5. 最初のadminユーザー登録（1回だけ手動実行）
 --    事前にDashboard > Authenticationで管理者用アカウントを作成し、
@@ -20697,7 +20839,8 @@ const REQUIRED_TABLES = [
   'invoices','drivers','clients','partner_companies','users','audit_logs','payment_slips','invoice_slips',
   'daily_reports','payment_schedules','receipt_schedules','board_posts','input_templates',
   'file_mappings','price_master','payment_in','company_settings',
-  'driver_documents','driver_statements','partner_company_docs'
+  'driver_documents','driver_statements','partner_company_docs',
+  'chat_groups','chat_group_messages','chat_group_reads','driver_progress'
 ];
 
 /* ============================================================
