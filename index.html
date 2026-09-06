@@ -64,7 +64,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css?v=ca14891f">
+<link rel="stylesheet" href="css/app.css?v=7db24226">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -134,6 +134,8 @@ try {
     </div>
   </div>
 </div>
+<!-- 新着メッセージのポップアップの置き場所。どの画面より前面に出す必要があるため本文の直前に置く -->
+<div id="msgPop"></div>
 <!-- メイン -->
 <div id="pgMain" class="hide" style="display:flex;flex-direction:column;flex:1">
   <div class="sbar"><div class="sbar-p" id="sprog" style="width:100%"></div></div>
@@ -3039,7 +3041,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=ce7caaaf"></script>
+<script src="js/01-core.js?v=ab04bb85"></script>
 
 <script src="js/02-drivers-pay.js?v=bfc7aadb"></script>
 
@@ -3100,7 +3102,7 @@ try {
 <script src="js/04-monthly.js?v=318f54fe"></script>
 
 
-<script src="js/05-driver-portal.js?v=055dc5c4"></script>
+<script src="js/05-driver-portal.js?v=b03c7de4"></script>
 
 
 

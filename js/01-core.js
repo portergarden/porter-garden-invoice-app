@@ -104,6 +104,8 @@ async function applyLogin(data) {
 }
 
 function proceedAfterLogin() {
+  // 新着メッセージのポップアップは、どの画面にいても出したいのでログイン直後から購読を張る
+  startMsgPopupWatch().catch(()=>{});
   // ドライバーロールの場合はポータル画面に切替。ここで例外が起きた場合、
   // 以前は「フォールバックとして管理画面(pgMain)を表示する」実装になっていたが、
   // これだとドライバーに他ドライバー・他取引先のデータが見える管理画面がそのまま表示されてしまう
@@ -244,6 +246,7 @@ async function logout(exp=false){
   if (!exp && !confirm('ログアウトしますか？')) return;
   stopSess();
   unsubscribeDrvChatRealtime();
+  stopMsgPopupWatch();
   document.body.classList.remove('drv-lock');
   if(me)await addLog('ログアウト',exp?'セッション期限切れ':`${me.name}がログアウト`);
   me=null;selIds=new Set();recs=[];clients=[];drvs=[];users=[];invalidateDriverIndexes();

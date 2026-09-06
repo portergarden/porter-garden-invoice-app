@@ -412,6 +412,112 @@ async function notifyDrivers(drvIds, kind, ref, title, body, dedupe=false){
     if (data?.error) throw new Error(data.error);
   } catch(e) { console.warn('notifyDrivers:', e.message); }
 }
+/* ===== 新着メッセージのポップアップ（LINE風） =====
+   チャットの画面を開いていなくても新着に気づけるよう、ログインしている間はずっと購読しておき、
+   画面の隅にカードを出す。カードを押すとその会話へ移動する。
+   これは「アプリを開いている間」の通知。アプリを閉じていても端末に通知を出したい場合は、
+   LINE公式アカウント連携（send-driver-notify）かプッシュ通知の仕組みが別途必要。 */
+let msgPopChannels = [];
+let msgPopGroupIds = new Set();   // ドライバーが参加しているグループ（ポップアップの対象を絞るため）
+const MSG_POP_MAX = 3;            // 画面に同時に出すカードの上限
+const MSG_POP_MS = 6000;          // 自動で消えるまでの時間
+
+// 本文が空（添付だけ）のときはファイル名を見せる
+function msgPopPreview(m){
+  if (m.body) return m.body;
+  return m.file_name ? '📎 ' + m.file_name : '📎 ファイル';
+}
+function showMsgPopup(icon, title, body, onClick){
+  const wrap = document.getElementById('msgPop');
+  if (!wrap) return;
+  while (wrap.children.length >= MSG_POP_MAX) wrap.removeChild(wrap.firstChild);
+  const card = document.createElement('div');
+  card.className = 'msgpop';
+  card.innerHTML = `<div class="msgpop-ic">${escHtml(icon)}</div>
+    <div class="msgpop-tx"><div class="msgpop-ti">${escHtml(title)}</div><div class="msgpop-bd">${escHtml(body)}</div></div>
+    <button class="msgpop-x" title="閉じる">✕</button>`;
+  let closed = false;
+  const close = () => { if (closed) return; closed = true; card.classList.add('out'); setTimeout(()=>card.remove(), 200); };
+  card.querySelector('.msgpop-x').onclick = e => { e.stopPropagation(); close(); };
+  card.onclick = () => { close(); try { onClick && onClick(); } catch(e) { console.warn('msgPop:', e.message); } };
+  wrap.appendChild(card);
+  setTimeout(close, MSG_POP_MS);
+}
+function clearMsgPopups(){
+  const wrap = document.getElementById('msgPop');
+  if (wrap) wrap.innerHTML = '';
+}
+// ポップアップから会話を開く
+async function msgPopOpenDrvChat(){
+  const tab = document.getElementById('dnt3');
+  goDrvPage(5, tab);
+}
+async function msgPopOpenDrvGroup(groupId){
+  goDrvPage(6, document.getElementById('dnt3'));
+  await openMyChatGroup(groupId);
+}
+async function msgPopOpenAdminChat(drvId){
+  const tab = document.querySelector('.ntab[onclick^="goPage(27,"]');
+  if (tab) goPage(27, tab);
+  await openChatTabDrv(drvId);
+}
+async function msgPopOpenAdminGroup(groupId){
+  const tab = document.querySelector('.ntab[onclick^="goPage(30,"]');
+  if (tab) goPage(30, tab);
+  await openChatGroup(groupId);
+}
+/* ログイン中ずっと動かす購読を張る。
+   画面ごとの購読（subscribeDrvChatRealtime等）は「その画面を開いている間だけ」なので、
+   通知の役目はこちらが持つ。今まさに開いている会話には出さない（見ているものを二重に知らせない）。 */
+async function startMsgPopupWatch(){
+  stopMsgPopupWatch();
+  if (!sb || !me) return;
+  try {
+    if (me.role === 'driver') {
+      if (!me.driver_id) return;
+      // 参加グループはRLSで自分の分だけ返る
+      const { data: gs } = await sb.from('chat_groups').select('id, name');
+      msgPopGroupIds = new Set((gs||[]).map(g=>g.id));
+      const groupName = id => (gs||[]).find(g=>g.id===id)?.name || 'グループ';
+      msgPopChannels.push(sb.channel('msgpop_dm_'+me.driver_id)
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'driver_messages', filter:`drv_id=eq.${me.driver_id}`}, ({new: m}) => {
+          if (m.sender_role !== 'admin') return;                                   // 自分が送った分は出さない
+          if (document.getElementById('dpg5')?.style.display !== 'none') return;   // 今その画面を見ている
+          showMsgPopup('💬', chatCompanyLabel(), msgPopPreview(m), () => msgPopOpenDrvChat());
+        }).subscribe());
+      msgPopChannels.push(sb.channel('msgpop_grp_drv_'+me.driver_id)
+        .on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_group_messages'}, ({new: m}) => {
+          if (!msgPopGroupIds.has(m.group_id)) return;
+          if (m.sender_key === 'driver:'+me.driver_id) return;
+          if (myChatGroupSelId === m.group_id) return;
+          const who = m.sender_type === 'staff' ? chatCompanyLabel() : (m.sender_name || 'ドライバー');
+          showMsgPopup('👥', `${groupName(m.group_id)}・${who}`, msgPopPreview(m), () => msgPopOpenDrvGroup(m.group_id));
+        }).subscribe());
+      return;
+    }
+    // 管理・編集者側。ドライバーからの発言だけを知らせる
+    msgPopChannels.push(sb.channel('msgpop_dm_admin')
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'driver_messages'}, ({new: m}) => {
+        if (m.sender_role !== 'driver') return;
+        if (chatTabDrvId === m.drv_id) return;
+        const name = (drvs||[]).find(d=>d.id===m.drv_id)?.name || m.sender_name || 'ドライバー';
+        showMsgPopup('💬', name, msgPopPreview(m), () => msgPopOpenAdminChat(m.drv_id));
+      }).subscribe());
+    msgPopChannels.push(sb.channel('msgpop_grp_admin')
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_group_messages'}, ({new: m}) => {
+        if (m.sender_type !== 'driver') return;
+        if (chatGroupSelId === m.group_id) return;
+        const g = (chatGroups||[]).find(x=>x.id===m.group_id);
+        showMsgPopup('👥', `${g?.name || 'グループ'}・${m.sender_name || 'ドライバー'}`, msgPopPreview(m), () => msgPopOpenAdminGroup(m.group_id));
+      }).subscribe());
+  } catch(e) { console.warn('startMsgPopupWatch:', e.message); }
+}
+function stopMsgPopupWatch(){
+  msgPopChannels.forEach(ch => { try { sb?.removeChannel(ch); } catch(e) {} });
+  msgPopChannels = [];
+  msgPopGroupIds = new Set();
+  clearMsgPopups();
+}
 // LINE連携コード生成（ドライバーがLINE公式アカウントにこのコードを送ると紐付く）
 function genDriverLinkCode(){
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 紛らわしい文字(I/O/0/1)を除外
