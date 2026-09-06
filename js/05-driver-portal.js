@@ -1624,6 +1624,7 @@ async function publishPayStatements() {
   if (!confirm(`${groups.length}名のドライバーのポータルに支払明細書を配信しますか？\n対象月: ${month||'—'}\n※同じ月に配信済みのドライバーは最新の内容・レイアウトで上書きされます`)) return;
   showLoad(true);
   let ok = 0, fails = [];
+  const notified = [];   // 端末への通知は配信し終えてから1回でまとめて送る
   for (const g of groups) {
     try {
       const rows = g.rows.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -1658,9 +1659,14 @@ async function publishPayStatements() {
       ok++;
       // LINE/メール通知（同じ月の再配信では通知を重複させない）
       notifyDrivers([g.drv.id], 'statement', `stmt-${g.drv.id}-${month}`, '支払明細書が届きました', `${month}分の支払明細書をポータルに配信しました。ログインしてご確認ください。`, true);
+      notified.push(g.drv.id);
     } catch(e) { fails.push(`${g.drv.name}: ${e.message}`); }
   }
   showLoad(false);
+  if (notified.length) {
+    pushNotify({drv_ids: notified, title: '📄 支払明細書が届きました',
+      body: `${month}分の支払明細書をポータルに配信しました。`, tag: 'stmt-'+month});
+  }
   if (ok) addLog('明細書配信', `${month} ${ok}名`);
   if (fails.length) showT(`${ok}名に配信、${fails.length}件失敗: ${fails[0]}`, 'twa');
   else showT(`${ok}名のポータルに明細書を配信しました`);
@@ -2315,10 +2321,12 @@ async function submitBoardPost() {
       renderBoardTo('boardList');
       addLog('掲示板投稿', title + (publish_at?`（予約: ${new Date(publish_at).toLocaleString('ja-JP')}）`:''));
       showT(publish_at ? `予約投稿しました（${new Date(publish_at).toLocaleString('ja-JP')}に公開）` : '投稿しました');
-      // 即時公開の投稿はLINE/メール通知も送る（予約・繰り返し投稿は公開タイミングが未来のため対象外）
+      // 即時公開の投稿は通知も送る（予約・繰り返し投稿は公開タイミングが未来のため対象外）
       if (!publish_at) {
         const notifyIds = targetIds || drvs.map(d=>d.id);
-        notifyDrivers(notifyIds, 'board', `post-${data.id}`, `掲示板: ${title}`, body.length>200?body.slice(0,200)+'…':body);
+        const excerpt = body.length>200 ? body.slice(0,200)+'…' : body;
+        notifyDrivers(notifyIds, 'board', `post-${data.id}`, `掲示板: ${title}`, excerpt);
+        pushNotify({drv_ids: notifyIds, title: `📢 ${title}`, body: excerpt, tag: 'board-'+data.id});
       }
     }
   } catch(e) { showT('エラー: '+e.message,'ter'); }
