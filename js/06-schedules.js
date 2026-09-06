@@ -242,7 +242,8 @@ async function scheduleDelete(table, id) {
   if (error) throw error;
 }
 async function scheduleLoadAll(table) {
-  const { data, error } = await sb.from(table).select('*').order('date');
+  // 予定は月ごとに積み上がるので、いずれ1000行を超える。読み継いで全件そろえる
+  const { data, error } = await fetchAllRows(() => sb.from(table).select('*').order('date').order('id'));
   if (error) throw error;
   return data || [];
 }

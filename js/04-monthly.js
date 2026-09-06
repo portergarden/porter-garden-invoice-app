@@ -8,6 +8,80 @@
    v8: 月報自動集計 & 支払明細書差異チェック
    ============================================================ */
 
+/* ===== 月報の表示項目 =====
+   画面の日別明細と、印刷の日めくり表が同じ定義・同じ選択を使う。
+   pw は印刷時の列幅の目安。選ばれた列だけで按分し直すので合計が100%でなくてよい。
+   get(r) は日報1件を受け取り、表示用の文字列（HTMLとして出すのでエスケープ済み）を返す。
+   r が無い日（印刷の日めくり表で日報が無い日）は空欄にする。 */
+const MR_COLS = [
+  {key:'date',     label:'日付',        def:true,  align:'left',   pw:8,  screen:true,  print:false, get:r=>escHtml(r.date||'')},
+  {key:'day',      label:'日',          def:true,  align:'center', pw:4,  screen:false, print:true},
+  {key:'dow',      label:'曜日',        def:true,  align:'center', pw:4,  screen:false, print:true},
+  {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
+  {key:'worktime', label:'稼働時間',    def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(r.start_time||'?')}-${escHtml(r.end_time||'?')}`:''},
+  {key:'site',     label:'稼働先',      def:false, align:'left',   pw:13, get:r=>{const c=lkC(r.cli);return c?escHtml(c.short||c.name):'';}},
+  {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
+  {key:'odo',      label:'メーター',    def:false, align:'right',  pw:11, get:r=>(r.start_odometer!=null||r.end_odometer!=null)?`${r.start_odometer??'—'}/${r.end_odometer??'—'}`:''},
+  {key:'tak',      label:'宅配便',      def:true,  align:'right',  pw:8,  get:r=>String(r.qty_takkyubin||0)},
+  {key:'neko',     label:'ポスト便',    def:true,  align:'right',  pw:8,  get:r=>String(r.qty_nekopos||0)},
+  {key:'charter',  label:'チャーター便',def:true,  align:'right',  pw:8,  get:r=>String(r.qty_charter||0)},
+  {key:'other',    label:'その他',      def:false, align:'right',  pw:7,  get:r=>String(r.qty_other||0)},
+  {key:'alc',      label:'Alc前/後',    def:true,  align:'center', pw:11, get:r=>`${r.alc_before??'—'}/${r.alc_after??'—'}`},
+  {key:'health',   label:'体調',        def:true,  align:'center', pw:6,  get:r=>({good:'良',normal:'普',bad:'不'}[r.health_before||'good']||'')},
+  {key:'rest',     label:'休憩',        def:false, align:'left',   pw:12, get:r=>escHtml(formatRests(r)||'')},
+  {key:'wait',     label:'荷待ち',      def:false, align:'left',   pw:14, get:r=>escHtml(dailyTrips(r).filter(t=>t.wait).map(t=>`${t.wait.loc||''} ${t.wait.arrive||''}-${t.wait.depart||''}`).join(' / '))},
+  {key:'cargo',    label:'荷役作業等',  def:false, align:'left',   pw:14, get:r=>escHtml(dailyTrips(r).filter(t=>t.cargo).map(t=>`${t.cargo.loc||''} ${t.cargo.work_start||''}-${t.cargo.work_end||''}`).join(' / '))},
+  {key:'handover', label:'業務交替',    def:false, align:'left',   pw:12, get:r=>r.handover_flag?escHtml(`${r.handover_location||''} ${r.handover_time||''}`):''},
+  {key:'status',   label:'状態',        def:true,  align:'center', pw:8,  get:r=>r.status==='rejected'?'差戻し':''},
+  {key:'note',     label:'備考',        def:true,  align:'left',   pw:14, screen:true, print:false, get:r=>escHtml(r.note||'')},
+];
+/* 月報タブが読み込んだ日報。CSV出力も同じものを使う。
+   以前は日報タブ用の共有配列(dailyReports)を見ており、日報タブを一度も開いていないと
+   CSVが空になり、開いていても別の期間の内容が出ることがあった */
+let mrReports = [];
+const MR_COLS_KEY = 'mrCols';
+function loadMrCols() {
+  const on = {};
+  MR_COLS.forEach(c => on[c.key] = c.def);
+  try {
+    const saved = JSON.parse(localStorage.getItem(MR_COLS_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      // 保存後に列が増えても、増えた列は既定値のまま残す
+      MR_COLS.forEach(c => { if (typeof saved[c.key] === 'boolean') on[c.key] = saved[c.key]; });
+    }
+  } catch(e) {}
+  return on;
+}
+let mrCols = loadMrCols();
+function saveMrCols() { try { localStorage.setItem(MR_COLS_KEY, JSON.stringify(mrCols)); } catch(e) {} }
+// where は 'screen' か 'print'。列ごとに出す場所を絞れる（日付は画面用、日＋曜は印刷用）
+function mrSelectedCols(where) {
+  return MR_COLS.filter(c => mrCols[c.key] && (c[where] !== false));
+}
+function toggleMrCol(key, on) { mrCols[key] = on; saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
+function setAllMrCols(on) { MR_COLS.forEach(c => mrCols[c.key] = on); saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
+function resetMrCols() { MR_COLS.forEach(c => mrCols[c.key] = c.def); saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
+function toggleMrColPicker() {
+  const el = document.getElementById('mrColPicker');
+  if (!el) return;
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  if (show) renderMrColPicker();
+}
+function renderMrColPicker() {
+  const el = document.getElementById('mrColBoxes');
+  if (!el) return;
+  // 画面だけ・印刷だけの列があるので、どちらに出るのかを添える
+  const scope = c => c.screen === false ? '<span style="color:var(--text3);font-size:9.5px">（印刷のみ）</span>'
+                   : c.print  === false ? '<span style="color:var(--text3);font-size:9.5px">（画面のみ）</span>' : '';
+  el.innerHTML = MR_COLS.map(c => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer">
+    <input type="checkbox" onchange="toggleMrCol('${c.key}',this.checked)"${mrCols[c.key]?' checked':''}>${escHtml(c.label)}${scope(c)}
+  </label>`).join('');
+  const n = MR_COLS.filter(c=>mrCols[c.key]).length;
+  const cnt = document.getElementById('mrColCount');
+  if (cnt) cnt.textContent = `${n}/${MR_COLS.length}`;
+}
+
 /* ===== 月報 ===== */
 function initMonthlyReport() {
   ensureMonthRangeDefault('mrFrom', 'mrTo');
@@ -57,6 +131,7 @@ async function renderMonthlyReport() {
       .lte('date', to)
       .order('date').order('id'));
     if (!error) drReports = data || [];
+    mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
   } catch(e) {}
 
   // 請求書データ（invoices）から当月分
@@ -208,31 +283,24 @@ async function renderMonthlyReport() {
             <div style="overflow-x:auto">
               <table style="width:100%;border-collapse:collapse;font-size:10px">
                 <thead><tr style="background:var(--bg2)">
-                  <th style="padding:3px 6px;text-align:left">日付</th>
-                  <th style="padding:3px 6px;text-align:right">走行km</th>
-                  <th style="padding:3px 6px;text-align:right">宅配便</th>
-                  <th style="padding:3px 6px;text-align:right">ポスト便</th>
-                  <th style="padding:3px 6px;text-align:right">チャーター便</th>
-                  <th style="padding:3px 6px;text-align:center">Alc前/後</th>
-                  <th style="padding:3px 6px;text-align:center">体調</th>
-                  <th style="padding:3px 6px;text-align:center">状態</th>
-                  <th style="padding:3px 6px">備考</th>
+                  ${mrSelectedCols('screen').map(c=>`<th style="padding:3px 6px;text-align:${c.align}">${escHtml(c.label)}</th>`).join('')}
                 </tr></thead>
                 <tbody>
                   ${dReports.map(r => {
                     const alcWarn = +r.alc_before>=0.15||+r.alc_after>=0.15;
                     const healthBad = r.health_before==='bad'||r.health_after==='bad';
-                    return `<tr style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">
-                      <td style="padding:3px 6px">${r.date}</td>
-                      <td style="padding:3px 6px;text-align:right">${r.distance_km||0}</td>
-                      <td style="padding:3px 6px;text-align:right">${r.qty_takkyubin||0}</td>
-                      <td style="padding:3px 6px;text-align:right">${r.qty_nekopos||0}</td>
-                      <td style="padding:3px 6px;text-align:right">${r.qty_charter||0}</td>
-                      <td style="padding:3px 6px;text-align:center;${alcWarn?'color:var(--red);font-weight:600':''}">${r.alc_before??'—'}/${r.alc_after??'—'}</td>
-                      <td style="padding:3px 6px;text-align:center;${healthBad?'color:var(--amber-text)':''}">${{good:'良',normal:'普',bad:'不'}[r.health_before||'good']}</td>
-                      <td style="padding:3px 6px;text-align:center">${r.status==='rejected'?'<span class="dr-status rejected">差</span>':''}</td>
-                      <td style="padding:3px 6px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.note)}">${escHtml(r.note)}</td>
-                    </tr>`;
+                    return `<tr style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">${
+                      mrSelectedCols('screen').map(c => {
+                        // 目立たせたい列だけ色を付ける。備考は長いので省略表示にする
+                        const extra = c.key==='alc' && alcWarn ? ';color:var(--red);font-weight:600'
+                                    : c.key==='health' && healthBad ? ';color:var(--amber-text)'
+                                    : c.key==='note' ? ';max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' : '';
+                        const title = c.key==='note' ? ` title="${escHtml(r.note||'')}"` : '';
+                        const v = c.key==='status' && r.status==='rejected'
+                                ? '<span class="dr-status rejected">差</span>' : (c.get ? c.get(r) : '');
+                        return `<td style="padding:3px 6px;text-align:${c.align}${extra}"${title}>${v}</td>`;
+                      }).join('')
+                    }</tr>`;
                   }).join('')}
                 </tbody>
               </table>
@@ -307,9 +375,10 @@ async function printMonthlyReportA4() {
 
   let drReports = [];
   try {
-    const {data, error} = await sb.from('daily_reports').select('*').gte('date', monthFrom).lte('date', monthTo).order('date');
+    const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*').gte('date', monthFrom).lte('date', monthTo).order('date').order('id'));
     if (error) throw error;
     drReports = data || [];
+    mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
   } catch(e) { win.close(); alert('日報データの取得に失敗しました: ' + e.message); return; }
 
   const weekdayLabel = ['日','月','火','水','木','金','土'];
@@ -337,6 +406,7 @@ async function printMonthlyReportA4() {
       const drOtherQty=dReports.reduce((a,r)=>a+(+r.qty_other||0),0);
 
       const dayRows = [];
+      const printCols = mrSelectedCols('print');
       for (let day=1; day<=lastDay; day++) {
         const dateStr = `${monthStr}-${String(day).padStart(2,'0')}`;
         const wd = new Date(y, m-1, day).getDay();
@@ -345,20 +415,16 @@ async function printMonthlyReportA4() {
         const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
         const site = r ? lkC(r.cli) : null;
         const rowCls = alcWarn ? 'alc' : holName ? 'hol' : wd===0 ? 'sun' : wd===6 ? 'sat' : '';
-        dayRows.push(`<tr${rowCls?` class="${rowCls}"`:''}>
-          <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${day}</td>
-          <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${weekdayLabel[wd]}</td>
-          <td class="car">${r?escHtml(r.car||''):''}</td>
-          <td class="center">${r&&(r.start_time||r.end_time)?`${r.start_time||'?'}-${r.end_time||'?'}`:''}</td>
-          <td class="site" title="${r&&site?escHtml(site.name):''}">${r&&site?escHtml(site.short||site.name):''}</td>
-          <td class="num">${r?(r.distance_km||0):''}</td>
-          <td class="num">${r?(r.qty_takkyubin||0):''}</td>
-          <td class="num">${r?(r.qty_nekopos||0):''}</td>
-          <td class="num">${r?(r.qty_charter||0):''}</td>
-          <td class="center">${r?`${r.alc_before??'—'}/${r.alc_after??'—'}`:''}</td>
-          <td class="center">${r?({good:'良',normal:'普',bad:'不'}[r.health_before||'good']):''}</td>
-          <td class="center">${r&&r.status==='rejected'?'差戻し':''}</td>
-        </tr>`);
+        // 選択された列だけを、定義順に並べる
+        dayRows.push(`<tr${rowCls?` class="${rowCls}"`:''}>${printCols.map(c=>{
+          const cls = c.align==='right' ? 'num' : c.align==='center' ? 'center' : (c.key==='car'?'car':c.key==='site'?'site':'');
+          const title = (c.key==='day'||c.key==='dow') && holName ? ` title="${escHtml(holName)}"` : '';
+          let v = '';
+          if (c.key==='day') v = String(day);
+          else if (c.key==='dow') v = weekdayLabel[wd];
+          else if (r) v = c.get ? c.get(r) : '';
+          return `<td class="${cls}"${title}>${v}</td>`;
+        }).join('')}</tr>`);
       }
 
       return `<div class="mr-page">
@@ -375,7 +441,12 @@ async function printMonthlyReportA4() {
         <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ポスト便 ${drNeko.toLocaleString()}　チャーター便 ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
         <table class="mr-table">
           <thead><tr>
-            <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:11%">車番</th><th style="width:11%">稼働時間</th><th style="width:13%">稼働先</th><th style="width:8%">走行km</th><th style="width:8%">宅配便</th><th style="width:8%">ポスト便</th><th style="width:8%">チャーター便</th><th style="width:11%">Alc前/後</th><th style="width:6%">体調</th><th style="width:8%">状態</th>
+            ${(() => {
+              // 選ばれた列の目安幅を合計100%になるよう按分する
+              const cols = mrSelectedCols('print');
+              const sum = cols.reduce((a,c)=>a+(c.pw||8),0) || 1;
+              return cols.map(c=>`<th style="width:${((c.pw||8)/sum*100).toFixed(1)}%">${escHtml(c.label)}</th>`).join('');
+            })()}
           </tr></thead>
           <tbody>${dayRows.join('')}</tbody>
         </table>
@@ -421,26 +492,28 @@ function exportMonthlyCsv() {
   const mrFrom = document.getElementById('mrFrom')?.value || '';
   const mrTo = document.getElementById('mrTo')?.value || '';
   const month = mrFrom;
-  const drReports_local = dailyReports.filter(r=>r.date&&r.date>=mrFrom&&r.date<=mrTo);
-  const headers = ['ドライバー','ドライバーID','日付','走行距離(km)','乗務開始','乗務終了',
-    '宅配便','ポスト便','チャーター便','その他','Alc前','Alc後','体調(前)','状態','備考'];
+  const drReports_local = (mrReports||[]).filter(r=>r.date&&r.date>=mrFrom&&r.date<=mrTo);
+  // 画面と同じ項目を出す。ドライバーの識別だけは常に付ける
+  const csvCols = mrSelectedCols('screen');
+  const headers = ['ドライバー','ドライバーID', ...csvCols.map(c=>c.label)];
   const rows = [];
   drvs.forEach(d => {
     const dReps = drReports_local.filter(r=>recDrv(r)?.id===d.id);
     dReps.forEach(r => {
       rows.push([
-        d.name, d.supplier_id||'', r.date,
-        r.distance_km||0, r.start_time||'', r.end_time||'',
-        r.qty_takkyubin||0, r.qty_nekopos||0, r.qty_charter||0, r.qty_other||0,
-        r.alc_before??'', r.alc_after??'',
-        {good:'良好',normal:'普通',bad:'不調'}[r.health_before||'good'],
-        r.status==='rejected'?'差戻し':'',
-        (r.note||'').replace(/,/g,'、').replace(/\n/g,' ')
-      ].join(','));
+        d.name, d.supplier_id||'',
+        // 列の get() は画面表示用にHTMLを返すので、タグと実体参照を戻してから出す
+        ...csvCols.map(c => {
+          const raw = c.get ? String(c.get(r) ?? '') : '';
+          return raw.replace(/<[^>]*>/g,'')
+                    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+                    .replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+        }),
+      ].map(v => csvSafe(v)).map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
     });
   });
   const bom = new Uint8Array([0xEF,0xBB,0xBF]);
-  const blob = new Blob([bom,[headers.join(','),...rows].join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const blob = new Blob([bom,[headers.map(h=>`"${h}"`).join(','),...rows].join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=`月報_${month}.csv`;a.click();
 }
