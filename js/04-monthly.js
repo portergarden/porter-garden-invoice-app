@@ -454,7 +454,7 @@ async function printMonthlyReportA4() {
         const holName = jpHolidayName(dateStr);
         const r = byDate[dateStr];
         const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
-        const site = r ? lkC(r.cli) : null;
+        const site = r ? lkCliAny(r.cli) : null;
         const rowCls = alcWarn ? 'alc' : holName ? 'hol' : wd===0 ? 'sun' : wd===6 ? 'sat' : '';
         // 選択された列だけを、定義順に並べる
         dayRows.push(`<tr${rowCls?` class="${rowCls}"`:''}>${printCols.map(c=>{

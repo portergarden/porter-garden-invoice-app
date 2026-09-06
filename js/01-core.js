@@ -4162,15 +4162,40 @@ function applyWarnDot(el, show) {
    中身を確認できないうえ、ホーム画面に追加したアプリでは別ウィンドウに
    戻るボタンが無く、元の画面に帰れなくなる。
    そのためアプリの中で見せ、印刷は本人が押したときだけ実行する。 */
-let docPreviewHtml = '';
-function openDocPreview(html, title){
-  docPreviewHtml = html;
+let docPreviewHtml = '';   // 自分で組み立てた帳票のHTML
+let docPreviewUrl = '';    // 保管庫の署名付きURL（写真・PDFなど）
+
+function docPreviewOpen(title){
   const t = document.getElementById('docPreviewTitle');
   if (t) t.textContent = title || 'プレビュー';
-  const f = document.getElementById('docPreviewFrame');
-  if (f) f.srcdoc = html;
   document.getElementById('mDocPreview')?.classList.add('on');
 }
+function openDocPreview(html, title){
+  docPreviewHtml = html;
+  docPreviewUrl = '';
+  const f = document.getElementById('docPreviewFrame');
+  // srcdocはsrcより優先されるため、切り替えるときは必ず片方を消す
+  if (f) { f.removeAttribute('src'); f.srcdoc = html; }
+  docPreviewOpen(title);
+}
+// 保管庫のファイル（写真・PDFなど）をそのまま枠内に表示する
+function openDocPreviewSrc(url, title){
+  docPreviewUrl = url;
+  docPreviewHtml = '';
+  const f = document.getElementById('docPreviewFrame');
+  if (f) { f.removeAttribute('srcdoc'); f.src = url; }
+  docPreviewOpen(title);
+}
+// 写真は枠幅に収まるように包んでから表示する（原寸のままだと横にはみ出す）
+function openDocPreviewImage(url, title){
+  openDocPreview(`<!doctype html><meta charset="utf-8">`
+    + `<style>html,body{margin:0;background:#f5f5f5;height:100%}`
+    + `body{display:flex;align-items:center;justify-content:center}`
+    + `img{max-width:100%;max-height:100%;object-fit:contain}`
+    + `@media print{body{background:#fff}}</style>`
+    + `<img src="${url}" alt="">`, title);
+}
+const isImagePath = p => /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(p || '');
 function printDocPreview(){
   const f = document.getElementById('docPreviewFrame');
   try {
@@ -4182,6 +4207,13 @@ function printDocPreview(){
 }
 // 端末の都合で枠内から印刷できない場合の逃げ道。開いた先にも印刷と閉じるを付ける
 function openDocPreviewInWindow(){
+  // 保管庫のファイルはURLをそのまま開く（ブラウザ側の表示機能に任せる）
+  if (docPreviewUrl) {
+    const w = window.open(docPreviewUrl, '_blank');
+    if (!w) showT('ポップアップがブロックされました。ブラウザの設定をご確認ください', 'twa');
+    else { try { w.opener = null; } catch(_) {} }
+    return;
+  }
   if (!docPreviewHtml) return;
   const win = window.open('', '_blank');
   if (!win) { showT('ポップアップがブロックされました。ブラウザの設定をご確認ください', 'twa'); return; }

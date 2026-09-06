@@ -287,18 +287,16 @@ async function saveDriverDoc(drvId, docType) {
 async function viewDriverDoc(drvId, docType) {
   const doc = findDriverDoc(drvId, docType);
   if (!doc?.file_path) { showT('ファイルがありません', 'twa'); return; }
-  // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
-  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
-  // 取得後にそのタブへ遷移させる
-  const win = window.open('', '_blank');
-  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
-  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
-  try { win.opener = null; } catch(_) {}
+  // 別ウィンドウに飛ばすと、ホーム画面に追加したアプリでは戻れなくなるためアプリの中で見せる
+  showLoad(true);
   try {
     const {data, error} = await sb.storage.from('driver-docs').createSignedUrl(doc.file_path, 3600);
     if (error) throw error;
-    win.location.href = data.signedUrl;
-  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
+    const label = (DRIVER_DOC_TYPES.find(t=>t.key===docType)?.label) || '書類';
+    if (isImagePath(doc.file_path)) openDocPreviewImage(data.signedUrl, label);
+    else openDocPreviewSrc(data.signedUrl, label);
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+  showLoad(false);
 }
 
 async function deleteDriverDoc(drvId, docType) {
@@ -1783,23 +1781,23 @@ async function acknowledgeStatement(id) {
     loadDriverStatements();
   } catch(e) { showT('更新エラー: ' + e.message, 'ter'); }
 }
+/* 支払明細書を開く。
+   以前は別ウィンドウに書き出していたが、ホーム画面に追加したアプリだと
+   戻るボタンが無く元の画面に帰れなくなるため、アプリの中で見せる。 */
 async function openDriverStatement(id, path, isRead) {
-  const win = window.open('','_blank');
-  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'ter'); return; }
-  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
-  try { win.opener = null; } catch(_) {}
+  showLoad(true);
   try {
     const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
     if (error) throw error;
     const res = await fetch(data.signedUrl);
     if (!res.ok) throw new Error('ファイルの取得に失敗しました（' + res.status + '）');
-    const html = await res.text();
-    win.document.open(); win.document.write(html); win.document.close();
+    openDocPreview(await res.text(), '支払明細書');
     if (!isRead) {
       await sb.rpc('mark_driver_statement', {p_id: id, p_ack: false});
       loadDriverStatements();
     }
-  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+  showLoad(false);
 }
 
 // 明細書HTML文字列を非表示iframeにレンダリングし、.doc単位（印刷CSSでA4 1ページ分に相当）で
@@ -2334,18 +2332,16 @@ async function submitBoardPost() {
 }
 
 async function openBoardAttachment(path) {
-  // signedUrl取得(await)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
-  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
-  // 取得後にそのタブへ遷移させる
-  const win = window.open('', '_blank');
-  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
-  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
-  try { win.opener = null; } catch(_) {}
+  // 別ウィンドウに飛ばすと、ホーム画面に追加したアプリでは戻れなくなるためアプリの中で見せる
+  showLoad(true);
   try {
     const { data, error } = await sb.storage.from('board-attachments').createSignedUrl(path, 3600);
     if (error) throw error;
-    win.location.href = data.signedUrl;
-  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
+    const name = String(path).split('_').slice(1).join('_') || '添付ファイル';
+    if (isImagePath(path)) openDocPreviewImage(data.signedUrl, name);
+    else openDocPreviewSrc(data.signedUrl, name);
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
+  showLoad(false);
 }
 
 async function deleteBoardPost(id) {

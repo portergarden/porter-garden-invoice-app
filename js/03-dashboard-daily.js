@@ -2092,7 +2092,7 @@ function dailyTrips(r) {
   }
   if (!r.cli && !r.start_time) return [];
   return [{
-    cli_id: r.cli ?? null, cli_name: lkC(r.cli)?.name || '',
+    cli_id: r.cli ?? null, cli_name: lkCliAny(r.cli)?.name || '',
     start: (r.start_time||'').slice(0,5), end: (r.end_time||'').slice(0,5),
     start_loc: r.start_location||'', end_loc: r.end_location||'',
     qty_tak: r.qty_takkyubin||0, qty_neko: r.qty_nekopos||0,
@@ -2101,7 +2101,7 @@ function dailyTrips(r) {
 }
 // 運行に出てくる取引先名を重複なく並べる
 function dailyTripClients(r) {
-  return [...new Set(dailyTrips(r).map(t => t.cli_name || lkC(t.cli_id)?.name || '').filter(Boolean))];
+  return [...new Set(dailyTrips(r).map(t => t.cli_name || lkCliAny(t.cli_id)?.name || '').filter(Boolean))];
 }
 
 // 点呼方法の表示名。対面以外は具体的方法の記録が必要（輸送安全規則 第7条 ⑤ロ）
@@ -2257,7 +2257,7 @@ async function initDailyForm(reportId=null) {
       document.getElementById('drOdoEnd').value = r.end_odometer ?? '';
       document.getElementById('drType').value = r.type || 'regular';
       // クライアント名解決: 管理者はclients、ドライバーはRPCで取得したdriverClientNamesから引く
-      const cliName = r.cli ? (isDriver ? (driverClientNames||[]).find(c=>c.id===r.cli)?.name : lkC(r.cli)?.name) : '';
+      const cliName = lkCliAny(r.cli)?.name || '';
       document.getElementById('drAlcBefore').value = r.alc_before ?? '';
       document.getElementById('drAlcAfter').value = r.alc_after ?? '';
       document.getElementById('drAlcDevice').value = r.alc_device || '';
@@ -3194,7 +3194,7 @@ function renderDailyList() {
     const alcWarn = (+r.alc_before>=0.15||+r.alc_after>=0.15);
     const healthBad = r.health_before==='bad'||r.health_after==='bad';
     const drv = recDrv(r);
-    const cli = lkC(r.cli);
+    const cli = lkCliAny(r.cli);
     return `<div class="dr-card">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="flex:1;min-width:0">
@@ -3387,8 +3387,8 @@ function dailyReportPrintCss() {
   `;
 }
 function buildDailyReportHtml(r) {
-  // 取引先名: 管理者はclients、ドライバー（clientsを読めない）はRPCで取得済みのdriverClientNamesから解決する
-  const cli = lkC(r.cli) || (r.cli ? (driverClientNames||[]).find(c=>c.id===r.cli) : null);
+  // 取引先名は lkCliAny() で解決する（ドライバーはclientsを読めないため lkC() だけでは常に空になる）
+  const cli = lkCliAny(r.cli);
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
   const inspList = [['insp_tire','タイヤ'],['insp_brake','ブレーキ'],['insp_light','灯火類'],['insp_wiper','ワイパー'],['insp_engine','エンジン'],
     ['insp_mirror','ミラー'],['insp_horn','ホーン'],['insp_battery','バッテリー'],['insp_cargo','積載装置'],['insp_fuel','燃料']];
@@ -3447,7 +3447,7 @@ function buildDailyReportHtml(r) {
         <tr><th style="width:100px">時刻</th><th>取引先</th><th style="width:150px">区間</th><th style="width:150px">個数</th></tr>
         ${trips.map(t => `<tr>
           <td>${t.start||''}〜${t.end||''}</td>
-          <td>${escHtml(t.cli_name || lkC(t.cli_id)?.name || '')}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
+          <td>${escHtml(t.cli_name || lkCliAny(t.cli_id)?.name || '')}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
           <td>${escHtml(t.start_loc||'')}${(t.start_loc||t.end_loc)?' → ':''}${escHtml(t.end_loc||'')}</td>
           <td>${[t.qty_tak?`宅配便${t.qty_tak}`:'', t.qty_neko?`ポスト便${t.qty_neko}`:'', t.qty_charter?`チャーター${t.qty_charter}`:'', t.qty_other?`その他${t.qty_other}`:''].filter(Boolean).join(' ／ ')||'—'}</td>
         </tr>${tripWaitCargoRow(t)}`).join('')}
@@ -3492,16 +3492,15 @@ function printDailyReports() {
   win.document.open(); win.document.write(buildDailyReportsPrintDoc(list)); win.document.close();
   addLog('日報印刷', `${list.length}件`);
 }
-// ドライバーポータル: 現在表示中の月の自分の日報を印刷（loadDriverDailyListがdailyReportsに反映済み）
+/* ドライバーポータル: 現在表示中の月の自分の日報を印刷（loadDriverDailyListがdailyReportsに反映済み）。
+   別ウィンドウに書き出すと、ホーム画面に追加したアプリでは戻る手段が無くなるため、
+   アプリの中でプレビューを見せて、印刷は本人が押したときだけ実行する。 */
 async function printDriverDailyReports() {
   if (!dailyReports.length) { alert('対象の日報がありません'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
-  try { win.opener = null; } catch(_) {}
   // 取引先名の解決用（ドライバーはclientsを読めないためRPC経由の候補が必要）。未取得なら先に読み込む
   if (me?.role === 'driver' && driverClientNames === null) await populateDriverCliList();
-  win.document.open(); win.document.write(buildDailyReportsPrintDoc(dailyReports)); win.document.close();
+  const month = document.getElementById('drvDailyMonth')?.value || '';
+  openDocPreview(buildDailyReportsPrintDoc(dailyReports), month ? `${month} の日報` : '日報');
 }
 
 // 日報は請求集計と違って「今日提出されたものを今すぐ確認する」用途のため、
