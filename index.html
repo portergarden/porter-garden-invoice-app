@@ -9,6 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="PG Base">
   <meta name="theme-color" content="#2563EB">
   <link rel="manifest" href="manifest.json">
+  <!-- iOSはmanifestのiconsを見ないため、ホーム画面追加用に個別指定が要る -->
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
 
 <!--
   ============================================================
@@ -1814,6 +1817,12 @@ try {
   </div>
   <div style="overflow-y:auto;max-height:calc(100vh - 100px);padding:14px">
 
+    <!-- 端末への通知（Webプッシュ）。ここで自分の端末を登録する -->
+    <div class="close-section">
+      <h3>🔔 端末への通知</h3>
+      <div id="adminPushSetting"></div>
+    </div>
+
     <!-- インボイス設定 -->
     <div class="close-section">
       <h3>① インボイス制度対応</h3>
@@ -2001,6 +2010,7 @@ try {
         <div class="ntab" id="drvSubChat3" onclick="goDrvPage(5,document.getElementById('dnt3'))">💬 個別チャット</div>
         <div class="ntab" id="drvSubGroupChat3" onclick="goDrvPage(6,document.getElementById('dnt3'))">👥 グループチャット</div>
       </div>
+      <div id="drvPushBanner" style="padding:8px 14px 0"></div>
       <div id="drvLineBanner" style="padding:8px 14px 0"></div>
       <div id="drvBoardList" style="padding:8px 14px"></div>
     </div>
@@ -3041,7 +3051,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=ab04bb85"></script>
+<script src="js/01-core.js?v=aedd7fef"></script>
 
 <script src="js/02-drivers-pay.js?v=bfc7aadb"></script>
 
@@ -3102,7 +3112,7 @@ try {
 <script src="js/04-monthly.js?v=318f54fe"></script>
 
 
-<script src="js/05-driver-portal.js?v=b03c7de4"></script>
+<script src="js/05-driver-portal.js?v=bcfc9bf5"></script>
 
 
 
@@ -3117,6 +3127,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=aef3ec68"></script>
+<script src="js/10-settings.js?v=ce467248"></script>
+<script src="js/11-push.js?v=3c6b0e49"></script>
 </body>
 </html>

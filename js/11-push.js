@@ -1,0 +1,258 @@
+/* ===== Webプッシュ通知（アプリを閉じていても端末に通知を出す） =====
+
+   仕組み:
+     ① sw.js（サービスワーカー）を登録する
+     ② Edge Function web-push からVAPID公開鍵をもらう
+     ③ ブラウザに購読を作り、その宛先を push_subscriptions に保存する
+     ④ 管理側がメッセージを送るとき web-push を呼び、サーバから端末へ通知が飛ぶ
+
+   注意（iPhone）:
+     iOSはSafariで開いただけでは通知を出せない。「ホーム画面に追加」して
+     そのアイコンから開いた場合のみ許可を求められる（iOS 16.4以降）。
+     そのため、iOSでホーム画面から開いていない時は追加の手順を案内する。 */
+
+let pushSwReg = null;          // 登録済みのサービスワーカー
+let pushVapidKey = null;       // VAPID公開鍵（1セッション1回だけ取りに行く）
+let pushBusy = false;          // 二重クリック防止
+
+const pushSupported = () =>
+  'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+const pushIsIOS = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+// ホーム画面から起動しているか（iOSで通知を出せるかの判定に使う）
+const pushIsStandalone = () =>
+  window.navigator.standalone === true ||
+  window.matchMedia?.('(display-mode: standalone)').matches === true;
+
+function urlB64ToUint8Array(b64){
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
+  const out = new Uint8Array(raw.length);
+  for (let i=0; i<raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+const pushKeyToB64 = buf => {
+  const b = new Uint8Array(buf);
+  let s = '';
+  for (let i=0; i<b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+};
+
+async function pushEnsureSW(){
+  if (!pushSupported()) return null;
+  if (pushSwReg) return pushSwReg;
+  pushSwReg = await navigator.serviceWorker.register('sw.js');
+  await navigator.serviceWorker.ready;
+  return pushSwReg;
+}
+async function pushGetVapidKey(){
+  if (pushVapidKey) return pushVapidKey;
+  const { data, error } = await sb.functions.invoke('web-push', { body: { op: 'public_key' } });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  pushVapidKey = data.public_key;
+  return pushVapidKey;
+}
+
+/* 端末の購読をDBに保存する。endpointが同じなら上書きするので、何度呼んでも増えない。
+   なお、同じブラウザを別の人が使うと同じendpointになるため、ログアウト時に購読ごと破棄している
+   （そうしないと前の人あての通知が次の人の端末に届いてしまう）。 */
+async function pushSaveSubscription(sub){
+  const j = sub.toJSON ? sub.toJSON() : sub;
+  const keys = j.keys || {};
+  const { error } = await sb.from('push_subscriptions').upsert({
+    user_id: me.id,
+    drv_id: me.driver_id || null,
+    endpoint: j.endpoint,
+    p256dh: keys.p256dh || pushKeyToB64(sub.getKey('p256dh')),
+    auth: keys.auth || pushKeyToB64(sub.getKey('auth')),
+    ua: (navigator.userAgent || '').slice(0, 300),
+  }, { onConflict: 'endpoint' });
+  if (error) throw error;
+}
+
+// 通知を受け取れる状態にする（ボタンから呼ぶ。許可のダイアログは操作起点でないと出せない）
+async function enablePush(){
+  if (pushBusy) return;
+  if (!pushSupported()) { showT('この端末・ブラウザは通知に対応していません', 'ter'); return; }
+  if (pushIsIOS() && !pushIsStandalone()) {
+    alert('iPhone・iPadでは、先に「ホーム画面に追加」が必要です。\n\n' +
+          '① 画面下の共有ボタン（□に↑）を押す\n' +
+          '② 「ホーム画面に追加」を選ぶ\n' +
+          '③ 追加されたアイコンからこのアプリを開く\n' +
+          '④ もう一度この画面で「通知を受け取る」を押す');
+    return;
+  }
+  pushBusy = true;
+  showLoad(true);
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      showT(perm === 'denied'
+        ? '通知が拒否されています。ブラウザの設定から許可してください'
+        : '通知は許可されませんでした', 'ter');
+      return;
+    }
+    const reg = await pushEnsureSW();
+    const key = await pushGetVapidKey();
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(key),
+      });
+    }
+    await pushSaveSubscription(sub);
+    showT('この端末で通知を受け取れるようになりました');
+    addLog('プッシュ通知 登録', (navigator.userAgent||'').slice(0,120));
+  } catch(e) {
+    showT('通知の登録に失敗しました: ' + e.message, 'ter');
+    console.warn('enablePush:', e);
+  } finally {
+    pushBusy = false;
+    showLoad(false);
+    renderPushSetting();
+  }
+}
+
+async function disablePush(){
+  if (pushBusy) return;
+  pushBusy = true;
+  showLoad(true);
+  try {
+    const reg = await pushEnsureSW();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub) {
+      await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+      await sub.unsubscribe();
+    }
+    showT('この端末への通知を停止しました');
+  } catch(e) {
+    showT('停止に失敗しました: ' + e.message, 'ter');
+  } finally {
+    pushBusy = false;
+    showLoad(false);
+    renderPushSetting();
+  }
+}
+
+// 自分の端末にテスト通知を送る（届くかどうかをその場で確かめられるように）
+async function sendPushTest(){
+  showLoad(true);
+  try {
+    const { data, error } = await sb.functions.invoke('web-push', {
+      body: { op: 'test', title: 'PG Base', body: 'テスト通知です。これが見えていれば設定は完了しています。' },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    if (!data.sent) {
+      showT(data.note === 'no_subscriptions'
+        ? 'この端末はまだ登録されていません' : `送信できませんでした（${data.failed}件失敗）`, 'ter');
+    } else {
+      showT(`${data.sent}台の端末に送りました`);
+    }
+  } catch(e) {
+    showT('テスト送信に失敗しました: ' + e.message, 'ter');
+  }
+  showLoad(false);
+}
+
+/* 通知を送る。管理・編集者だけが呼べる（サーバ側でも権限を確認している）。
+   失敗してもチャットの送信自体は成功させたいので、例外は握りつぶして記録だけ残す。 */
+async function pushNotify({ drv_ids = [], user_ids = [], title, body = '', url = './', tag = 'pgbase' }){
+  if (!sb || (!drv_ids.length && !user_ids.length)) return;
+  try {
+    const { error } = await sb.functions.invoke('web-push', {
+      body: { op: 'send', drv_ids, user_ids, title, body: String(body).slice(0, 300), url, tag },
+    });
+    if (error) throw error;
+  } catch(e) { console.warn('pushNotify:', e.message); }
+}
+
+/* ログイン直後に呼ぶ。既に許可済みの端末なら黙って購読を張り直す
+   （購読の宛先(endpoint)はブラウザの都合で変わることがあるため、毎回保存し直す）。 */
+async function pushSyncOnLogin(){
+  if (!pushSupported() || !me) return;
+  try {
+    const reg = await pushEnsureSW();
+    if (Notification.permission !== 'granted') return;
+    const key = await pushGetVapidKey();
+    const sub = await reg.pushManager.getSubscription()
+      || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(key) });
+    await pushSaveSubscription(sub);
+  } catch(e) { console.warn('pushSyncOnLogin:', e.message); }
+}
+
+/* ログアウト時に購読ごと破棄する。
+   同じ端末を別の人が使ったときに、前の人あての通知が届いてしまうのを防ぐため。
+   次にその人がログインすれば pushSyncOnLogin() が自動で張り直すので、再設定の手間はない。 */
+async function pushClearOnLogout(){
+  if (!pushSupported()) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (!sub) return;
+    try { await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); } catch(e) {}
+    await sub.unsubscribe();
+  } catch(e) { console.warn('pushClearOnLogout:', e.message); }
+  pushSwReg = null;
+  pushVapidKey = null;
+}
+
+// 通知設定の表示。ドライバーポータルと管理画面の設定、両方に同じものを出す
+function pushStatusHtml(){
+  if (!pushSupported()) {
+    return `<b>🔔 端末への通知</b><br><span style="color:var(--text2)">この端末・ブラウザは対応していません。</span>`;
+  }
+  if (pushIsIOS() && !pushIsStandalone()) {
+    return `<b>🔔 端末への通知を受け取るには</b><br>
+      iPhone・iPadでは、先に<b>ホーム画面に追加</b>が必要です。<br>
+      ① 画面下の共有ボタン（□に↑）を押す<br>
+      ② 「ホーム画面に追加」を選ぶ<br>
+      ③ 追加されたアイコンからこのアプリを開き、この画面で通知をオンにする`;
+  }
+  if (Notification.permission === 'denied') {
+    return `<b>🔔 端末への通知</b><br><span style="color:var(--text2)">
+      ブラウザ側で拒否されています。サイトの設定から通知を「許可」に変えてください。</span>`;
+  }
+  return null; // 通常のボタン表示へ
+}
+async function renderPushSetting(){
+  const els = ['drvPushBanner', 'adminPushSetting'].map(id => document.getElementById(id)).filter(Boolean);
+  if (!els.length) return;
+  const note = pushStatusHtml();
+  let html;
+  if (note) {
+    html = `<div style="padding:10px 12px;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;line-height:1.7">${note}</div>`;
+  } else {
+    let on = false;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      on = !!(reg && await reg.pushManager.getSubscription()) && Notification.permission === 'granted';
+    } catch(e) {}
+    html = `<div style="padding:10px 12px;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;line-height:1.7">
+      <b>🔔 端末への通知</b>　${on
+        ? '<span style="color:var(--green,#43a047)">この端末は登録済みです</span>'
+        : '<span style="color:var(--text2)">この端末はまだ登録されていません</span>'}<br>
+      <span style="color:var(--text2)">オンにすると、アプリを閉じていても新着メッセージが端末に届きます。</span>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        ${on
+          ? `<button class="btn sml" onclick="disablePush()">通知を止める</button>
+             <button class="btn sml" onclick="sendPushTest()">テスト通知を送る</button>`
+          : `<button class="btn pri sml" onclick="enablePush()">🔔 通知を受け取る</button>`}
+      </div>
+    </div>`;
+  }
+  els.forEach(el => { el.innerHTML = html; });
+}
+
+// 通知をタップして戻ってきたとき、サービスワーカーからの合図で一覧を読み直す
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener?.('message', ev => {
+    if (ev.data?.type !== 'push-open') return;
+    try { if (me?.role === 'driver') goDrvPage(5, document.getElementById('dnt3')); } catch(e) {}
+  });
+}

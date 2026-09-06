@@ -540,6 +540,7 @@ async function ensureLineLinkCodes(){
 }
 // ドライバーポータルの掲示板タブ上部に、LINE通知の連携案内（未連携時）または連携済み表示を出す
 function renderDrvLineBanner(){
+  renderPushSetting();
   const el = document.getElementById('drvLineBanner');
   if (!el || !me?.driver_data) return;
   const d = me.driver_data;
@@ -770,6 +771,7 @@ async function sendDrvChatMessage() {
     // LINE/メール通知（1時間に1回まで: refに時間バケットを含めdedupeさせ、連投で通知が溢れないようにする）
     const hourBucket = new Date().toISOString().slice(0,13);
     notifyDrivers([eChatDrvId], 'chat', `chat-${eChatDrvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
+    pushNotify({drv_ids: [eChatDrvId], title: chatCompanyLabel(), body: body || '📎 ファイルが届いています', tag: 'chat-eChatDrvId'});
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -889,6 +891,7 @@ async function sendChatTabMessage() {
     clearChatFile('chatTabFileInput','chatTabFileChip');
     const hourBucket = new Date().toISOString().slice(0,13);
     notifyDrivers([chatTabDrvId], 'chat', `chat-${chatTabDrvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
+    pushNotify({drv_ids: [chatTabDrvId], title: chatCompanyLabel(), body: body || '📎 ファイルが届いています', tag: 'chat-chatTabDrvId'});
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -916,6 +919,7 @@ async function sendBulkChat(){
       if (error) throw error;
       ok++;
       notifyDrivers([drvId], 'chat', `chat-${drvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
+      pushNotify({drv_ids: [drvId], title: chatCompanyLabel(), body, tag: 'chat-'+drvId});
     } catch(e) { errs.push(`${drvs.find(d=>d.id===drvId)?.name||drvId}: ${e.message}`); }
   }
   showLoad(false);
@@ -1073,6 +1077,7 @@ async function sendChatGroupMessage() {
     if (g?.driver_ids?.length) {
       const hourBucket = new Date().toISOString().slice(0,13);
       notifyDrivers(g.driver_ids, 'chat', `chatgrp-${chatGroupSelId}-${hourBucket}`, `グループ「${g.name}」に新着メッセージ`, 'ポータルのグループチャットに新着メッセージがあります。', true);
+      pushNotify({drv_ids: g.driver_ids, title: g.name, body: `${chatCompanyLabel()}: ${body || '📎 ファイル'}`, tag: 'chatgrp-'+chatGroupSelId});
     }
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
