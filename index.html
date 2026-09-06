@@ -2400,37 +2400,6 @@ try {
   </div>
 </div>
 
-<!-- モーダル: タスク -->
-<div class="overlay" id="mTask">
-  <div class="modal">
-    <div class="mh" id="mTaskH">タスク 追加 <button class="ibtn" onclick="closeM('mTask')">✕</button></div>
-    <div class="fld"><label>タイトル</label><input type="text" id="tkTitle" placeholder="例: 〇〇の見積作成"></div>
-    <div class="g2">
-      <div class="fld"><label>担当者</label><select id="tkAssignee" style="width:100%"><option value="">未割当</option></select></div>
-      <div class="fld"><label>期限</label><input type="date" id="tkDue"></div>
-    </div>
-    <div class="g2">
-      <div class="fld"><label>優先度</label><select id="tkPriority">
-        <option value="low">低</option>
-        <option value="normal" selected>中</option>
-        <option value="high">高</option>
-      </select></div>
-      <div class="fld"><label>状態</label><select id="tkStatus">
-        <option value="todo">未着手</option>
-        <option value="doing">進行中</option>
-        <option value="done">完了</option>
-      </select></div>
-    </div>
-    <div class="fld"><label>メモ</label><textarea id="tkNote" rows="2" placeholder="任意"></textarea></div>
-    <div class="mfoot">
-      <button class="btn" id="tkDelBtn" style="display:none;color:var(--red-text)" onclick="deleteTask()">削除</button>
-      <button class="btn" onclick="closeM('mTask')">キャンセル</button>
-      <button class="btn pri" onclick="saveTask()">保存</button>
-    </div>
-  </div>
-</div>
-
-
 <!-- モーダル: 請求書 -->
 <div class="overlay" id="mInv">
   <div class="modal">
@@ -3058,7 +3027,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=2abff529"></script>
+<script src="js/01-core.js?v=4b411cdd"></script>
 
 <script src="js/02-drivers-pay.js?v=761c0a10"></script>
 
@@ -3113,7 +3082,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=bceabe06"></script>
+<script src="js/03-dashboard-daily.js?v=dbd86072"></script>
 
 
 <script src="js/04-monthly.js?v=318f54fe"></script>
