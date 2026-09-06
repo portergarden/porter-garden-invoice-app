@@ -1659,10 +1659,22 @@ try {
         <option value="">全ドライバー</option>
       </select>
       <button class="btn sml" id="mrShowAllBtn" onclick="toggleMrShowAll()" title="既定では対象期間に日報の提出があるドライバーのみ表示します">提出者のみ表示</button>
+      <button class="btn sml" onclick="toggleMrDrvPicker()" title="月報に出すドライバーを個別に選びます。画面と印刷の両方に反映されます">👤 対象ドライバー <span id="mrDrvCount" style="color:var(--text2);font-size:10px">全員</span></button>
       <button class="btn sml" onclick="toggleMrColPicker()" title="月報に出す項目を選びます。画面の日別明細と印刷の日めくり表の両方に反映されます">⚙ 表示項目 <span id="mrColCount" style="color:var(--text2);font-size:10px"></span></button>
       <button class="btn sml" onclick="exportMonthlyCsv()">⬇ CSV</button>
       <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4縦1枚）を作成して印刷します">🖨 印刷（ドライバー別）</button>
     </div>
+  </div>
+
+  <!-- 対象ドライバーの選択（印刷でまとめて出すとき用。画面にも効く） -->
+  <div id="mrDrvPicker" style="display:none;padding:8px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <span style="font-size:11px;font-weight:500">月報に出すドライバー</span>
+      <button class="btn sml" onclick="setAllMrDrvs(true)">提出者を全員選ぶ</button>
+      <button class="btn sml" onclick="setAllMrDrvs(false)">選択を解除（全員表示）</button>
+      <span style="font-size:10px;color:var(--text2)">誰も選ばないと全員が対象になります。上のプルダウンで1名を選んでいるときはそちらが優先されます</span>
+    </div>
+    <div id="mrDrvBoxes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px;max-height:220px;overflow-y:auto"></div>
   </div>
 
   <!-- 表示項目の選択（画面の日別明細と印刷の日めくり表の両方に効く） -->
@@ -3099,7 +3111,7 @@ try {
 <script src="js/03-dashboard-daily.js?v=d6ba21d6"></script>
 
 
-<script src="js/04-monthly.js?v=7562b352"></script>
+<script src="js/04-monthly.js?v=318f54fe"></script>
 
 
 <script src="js/05-driver-portal.js?v=f22ac35b"></script>

@@ -95,6 +95,49 @@ function toggleMrShowAll() {
   if (btn) { btn.textContent = mrShowAll ? '全員表示中' : '提出者のみ表示'; btn.classList.toggle('pri', mrShowAll); }
   renderMonthlyReport();
 }
+/* 印刷する相手を個別に選べるようにする。
+   空のときは「全員（提出者のみ表示の設定に従う）」を意味する。
+   プルダウンで1名を選んでいる場合はそちらを優先し、この選択は使わない。 */
+let mrDrvIds = new Set();
+function mrTargetDrvs() {
+  const one = +document.getElementById('mrDrvSel')?.value || null;
+  if (one) return drvs.filter(d => d.id === one);
+  if (mrDrvIds.size) return drvs.filter(d => mrDrvIds.has(d.id));
+  return activeDrvs();
+}
+function toggleMrDrvPicker() {
+  const el = document.getElementById('mrDrvPicker');
+  if (!el) return;
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  if (show) renderMrDrvPicker();
+}
+function renderMrDrvPicker() {
+  const el = document.getElementById('mrDrvBoxes');
+  if (!el) return;
+  // その期間に日報を出している人を先に並べる。誰も出していなければ在籍者全員を出す
+  const submitted = new Set((mrReports||[]).map(r => recDrv(r)?.id).filter(v => v != null));
+  const list = [...activeDrvs()].sort((a,b) => {
+    const sa = submitted.has(a.id) ? 0 : 1, sb2 = submitted.has(b.id) ? 0 : 1;
+    return sa - sb2 || (a.supplier_id||'999').localeCompare(b.supplier_id||'999');
+  });
+  el.innerHTML = list.map(d => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer${submitted.has(d.id)?'':';color:var(--text3)'}">
+    <input type="checkbox" onchange="toggleMrDrv(${d.id},this.checked)"${mrDrvIds.has(d.id)?' checked':''}>${escHtml(d.name)}${d.supplier_id?`<span style="color:var(--text3);font-size:9.5px">(${escHtml(d.supplier_id)})</span>`:''}${submitted.has(d.id)?'':'<span style="color:var(--text3);font-size:9.5px">未提出</span>'}
+  </label>`).join('');
+  const cnt = document.getElementById('mrDrvCount');
+  if (cnt) cnt.textContent = mrDrvIds.size ? `${mrDrvIds.size}名` : '全員';
+}
+function toggleMrDrv(id, on) {
+  if (on) mrDrvIds.add(id); else mrDrvIds.delete(id);
+  renderMrDrvPicker();
+  renderMonthlyReport();
+}
+function setAllMrDrvs(on) {
+  mrDrvIds = new Set();
+  if (on) (mrReports||[]).forEach(r => { const d = recDrv(r); if (d) mrDrvIds.add(d.id); });
+  renderMrDrvPicker();
+  renderMonthlyReport();
+}
 // 月報タブのドライバー選択プルダウンを更新する（登録ドライバーの追加・削除に追随させるため
 // 画面表示のたびに呼び出す。選択中の値は維持する）
 function populateMrDrvSel() {
@@ -133,6 +176,7 @@ async function renderMonthlyReport() {
     if (!error) drReports = data || [];
     mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
   } catch(e) {}
+  if (document.getElementById('mrDrvPicker')?.style.display === 'block') renderMrDrvPicker();
 
   // 請求書データ（invoices）から当月分
   const invMonth = recs.filter(r => r.date && r.date >= from && r.date <= to);
@@ -143,9 +187,10 @@ async function renderMonthlyReport() {
   // 日報がどのドライバーにもマッチせず月報から丸ごと抜け落ちていた
   populateMrDrvSel();
   const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
-  let targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : activeDrvs();
-  if (mrDrvId) {
-    drReports = drReports.filter(r => recDrv(r)?.id === mrDrvId);
+  let targetDrvs = mrTargetDrvs();
+  if (mrDrvId || mrDrvIds.size) {
+    const ids = new Set(targetDrvs.map(d=>d.id));
+    drReports = drReports.filter(r => ids.has(recDrv(r)?.id));
   } else if (!mrShowAll) {
     // 既定では対象期間に日報の提出があるドライバーのみを表示する（未提出者はカード一覧から省く）。
     // 「全員表示」ボタンで切り替えられる
@@ -294,7 +339,7 @@ async function renderMonthlyReport() {
                         // 目立たせたい列だけ色を付ける。備考は長いので省略表示にする
                         const extra = c.key==='alc' && alcWarn ? ';color:var(--red);font-weight:600'
                                     : c.key==='health' && healthBad ? ';color:var(--amber-text)'
-                                    : c.key==='note' ? ';max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' : '';
+                                    : ';white-space:pre-wrap;word-break:break-word';   // 途中で切らずに折り返す
                         const title = c.key==='note' ? ` title="${escHtml(r.note||'')}"` : '';
                         const v = c.key==='status' && r.status==='rejected'
                                 ? '<span class="dr-status rejected">差</span>' : (c.get ? c.get(r) : '');
@@ -386,7 +431,7 @@ async function printMonthlyReportA4() {
 
   // 月報タブで選択中のドライバーがいればその1名分のみ、未選択（全ドライバー）ならこれまで通り全員分を出力する
   const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
-  const targetDrvs = mrDrvId ? drvs.filter(d=>d.id===mrDrvId) : activeDrvs();
+  const targetDrvs = mrTargetDrvs();
 
   const pages = targetDrvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
@@ -471,11 +516,12 @@ async function printMonthlyReportA4() {
     .mr-summary{font-size:10px;color:#333;margin-bottom:6px;padding:4px 6px;background:#f2f2f2;border-radius:3px}
     *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
     table.mr-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.7px}
-    table.mr-table th,table.mr-table td{border:1px solid #666;padding:2px 3px}
+    table.mr-table th,table.mr-table td{border:1px solid #666;padding:2px 3px;white-space:normal;word-break:break-word;overflow-wrap:anywhere}
     table.mr-table th{background:#eee;font-weight:600}
     table.mr-table td.num{text-align:right}
     table.mr-table td.center{text-align:center}
-    table.mr-table td.car,table.mr-table td.site{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    /* 以前は1行に収めて「…」で切っていたが、車番や稼働先が読めなくなるため折り返す */
+    table.mr-table td.car,table.mr-table td.site{white-space:normal;word-break:break-word}
     tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
     tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
     tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
