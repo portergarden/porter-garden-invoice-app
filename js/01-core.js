@@ -110,6 +110,7 @@ function proceedAfterLogin() {
   pushSyncOnLogin().then(()=>renderPushSetting()).catch(()=>{});
   // 未読件数をタブとアプリのアイコンに出す
   reloadUnreadCounts().catch(()=>{});
+  startAppUpdateWatch();
   // ドライバーロールの場合はポータル画面に切替。ここで例外が起きた場合、
   // 以前は「フォールバックとして管理画面(pgMain)を表示する」実装になっていたが、
   // これだとドライバーに他ドライバー・他取引先のデータが見える管理画面がそのまま表示されてしまう
@@ -4150,6 +4151,57 @@ function applyWarnDot(el, show) {
   let dot = el.querySelector('.nav-warn-dot');
   if (show && !dot) { dot = document.createElement('span'); dot.className = 'nav-warn-dot'; el.appendChild(dot); }
   else if (!show && dot) { dot.remove(); }
+}
+/* ===== アプリの更新 =====
+   ホーム画面に追加したアプリ（standalone表示）にはブラウザの更新ボタンが無く、
+   古い版のまま使い続けてしまう。アプリ内に更新手段を用意し、
+   新しい版が出たら帯で知らせる。
+   版の判定には index.html に埋め込まれている js の ?v= を使う
+   （tools/stamp-assets.py が中身のハッシュから付けているので、中身が変われば必ず変わる）。 */
+const APP_VERSION = (document.querySelector('script[src*="01-core.js"]')?.getAttribute('src')?.match(/[?&]v=([0-9a-f]+)/) || [])[1] || '';
+let appUpdateDismissed = '';   // 「あとで」を押した版（同じ版で何度も出さない）
+
+async function reloadApp(){
+  showLoad(true);
+  try {
+    // 配信側がHTMLをキャッシュしているため、先に取り直してから読み込み直す
+    await fetch(location.pathname + '?_=' + Date.now(), {cache:'reload'});
+    const reg = await navigator.serviceWorker?.getRegistration?.();
+    await reg?.update?.();
+  } catch(e) { console.warn('reloadApp:', e.message); }
+  location.reload();
+}
+function dismissAppUpdate(){
+  appUpdateDismissed = document.getElementById('appUpdateBar')?.dataset.v || '';
+  document.getElementById('appUpdateBar')?.classList.add('hide');
+}
+// 配信されている版と、いま動いている版を比べる
+let appUpdateLastCheck = 0;
+async function checkAppUpdate(){
+  if (!APP_VERSION) return;
+  // スマホは他アプリとの行き来のたびに呼ばれるので、続けざまには確認しない
+  if (Date.now() - appUpdateLastCheck < 60000) return;
+  appUpdateLastCheck = Date.now();
+  try {
+    const res = await fetch(location.pathname + '?_=' + Date.now(), {cache:'no-store'});
+    if (!res.ok) return;
+    const latest = ((await res.text()).match(/01-core\.js\?v=([0-9a-f]+)/) || [])[1];
+    if (!latest || latest === APP_VERSION || latest === appUpdateDismissed) return;
+    const bar = document.getElementById('appUpdateBar');
+    if (!bar) return;
+    bar.dataset.v = latest;
+    bar.classList.remove('hide');
+  } catch(e) {}
+}
+/* 更新の確認を始める。ログイン後に一度、そのあとは30分ごと。
+   ホーム画面のアプリは閉じずに放置されることが多いので、
+   画面に戻ってきたときにも確認する（そこが一番気づいてほしい場面）。 */
+let appUpdateTimer = null;
+function startAppUpdateWatch(){
+  if (appUpdateTimer) return;
+  checkAppUpdate();
+  appUpdateTimer = setInterval(checkAppUpdate, 30*60*1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAppUpdate(); });
 }
 function showLoad(v){const el=document.getElementById('loadOv');if(el)el.classList.toggle('on',v);}
 

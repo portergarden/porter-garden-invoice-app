@@ -67,7 +67,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css?v=161cbff7">
+<link rel="stylesheet" href="css/app.css?v=cd3eb1a4">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -139,6 +139,12 @@ try {
 </div>
 <!-- 新着メッセージのポップアップの置き場所。どの画面より前面に出す必要があるため本文の直前に置く -->
 <div id="msgPop"></div>
+<!-- 新しい版が出たときの通知帯 -->
+<div id="appUpdateBar" class="hide">
+  <span>新しいバージョンがあります</span>
+  <button class="upd-go" onclick="reloadApp()">更新する</button>
+  <button class="upd-x" onclick="dismissAppUpdate()" title="あとで">✕</button>
+</div>
 <!-- メイン -->
 <div id="pgMain" class="hide" style="display:flex;flex-direction:column;flex:1">
   <div class="sbar"><div class="sbar-p" id="sprog" style="width:100%"></div></div>
@@ -150,6 +156,7 @@ try {
     <div class="topbar-r">
       <span class="conn-dot ok" title="Supabase接続中"></span>
       <span id="tbName"></span><span id="tbBdg"></span>
+      <button class="ibtn" onclick="reloadApp()" title="最新の状態に更新">🔄</button>
       <button class="ibtn" onclick="openChangePwM()" title="パスワードを変更">🔑</button>
       <button class="ibtn" id="themeToggleBtn" onclick="toggleTheme()" title="ダーク/ライトモード切替"></button>
       <button class="btn sml" onclick="logout()">ログアウト</button>
@@ -1949,6 +1956,7 @@ try {
     <div style="display:flex;align-items:center;gap:8px">
       <span id="drvPortalName" style="font-size:11px;color:var(--text2)"></span>
       <span id="drvPortalBdg" class="bdg drv" style="font-size:10px"></span>
+      <button class="ibtn" onclick="reloadApp()" title="最新の状態に更新">🔄</button>
       <button class="ibtn" onclick="openChangePwM()" title="パスワードを変更">🔑</button>
       <button class="ibtn" id="themeToggleBtnDrv" onclick="toggleTheme()" title="ダーク/ライトモード切替"></button>
       <button class="ibtn" onclick="logout()" title="ログアウト">⏏</button>
@@ -3051,7 +3059,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=df4655e9"></script>
+<script src="js/01-core.js?v=286b34d8"></script>
 
 <script src="js/02-drivers-pay.js?v=bfc7aadb"></script>
 
