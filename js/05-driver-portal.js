@@ -412,6 +412,81 @@ async function notifyDrivers(drvIds, kind, ref, title, body, dedupe=false){
     if (data?.error) throw new Error(data.error);
   } catch(e) { console.warn('notifyDrivers:', e.message); }
 }
+/* ===== 未読件数のバッジ =====
+   数え方が画面ごとにばらけると合わなくなるので、必ずここで数え直してから表示する。
+   新着や既読のたびに呼ばれるが、まとめて届いたときに何度も問い合わせないよう少し待ってから実行する。 */
+let drvUnreadDirectCount = 0;      // ドライバー: 管理側からの未読メッセージ数
+let myChatGroupUnreadCounts = {};  // ドライバー: group_id -> 未読件数
+let chatGroupUnreadCounts = {};    // 管理側: group_id -> 未読件数
+let unreadRefreshTimer = null;
+const GROUP_MSG_SCAN = 500;        // 未読を数えるためにさかのぼる件数
+
+const sumCounts = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
+
+// 直近のグループ発言から、自分がまだ読んでいないものを数える
+function countGroupUnread(msgs, readAt, myKey){
+  const out = {};
+  (msgs || []).forEach(m => {
+    if (m.sender_key === myKey) return;          // 自分の発言は未読にしない
+    const r = readAt[m.group_id];
+    if (r && r >= m.created_at) return;
+    out[m.group_id] = (out[m.group_id] || 0) + 1;
+  });
+  return out;
+}
+async function reloadUnreadCounts(){
+  if (!sb || !me) return;
+  try {
+    if (me.role === 'driver') {
+      if (!me.driver_id) return;
+      const myKey = 'driver:' + me.driver_id;
+      const [dm, reads, gmsgs] = await Promise.all([
+        sb.from('driver_messages').select('id').eq('drv_id', me.driver_id).eq('sender_role','admin').is('read_at', null),
+        sb.from('chat_group_reads').select('group_id, last_read_at').eq('member_key', myKey),
+        sb.from('chat_group_messages').select('group_id, created_at, sender_key').order('created_at', {ascending:false}).limit(GROUP_MSG_SCAN),
+      ]);
+      drvUnreadDirectCount = (dm.data || []).length;
+      const readAt = {};
+      (reads.data || []).forEach(r => { readAt[r.group_id] = r.last_read_at; });
+      myChatGroupUnreadCounts = countGroupUnread(gmsgs.data, readAt, myKey);
+    } else {
+      const myKey = 'staff:' + me.id;
+      const [, reads, gmsgs] = await Promise.all([
+        loadDriverChatUnread(),
+        sb.from('chat_group_reads').select('group_id, last_read_at').eq('member_key', myKey),
+        sb.from('chat_group_messages').select('group_id, created_at, sender_key').order('created_at', {ascending:false}).limit(GROUP_MSG_SCAN),
+      ]);
+      const readAt = {};
+      (reads.data || []).forEach(r => { readAt[r.group_id] = r.last_read_at; });
+      chatGroupUnreadCounts = countGroupUnread(gmsgs.data, readAt, myKey);
+    }
+  } catch(e) { console.warn('reloadUnreadCounts:', e.message); }
+  refreshUnreadBadges();
+}
+// 数え直した結果をタブとアプリのアイコンに反映する
+function refreshUnreadBadges(){
+  if (!me) return;
+  let total = 0;
+  if (me.role === 'driver') {
+    const dm = drvUnreadDirectCount, grp = sumCounts(myChatGroupUnreadCounts);
+    setNavCount('drvSubChat3', dm);
+    setNavCount('drvSubGroupChat3', grp);
+    setNavCount('dnt3', dm + grp);   // 連絡タブは個別＋グループの合計
+    total = dm + grp;
+  } else {
+    const dm = sumCounts(driverChatUnreadCounts), grp = sumCounts(chatGroupUnreadCounts);
+    setNavCount('nt27', dm);
+    setNavCount('nt30', grp);
+    total = dm + grp;
+  }
+  setAppBadgeCount(total);
+}
+// 新着や既読の直後に呼ぶ。連投されても問い合わせは1回にまとめる
+function scheduleUnreadRefresh(){
+  clearTimeout(unreadRefreshTimer);
+  unreadRefreshTimer = setTimeout(() => { reloadUnreadCounts().catch(()=>{}); }, 600);
+}
+
 /* ===== 新着メッセージのポップアップ（LINE風） =====
    チャットの画面を開いていなくても新着に気づけるよう、ログインしている間はずっと購読しておき、
    画面の隅にカードを出す。カードを押すとその会話へ移動する。
@@ -483,6 +558,7 @@ async function startMsgPopupWatch(){
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'driver_messages', filter:`drv_id=eq.${me.driver_id}`}, ({new: m}) => {
           if (m.sender_role !== 'admin') return;                                   // 自分が送った分は出さない
           if (document.getElementById('dpg5')?.style.display !== 'none') return;   // 今その画面を見ている
+          scheduleUnreadRefresh();
           showMsgPopup('💬', chatCompanyLabel(), msgPopPreview(m), () => msgPopOpenDrvChat());
         }).subscribe());
       msgPopChannels.push(sb.channel('msgpop_grp_drv_'+me.driver_id)
@@ -491,6 +567,7 @@ async function startMsgPopupWatch(){
           if (m.sender_key === 'driver:'+me.driver_id) return;
           if (myChatGroupSelId === m.group_id) return;
           const who = m.sender_type === 'staff' ? chatCompanyLabel() : (m.sender_name || 'ドライバー');
+          scheduleUnreadRefresh();
           showMsgPopup('👥', `${groupName(m.group_id)}・${who}`, msgPopPreview(m), () => msgPopOpenDrvGroup(m.group_id));
         }).subscribe());
       return;
@@ -501,6 +578,7 @@ async function startMsgPopupWatch(){
         if (m.sender_role !== 'driver') return;
         if (chatTabDrvId === m.drv_id) return;
         const name = (drvs||[]).find(d=>d.id===m.drv_id)?.name || m.sender_name || 'ドライバー';
+        scheduleUnreadRefresh();
         showMsgPopup('💬', name, msgPopPreview(m), () => msgPopOpenAdminChat(m.drv_id));
       }).subscribe());
     msgPopChannels.push(sb.channel('msgpop_grp_admin')
@@ -508,6 +586,7 @@ async function startMsgPopupWatch(){
         if (m.sender_type !== 'driver') return;
         if (chatGroupSelId === m.group_id) return;
         const g = (chatGroups||[]).find(x=>x.id===m.group_id);
+        scheduleUnreadRefresh();
         showMsgPopup('👥', `${g?.name || 'グループ'}・${m.sender_name || 'ドライバー'}`, msgPopPreview(m), () => msgPopOpenAdminGroup(m.group_id));
       }).subscribe());
   } catch(e) { console.warn('startMsgPopupWatch:', e.message); }
@@ -1088,6 +1167,7 @@ async function markChatGroupRead(id) {
     await sb.from('chat_group_reads').upsert({group_id:id, member_key:'staff:'+me.id, last_read_at:new Date().toISOString()}, {onConflict:'group_id,member_key'});
     chatGroupMyReads[id] = new Date().toISOString();
   } catch(e) { console.warn('markChatGroupRead:', e.message); }
+  scheduleUnreadRefresh();
 }
 function subscribeChatGroupRealtime() {
   unsubscribeChatGroupRealtime();
@@ -1167,6 +1247,7 @@ async function markDrvChatRead(drvId, forSenderRole) {
   try {
     await sb.from('driver_messages').update({read_at: new Date().toISOString()}).eq('drv_id', drvId).eq('sender_role', forSenderRole).is('read_at', null);
   } catch(e) { console.warn('markDrvChatRead:', e.message); }
+  scheduleUnreadRefresh();
 }
 
 // 管理側: 全ドライバー書類状況一覧
@@ -1406,6 +1487,7 @@ async function markMyChatGroupRead(id) {
     await sb.from('chat_group_reads').upsert({group_id:id, member_key:'driver:'+me.driver_id, last_read_at:new Date().toISOString()}, {onConflict:'group_id,member_key'});
     myChatGroupMyReads[id] = new Date().toISOString();
   } catch(e) { console.warn('markMyChatGroupRead:', e.message); }
+  scheduleUnreadRefresh();
 }
 function subscribeMyChatGroupRealtime() {
   unsubscribeMyChatGroupRealtime();

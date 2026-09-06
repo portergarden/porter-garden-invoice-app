@@ -108,6 +108,8 @@ function proceedAfterLogin() {
   startMsgPopupWatch().catch(()=>{});
   // 既に通知を許可している端末は、購読を張り直して設定画面の表示も更新しておく
   pushSyncOnLogin().then(()=>renderPushSetting()).catch(()=>{});
+  // 未読件数をタブとアプリのアイコンに出す
+  reloadUnreadCounts().catch(()=>{});
   // ドライバーロールの場合はポータル画面に切替。ここで例外が起きた場合、
   // 以前は「フォールバックとして管理画面(pgMain)を表示する」実装になっていたが、
   // これだとドライバーに他ドライバー・他取引先のデータが見える管理画面がそのまま表示されてしまう
@@ -249,6 +251,7 @@ async function logout(exp=false){
   stopSess();
   unsubscribeDrvChatRealtime();
   stopMsgPopupWatch();
+  setAppBadgeCount(0);
   await pushClearOnLogout();
   document.body.classList.remove('drv-lock');
   if(me)await addLog('ログアウト',exp?'セッション期限切れ':`${me.name}がログアウト`);
@@ -4112,6 +4115,35 @@ function setNavWarnDot(tabId, show) {
   const navEl = document.getElementById('nav-'+grp);
   const groupHasWarn = navEl ? !!navEl.querySelector('.nav-warn-dot') : show;
   applyWarnDot(document.getElementById('gt-'+grp), groupHasWarn);
+}
+/* タブの右上に未読件数を出す（0件なら消す）。
+   赤丸(setNavWarnDot)は「期限が近い」等の警告用で、こちらはメッセージの溜まり具合を出す。
+   グループタブ(gt-xxx)には、その配下のタブの合計を出す。 */
+function setNavCount(tabId, n) {
+  applyNavCount(document.getElementById(tabId), n);
+  const m = tabId.match(/^nt(\d+)$/);
+  const grp = m ? PAGE_GROUP[+m[1]] : null;
+  if (!grp) return;
+  const navEl = document.getElementById('nav-'+grp);
+  let total = 0;
+  navEl?.querySelectorAll('.nav-count').forEach(el => { total += parseInt(el.dataset.n || '0', 10) || 0; });
+  applyNavCount(document.getElementById('gt-'+grp), total);
+}
+function applyNavCount(el, n) {
+  if (!el) return;
+  let b = el.querySelector('.nav-count');
+  if (!n) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('span'); b.className = 'nav-count'; el.appendChild(b); }
+  b.dataset.n = n;
+  b.textContent = n > 99 ? '99+' : String(n);
+}
+/* ホーム画面に追加したアイコンの右上に未読件数を出す（LINEと同じ見え方）。
+   対応していない端末では何も起きない。 */
+function setAppBadgeCount(n) {
+  try {
+    if (n > 0) navigator.setAppBadge?.(n);
+    else navigator.clearAppBadge?.();
+  } catch(e) {}
 }
 function applyWarnDot(el, show) {
   if (!el) return;

@@ -109,6 +109,10 @@ input:focus,select:focus{border-color:var(--blue)}
 .ntab.on{color:var(--text);border-bottom-color:var(--blue);font-weight:500}
 .ntab:hover{color:var(--text)}
 .nav-warn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red)}
+/* タブ右上の未読件数。赤丸(nav-warn-dot)は「何かある」の合図、こちらは「何件あるか」を出す */
+.nav-count{position:absolute;top:1px;right:1px;min-width:14px;height:14px;padding:0 3px;border-radius:99px;background:var(--red);color:#fff;font-size:9px;font-weight:700;line-height:14px;text-align:center;box-sizing:border-box;pointer-events:none}
+/* ドライバーポータルのタブは文字が幅いっぱいに入るので、重ねずにラベルの横に並べる */
+.drv-nav .nav-count, .drv-subnav .nav-count{position:static;flex-shrink:0}
 .chat-badge{min-width:15px;height:15px;padding:0 3px;border-radius:99px;background:var(--red);color:#fff;font-size:9px;font-weight:700;line-height:15px;text-align:center;box-sizing:border-box;display:inline-block}
 .nav-group{display:flex;background:var(--bg2);border-bottom:0.5px solid var(--border);padding:0 14px;overflow-x:auto}
 /* 受注入力（手入力）の全画面表示モード：ヘッダー・ナビを隠して入力欄を広く使う */
