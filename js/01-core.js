@@ -450,6 +450,11 @@ const canonicalCar=car=>{
   return driverIndexes().tailCar.get(n) || car;
 };
 const lkC=id=>clients.find(c=>c.id===id)||null;
+/* 取引先を、管理者でもドライバーでも引けるようにする。
+   ドライバーは clients テーブルを読めない（RLSで拒否される）ため、
+   名前だけを返すRPCで取得した一覧(driverClientNames)から引く。
+   これを使わずに lkC() だけで引くと、ドライバーの画面では稼働先が常に空になる。 */
+const lkCliAny = id => (id ? (lkC(id) || (driverClientNames||[]).find(c=>c.id===id) || null) : null);
 // コムトラック等の「車番＋氏名」が1セルに入った値を車番と氏名に分ける。
 // 帳票によって「8467 大沼凌」のようにスペース区切りのものと、「9117山本健太郎」のように
 // 区切りが無いものが混在するため、スペースだけに頼らず車番の形からも切り出す。
@@ -4152,6 +4157,41 @@ function applyWarnDot(el, show) {
   if (show && !dot) { dot = document.createElement('span'); dot.className = 'nav-warn-dot'; el.appendChild(dot); }
   else if (!show && dot) { dot.remove(); }
 }
+/* ===== 帳票のプレビュー =====
+   これまでは別ウィンドウを開いていきなり印刷を始めていた。
+   中身を確認できないうえ、ホーム画面に追加したアプリでは別ウィンドウに
+   戻るボタンが無く、元の画面に帰れなくなる。
+   そのためアプリの中で見せ、印刷は本人が押したときだけ実行する。 */
+let docPreviewHtml = '';
+function openDocPreview(html, title){
+  docPreviewHtml = html;
+  const t = document.getElementById('docPreviewTitle');
+  if (t) t.textContent = title || 'プレビュー';
+  const f = document.getElementById('docPreviewFrame');
+  if (f) f.srcdoc = html;
+  document.getElementById('mDocPreview')?.classList.add('on');
+}
+function printDocPreview(){
+  const f = document.getElementById('docPreviewFrame');
+  try {
+    f.contentWindow.focus();
+    f.contentWindow.print();
+  } catch(e) {
+    showT('印刷を開始できませんでした。「別のウィンドウで開く」からお試しください', 'ter');
+  }
+}
+// 端末の都合で枠内から印刷できない場合の逃げ道。開いた先にも印刷と閉じるを付ける
+function openDocPreviewInWindow(){
+  if (!docPreviewHtml) return;
+  const win = window.open('', '_blank');
+  if (!win) { showT('ポップアップがブロックされました。ブラウザの設定をご確認ください', 'twa'); return; }
+  const bar = '<div class="doc-print-bar" style="text-align:right;padding:10px 16px">'
+    + '<button onclick="window.print()" style="font-size:13px;padding:6px 14px;cursor:pointer">🖨 印刷 / PDF保存</button> '
+    + '<button onclick="window.close()" style="font-size:13px;padding:6px 14px;cursor:pointer">✕ 閉じる</button>'
+    + '</div><style>@media print{.doc-print-bar{display:none}}</style>';
+  writeStatementWindow(win, () => docPreviewHtml.replace('<body>', '<body>' + bar));
+}
+
 /* ===== アプリの更新 =====
    ホーム画面に追加したアプリ（standalone表示）にはブラウザの更新ボタンが無く、
    古い版のまま使い続けてしまう。アプリ内に更新手段を用意し、

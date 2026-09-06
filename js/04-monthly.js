@@ -19,7 +19,7 @@ const MR_COLS = [
   {key:'dow',      label:'曜日',        def:true,  align:'center', pw:4,  screen:false, print:true},
   {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
   {key:'worktime', label:'稼働時間',    def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(r.start_time||'?')}-${escHtml(r.end_time||'?')}`:''},
-  {key:'site',     label:'稼働先',      def:false, align:'left',   pw:13, get:r=>{const c=lkC(r.cli);return c?escHtml(c.short||c.name):'';}},
+  {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
   {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
   {key:'odo',      label:'メーター',    def:false, align:'right',  pw:11, get:r=>(r.start_odometer!=null||r.end_odometer!=null)?`${r.start_odometer??'—'}/${r.end_odometer??'—'}`:''},
   {key:'tak',      label:'宅配便',      def:true,  align:'right',  pw:8,  get:r=>String(r.qty_takkyubin||0)},
@@ -412,19 +412,15 @@ async function printMonthlyReportA4() {
   const monthFrom = `${monthStr}-01`;
   const monthTo = `${monthStr}-${String(lastDay).padStart(2,'0')}`;
 
-  // await(データ取得)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
-  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
-  // データが揃ってからそのタブへ内容を書き込む
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-
+  // 印刷はプレビューを見てから本人が押す。別ウィンドウを先に開く必要がなくなったので、
+  // ポップアップブロックの心配もなくなった
   let drReports = [];
   try {
     const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*').gte('date', monthFrom).lte('date', monthTo).order('date').order('id'));
     if (error) throw error;
     drReports = data || [];
     mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
-  } catch(e) { win.close(); alert('日報データの取得に失敗しました: ' + e.message); return; }
+  } catch(e) { alert('日報データの取得に失敗しました: ' + e.message); return; }
 
   const weekdayLabel = ['日','月','火','水','木','金','土'];
   const cAll = companySettings || {};
@@ -499,7 +495,7 @@ async function printMonthlyReportA4() {
     })
     .filter(Boolean);
 
-  if (!pages.length) { win.close(); alert(mrDrvId ? '選択中のドライバーは対象月に日報データがありません' : '対象月に日報データがありません'); return; }
+  if (!pages.length) { alert(mrDrvId ? '選択中のドライバーは対象月に日報データがありません' : '対象月に日報データがありません'); return; }
 
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>月報_${monthStr}</title>
@@ -528,10 +524,9 @@ async function printMonthlyReportA4() {
     tr.alc{background:#fdeaea}
   </style></head><body>
   ${pages.join('')}
-  <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
 
-  writeStatementWindow(win, () => html);
+  openDocPreview(html, `${y}年${m}月の月報`);
 }
 
 function exportMonthlyCsv() {

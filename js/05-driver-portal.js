@@ -1901,6 +1901,9 @@ async function renderDriverMonthly() {
       .in('car', drvData.cars||[]).gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))).order('date').order('id'));
     if (error) throw error;
     const reps = data||[];
+    // 稼働先の名前を引けるようにする。ドライバーはclientsテーブルを読めないため、
+    // 名前だけを返すRPCの一覧を先に用意しておく（これが無いと稼働先が空欄になる）
+    await populateDriverCliList();
     // 月報CSV出力（exportDriverMonthlyCsv）が「今表示中の月」を正しく参照できるよう、共有配列にも反映しておく
     dailyReports = reps;
     const totalKm = reps.reduce((a,r)=>a+(+r.distance_km||0),0);
@@ -1908,6 +1911,17 @@ async function renderDriverMonthly() {
     const totalNeko = reps.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
     const totalCharter = reps.reduce((a,r)=>a+(+r.qty_charter||0),0);
     const workDays = new Set(reps.map(r=>r.date)).size;
+    // 稼働先ごとの日数。同じ日に同じ稼働先が複数件あっても1日と数える
+    const daysBySite = {};
+    reps.forEach(r => {
+      const site = lkCliAny(r.cli);
+      const key = site ? (site.short||site.name) : '（未設定）';
+      (daysBySite[key] = daysBySite[key] || new Set()).add(r.date);
+    });
+    const siteRows = Object.entries(daysBySite)
+      .sort((a,b) => b[1].size - a[1].size)
+      .map(([name, days]) => `<div class="pnl-row sub"><span>${escHtml(name)}</span><span>${days.size}日</span></div>`)
+      .join('');
     el.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
         <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
@@ -1918,8 +1932,18 @@ async function renderDriverMonthly() {
       <div class="pnl-row"><span>ポスト便</span><span>${totalNeko.toLocaleString()}個</span></div>
       <div class="pnl-row"><span>チャーター便</span><span>${totalCharter.toLocaleString()}件</span></div>
       <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:8px">
+        <div style="font-size:10px;color:var(--text2);margin-bottom:4px;font-weight:500">稼働先ごとの日数</div>
+        ${siteRows || '<div class="pnl-row sub"><span style="color:var(--text2)">記録なし</span><span></span></div>'}
+      </div>
+      <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:8px">
         <div style="font-size:10px;color:var(--text2);margin-bottom:4px;font-weight:500">日別明細</div>
-        ${reps.map(r=>`<div class="pnl-row sub"><span>${r.date}</span><span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ポスト${r.qty_nekopos||0}</span></div>`).join('')}
+        ${reps.map(r=>{
+          const site = lkCliAny(r.cli);
+          return `<div class="pnl-row sub">
+            <span>${escHtml(r.date||'')}${site?` <span style="color:var(--text2)">${escHtml(site.short||site.name)}</span>`:''}</span>
+            <span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ポスト${r.qty_nekopos||0}</span>
+          </div>`;
+        }).join('')}
       </div>`;
   } catch(e) { el.innerHTML = `<div style="color:var(--red);font-size:11px">${e.message}</div>`; }
 }
@@ -1947,21 +1971,20 @@ async function printDriverMonthlyReportA4() {
   const monthFrom = `${monthStr}-01`;
   const monthTo = `${monthStr}-${String(lastDay).padStart(2,'0')}`;
 
-  // await(データ取得)の後にwindow.open()すると、ブラウザがユーザー操作から切り離されたと
-  // 判断してポップアップブロックする（特にSafari）ため、クリック時に空タブを先に開いておき、
-  // データが揃ってからそのタブへ内容を書き込む
-  const win = window.open('','_blank');
-  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'twa'); return; }
-
+  // 印刷はプレビューを見てから本人が押す。先に別ウィンドウを開く必要がなくなったため、
+  // ポップアップブロックにも引っかからない
   let dReports = [];
   try {
     const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*')
       .in('car', d.cars||[]).gte('date', monthFrom).lte('date', monthTo).order('date').order('id'));
     if (error) throw error;
     dReports = data || [];
-  } catch(e) { win.close(); showT('日報データの取得に失敗しました: ' + e.message, 'twa'); return; }
+  } catch(e) { showT('日報データの取得に失敗しました: ' + e.message, 'twa'); return; }
 
-  if (!dReports.length) { win.close(); showT('対象月の日報データがありません', 'twa'); return; }
+  if (!dReports.length) { showT('対象月の日報データがありません', 'twa'); return; }
+
+  // 稼働先の名前を引くための一覧（ドライバーはclientsテーブルを読めない）
+  await populateDriverCliList();
 
   const weekdayLabel = ['日','月','火','水','木','金','土'];
   const cAll = companySettings || {};
@@ -1984,7 +2007,7 @@ async function printDriverMonthlyReportA4() {
     const holName = jpHolidayName(dateStr);
     const r = byDate[dateStr];
     const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
-    const site = r ? lkC(r.cli) : null;
+    const site = r ? lkCliAny(r.cli) : null;
     const rowCls = alcWarn ? 'alc' : holName ? 'hol' : wd===0 ? 'sun' : wd===6 ? 'sat' : '';
     dayRows.push(`<tr${rowCls?` class="${rowCls}"`:''}>
       <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${day}</td>
@@ -2041,17 +2064,17 @@ async function printDriverMonthlyReportA4() {
     table.mr-table th{background:#eee;font-weight:600}
     table.mr-table td.num{text-align:right}
     table.mr-table td.center{text-align:center}
-    table.mr-table td.car,table.mr-table td.site{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    /* 以前は1行に収めて「…」で切っていたが、車番や稼働先が読めなくなるため折り返す */
+    table.mr-table td.car,table.mr-table td.site{white-space:normal;word-break:break-word}
     tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
     tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
     tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
     tr.alc{background:#fdeaea}
   </style></head><body>
   ${page}
-  <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
 
-  writeStatementWindow(win, () => html);
+  openDocPreview(html, `${y}年${m}月の月報`);
 }
 
 /* ===== 掲示板 ===== */

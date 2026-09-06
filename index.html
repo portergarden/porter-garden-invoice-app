@@ -1678,7 +1678,7 @@ try {
       <button class="btn sml" onclick="toggleMrDrvPicker()" title="月報に出すドライバーを個別に選びます。画面と印刷の両方に反映されます">👤 対象ドライバー <span id="mrDrvCount" style="color:var(--text2);font-size:10px">全員</span></button>
       <button class="btn sml" onclick="toggleMrColPicker()" title="月報に出す項目を選びます。画面の日別明細と印刷の日めくり表の両方に反映されます">⚙ 表示項目 <span id="mrColCount" style="color:var(--text2);font-size:10px"></span></button>
       <button class="btn sml" onclick="exportMonthlyCsv()">⬇ CSV</button>
-      <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4縦1枚）を作成して印刷します">🖨 印刷（ドライバー別）</button>
+      <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4縦1枚）を画面で確認してから印刷・PDF保存できます">📄 月報を見る（ドライバー別）</button>
     </div>
   </div>
 
@@ -1998,7 +1998,7 @@ try {
         <input type="month" id="drvMrMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDriverMonthly()">
         <button class="btn sml" onclick="singleMonthShift('drvMrMonth',1,renderDriverMonthly)" title="翌月">▶</button>
         <button class="btn sml" onclick="exportDriverMonthlyCsv()">⬇ CSV</button>
-        <button class="btn sml" onclick="printDriverMonthlyReportA4()" title="1日〜月末までの日めくり表（A4縦1枚）を作成して印刷・保存します">🖨 月報印刷</button>
+        <button class="btn sml" onclick="printDriverMonthlyReportA4()" title="1日〜月末までの日めくり表（A4縦1枚）を画面で確認してから印刷・PDF保存できます">📄 月報を見る</button>
       </div>
       <div id="drvMonthlyBody" style="padding:8px 14px"></div>
     </div>
@@ -2158,6 +2158,21 @@ try {
       <button class="btn" onclick="document.getElementById('drvChatFileInput').click()" title="ファイルを添付">📎</button>
       <input type="text" id="drvChatInput" placeholder="メッセージを入力…" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')sendDrvChatMessage()">
       <button class="btn pri" onclick="sendDrvChatMessage()">送信</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 帳票のプレビュー。印刷する前に中身を確認できるようにする。
+     ホーム画面に追加したアプリでは別ウィンドウに戻るボタンが無いため、アプリの中で見せる。
+     帳票側のCSSが画面に混ざらないよう iframe に閉じ込める -->
+<div class="overlay" id="mDocPreview">
+  <div class="modal" style="width:min(920px,96vw);height:90vh;display:flex;flex-direction:column">
+    <div class="mh"><span id="docPreviewTitle">プレビュー</span> <button class="ibtn" onclick="closeM('mDocPreview')">✕</button></div>
+    <iframe id="docPreviewFrame" title="帳票プレビュー" style="flex:1;width:100%;min-height:0;border:0.5px solid var(--border2);border-radius:var(--radius);background:#fff"></iframe>
+    <div class="mfoot" style="flex-wrap:wrap;gap:6px">
+      <button class="btn" onclick="closeM('mDocPreview')">閉じる</button>
+      <button class="btn" onclick="openDocPreviewInWindow()">別のウィンドウで開く</button>
+      <button class="btn pri" onclick="printDocPreview()">🖨 印刷 / PDF保存</button>
     </div>
   </div>
 </div>
@@ -3059,7 +3074,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=286b34d8"></script>
+<script src="js/01-core.js?v=3011657e"></script>
 
 <script src="js/02-drivers-pay.js?v=bfc7aadb"></script>
 
@@ -3117,10 +3132,10 @@ try {
 <script src="js/03-dashboard-daily.js?v=dbd86072"></script>
 
 
-<script src="js/04-monthly.js?v=318f54fe"></script>
+<script src="js/04-monthly.js?v=a8271b84"></script>
 
 
-<script src="js/05-driver-portal.js?v=4be8a999"></script>
+<script src="js/05-driver-portal.js?v=60b60d22"></script>
 
 
 
