@@ -425,6 +425,7 @@ const sumCounts = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
 function countGroupUnread(msgs, readAt, myKey){
   const out = {};
   (msgs || []).forEach(m => {
+    if (m.deleted_at) return;                    // 取り消し済みは数えない
     if (m.sender_key === myKey) return;          // 自分の発言は未読にしない
     const r = readAt[m.group_id];
     if (r && r >= m.created_at) return;
@@ -439,9 +440,9 @@ async function reloadUnreadCounts(){
       if (!me.driver_id) return;
       const myKey = 'driver:' + me.driver_id;
       const [dm, reads, gmsgs] = await Promise.all([
-        sb.from('driver_messages').select('id').eq('drv_id', me.driver_id).eq('sender_role','admin').is('read_at', null),
+        sb.from('driver_messages').select('id').eq('drv_id', me.driver_id).eq('sender_role','admin').is('read_at', null).is('deleted_at', null),
         sb.from('chat_group_reads').select('group_id, last_read_at').eq('member_key', myKey),
-        sb.from('chat_group_messages').select('group_id, created_at, sender_key').order('created_at', {ascending:false}).limit(GROUP_MSG_SCAN),
+        sb.from('chat_group_messages').select('group_id, created_at, sender_key, deleted_at').order('created_at', {ascending:false}).limit(GROUP_MSG_SCAN),
       ]);
       drvUnreadDirectCount = (dm.data || []).length;
       const readAt = {};
@@ -452,7 +453,7 @@ async function reloadUnreadCounts(){
       const [, reads, gmsgs] = await Promise.all([
         loadDriverChatUnread(),
         sb.from('chat_group_reads').select('group_id, last_read_at').eq('member_key', myKey),
-        sb.from('chat_group_messages').select('group_id, created_at, sender_key').order('created_at', {ascending:false}).limit(GROUP_MSG_SCAN),
+        sb.from('chat_group_messages').select('group_id, created_at, sender_key, deleted_at').order('created_at', {ascending:false}).limit(GROUP_MSG_SCAN),
       ]);
       const readAt = {};
       (reads.data || []).forEach(r => { readAt[r.group_id] = r.last_read_at; });
@@ -553,6 +554,10 @@ async function startMsgPopupWatch(){
       msgPopGroupIds = new Set((gs||[]).map(g=>g.id));
       const groupName = id => (gs||[]).find(g=>g.id===id)?.name || 'グループ';
       msgPopChannels.push(sb.channel('msgpop_dm_'+me.driver_id)
+        // 送信取消は相手の画面からもすぐ消えてほしいので、更新も見る
+        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'driver_messages', filter:`drv_id=eq.${me.driver_id}`}, ({new: m}) => {
+          if (m.deleted_at) applyChatRetraction(m.id, 'dm');
+        })
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'driver_messages', filter:`drv_id=eq.${me.driver_id}`}, ({new: m}) => {
           if (m.sender_role !== 'admin') return;                                   // 自分が送った分は出さない
           if (document.getElementById('dpg5')?.style.display !== 'none') return;   // 今その画面を見ている
@@ -560,6 +565,9 @@ async function startMsgPopupWatch(){
           showMsgPopup('💬', chatCompanyLabel(), msgPopPreview(m), () => msgPopOpenDrvChat());
         }).subscribe());
       msgPopChannels.push(sb.channel('msgpop_grp_drv_'+me.driver_id)
+        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'chat_group_messages'}, ({new: m}) => {
+          if (m.deleted_at) applyChatRetraction(m.id, 'grp');
+        })
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_group_messages'}, ({new: m}) => {
           if (!msgPopGroupIds.has(m.group_id)) return;
           if (m.sender_key === 'driver:'+me.driver_id) return;
@@ -572,6 +580,9 @@ async function startMsgPopupWatch(){
     }
     // 管理・編集者側。ドライバーからの発言だけを知らせる
     msgPopChannels.push(sb.channel('msgpop_dm_admin')
+      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'driver_messages'}, ({new: m}) => {
+        if (m.deleted_at) applyChatRetraction(m.id, 'dm');
+      })
       .on('postgres_changes', {event:'INSERT', schema:'public', table:'driver_messages'}, ({new: m}) => {
         if (m.sender_role !== 'driver') return;
         if (chatTabDrvId === m.drv_id) return;
@@ -580,6 +591,9 @@ async function startMsgPopupWatch(){
         showMsgPopup('💬', name, msgPopPreview(m), () => msgPopOpenAdminChat(m.drv_id));
       }).subscribe());
     msgPopChannels.push(sb.channel('msgpop_grp_admin')
+      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'chat_group_messages'}, ({new: m}) => {
+        if (m.deleted_at) applyChatRetraction(m.id, 'grp');
+      })
       .on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_group_messages'}, ({new: m}) => {
         if (m.sender_type !== 'driver') return;
         if (chatGroupSelId === m.group_id) return;
@@ -692,7 +706,7 @@ let driverChatUnreadCounts = {}; // drvId -> 未読メッセージ件数（LINE�
 async function loadDriverChatUnread() {
   if (!sb) return;
   try {
-    const { data, error } = await sb.from('driver_messages').select('drv_id').eq('sender_role','driver').is('read_at', null);
+    const { data, error } = await sb.from('driver_messages').select('drv_id').eq('sender_role','driver').is('read_at', null).is('deleted_at', null);
     if (error) throw error;
     driverChatUnreadCounts = {};
     (data||[]).forEach(m => { driverChatUnreadCounts[m.drv_id] = (driverChatUnreadCounts[m.drv_id]||0) + 1; });
@@ -784,6 +798,58 @@ function chatFileChipHtml(m) {
   }
   return `<a href="${url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:11.5px;padding:6px 8px;background:var(--bg2);border-radius:8px;margin-top:${mt};color:inherit;text-decoration:none">📎 ${escHtml(m.file_name||'ファイル')}${m.file_size?` (${fmtBytes(m.file_size)})`:''}</a>`;
 }
+/* ===== メッセージの送信取消（LINEと同じ考え方） =====
+   行ごと消すと会話が飛んで読めなくなるため、本文と添付だけを消して
+   「送信を取り消しました」と残す。誰が取り消せるかはサーバ側の関数で判定する
+   （自分が送ったもの。管理・編集者は不適切な投稿を消せるようどれでも）。 */
+const canRetractChat = mine => mine || me?.role === 'admin' || me?.role === 'editor';
+const chatDelBtn = (kind, m, mine) =>
+  (m.deleted_at || !canRetractChat(mine)) ? ''
+    : ` <button class="msg-del" title="送信を取り消す" onclick="retractChatMessage('${kind}',${m.id})">🗑</button>`;
+// 取り消し済みなら本文の代わりに案内を出す
+const chatBodyHtml = m => m.deleted_at
+  ? '<span class="msg-gone">送信を取り消しました</span>'
+  : `${m.body ? escHtml(m.body) : ''}${chatFileChipHtml(m)}`;
+
+async function retractChatMessage(kind, id){
+  if (!confirm('このメッセージの送信を取り消しますか？\n相手の画面からも見えなくなります。')) return;
+  const stores = kind === 'grp'
+    ? [chatGroupMsgs, myChatGroupMsgs]
+    : [drvChatMessages, chatTabMessages];
+  // 添付は行から切り離すだけでは保管庫に残るため、消す前に置き場所を控えておく
+  let filePath = null;
+  stores.forEach(arr => { const m = (arr||[]).find(x => x.id === id); if (m?.file_path) filePath = m.file_path; });
+  showLoad(true);
+  try {
+    const fn = kind === 'grp' ? 'retract_chat_group_message' : 'retract_driver_message';
+    const { error } = await sb.rpc(fn, { p_id: id });
+    if (error) throw error;
+    if (filePath) { try { await sb.storage.from('chat-files').remove([filePath]); } catch(e) {} }
+    applyChatRetraction(id, kind);
+    addLog('メッセージ送信取消', `${kind === 'grp' ? 'グループ' : '個別'} id=${id}`);
+    showT('送信を取り消しました');
+    scheduleUnreadRefresh();
+  } catch(e) { showT('取り消せませんでした: ' + e.message, 'ter'); }
+  showLoad(false);
+}
+// 取り消しを手元の一覧にも反映して描き直す（他の端末には購読経由で届く）
+function applyChatRetraction(id, kind){
+  const stores = kind === 'grp'
+    ? [chatGroupMsgs, myChatGroupMsgs, Object.values(chatGroupLastMsgById), Object.values(myChatGroupLastMsgById)]
+    : [drvChatMessages, chatTabMessages, Object.values(chatTabLastMsgByDrv)];
+  stores.forEach(arr => (arr||[]).forEach(m => {
+    if (m && m.id === id) { m.deleted_at = m.deleted_at || new Date().toISOString(); m.body = null; m.file_path = null; m.file_name = null; }
+  }));
+  try { renderDrvChatMessages(); } catch(e) {}
+  try { renderChatTabMessages(); } catch(e) {}
+  try { renderDrvPortalChatMessages(); } catch(e) {}
+  try { renderChatGroupMessages(); } catch(e) {}
+  try { renderMyChatGroupMessages(); } catch(e) {}
+  try { renderChatTabDrvList(); } catch(e) {}
+  try { renderChatGroupList(); } catch(e) {}
+  try { renderMyChatGroupList(); } catch(e) {}
+}
+
 /* ドライバーに見せる「会社側」の名乗り。
    LINEの公式アカウントと同じように、ドライバーからは担当者個人ではなく会社とやり取りしている見え方にする。
    実際に書いた担当者名は sender_name に残り、管理画面側では実名のまま表示される（社内の追跡用）。 */
@@ -796,8 +862,8 @@ function chatBubbleHtml(m, mineRole) {
     ? chatCompanyLabel()
     : (m.sender_name || (m.sender_role==='admin' ? '管理者' : 'ドライバー'));
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
-    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(nameLabel)} ・ ${dt}</div>
-    <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${m.body?escHtml(m.body):''}${chatFileChipHtml(m)}</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(nameLabel)} ・ ${dt}${chatDelBtn('dm', m, mine)}</div>
+    <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${chatBodyHtml(m)}</div>
   </div>`;
 }
 // メッセージ一覧の共通描画。添付ファイルの署名付きURLが未取得なら取得後に再描画する
@@ -848,7 +914,7 @@ async function sendDrvChatMessage() {
     // LINE/メール通知（1時間に1回まで: refに時間バケットを含めdedupeさせ、連投で通知が溢れないようにする）
     const hourBucket = new Date().toISOString().slice(0,13);
     notifyDrivers([eChatDrvId], 'chat', `chat-${eChatDrvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
-    pushNotify({drv_ids: [eChatDrvId], title: chatCompanyLabel(), body: body || '📎 ファイルが届いています', tag: 'chat-eChatDrvId'});
+    pushNotify({drv_ids: [eChatDrvId], title: chatCompanyLabel(), body: body || '📎 ファイルが届いています', tag: 'chat-eChatDrvId', kind: 'chat'});
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -968,7 +1034,7 @@ async function sendChatTabMessage() {
     clearChatFile('chatTabFileInput','chatTabFileChip');
     const hourBucket = new Date().toISOString().slice(0,13);
     notifyDrivers([chatTabDrvId], 'chat', `chat-${chatTabDrvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
-    pushNotify({drv_ids: [chatTabDrvId], title: chatCompanyLabel(), body: body || '📎 ファイルが届いています', tag: 'chat-chatTabDrvId'});
+    pushNotify({drv_ids: [chatTabDrvId], title: chatCompanyLabel(), body: body || '📎 ファイルが届いています', tag: 'chat-chatTabDrvId', kind: 'chat'});
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -996,7 +1062,7 @@ async function sendBulkChat(){
       if (error) throw error;
       ok++;
       notifyDrivers([drvId], 'chat', `chat-${drvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
-      pushNotify({drv_ids: [drvId], title: chatCompanyLabel(), body, tag: 'chat-'+drvId});
+      pushNotify({drv_ids: [drvId], title: chatCompanyLabel(), body, tag: 'chat-'+drvId, kind: 'chat'});
     } catch(e) { errs.push(`${drvs.find(d=>d.id===drvId)?.name||drvId}: ${e.message}`); }
   }
   showLoad(false);
@@ -1071,7 +1137,7 @@ function renderChatGroupList() {
         ${last?`<span style="font-size:9.5px;color:var(--text2);flex-shrink:0">${formatChatListTime(last.created_at)}</span>`:''}
         ${unread?`<span style="width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0"></span>`:''}
       </div>
-      <div style="font-size:10.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${memberCount}名${last?`　${last.sender_name?escHtml(last.sender_name)+': ':''}${escHtml(last.body||'📎ファイル')}`:''}</div>
+      <div style="font-size:10.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${memberCount}名${last?`　${last.sender_name?escHtml(last.sender_name)+': ':''}${last.deleted_at?'送信を取り消しました':escHtml(last.body||'📎ファイル')}`:''}</div>
     </div>`;
   }).join('');
 }
@@ -1104,8 +1170,8 @@ function chatGroupBubbleHtml(m) {
   const mine = m.sender_key === ('staff:'+me?.id);
   const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
-    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(m.sender_type==='driver'?'ドライバー':'担当者'))} ・ ${dt}</div>
-    <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${m.body?escHtml(m.body):''}${chatFileChipHtml(m)}</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(m.sender_type==='driver'?'ドライバー':'担当者'))} ・ ${dt}${chatDelBtn('grp', m, mine)}</div>
+    <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${chatBodyHtml(m)}</div>
   </div>`;
 }
 function renderChatGroupMessages() {
@@ -1154,7 +1220,7 @@ async function sendChatGroupMessage() {
     if (g?.driver_ids?.length) {
       const hourBucket = new Date().toISOString().slice(0,13);
       notifyDrivers(g.driver_ids, 'chat', `chatgrp-${chatGroupSelId}-${hourBucket}`, `グループ「${g.name}」に新着メッセージ`, 'ポータルのグループチャットに新着メッセージがあります。', true);
-      pushNotify({drv_ids: g.driver_ids, title: g.name, body: `${chatCompanyLabel()}: ${body || '📎 ファイル'}`, tag: 'chatgrp-'+chatGroupSelId});
+      pushNotify({drv_ids: g.driver_ids, title: g.name, body: `${chatCompanyLabel()}: ${body || '📎 ファイル'}`, tag: 'chatgrp-'+chatGroupSelId, kind: 'chat', group_id: chatGroupSelId});
     }
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
@@ -1335,7 +1401,7 @@ async function sendDrvPortalChatMessage() {
 async function checkDriverOwnChatAlerts() {
   if (!sb || !me?.driver_id) return;
   try {
-    const { data, error } = await sb.from('driver_messages').select('id').eq('drv_id', me.driver_id).eq('sender_role','admin').is('read_at', null);
+    const { data, error } = await sb.from('driver_messages').select('id').eq('drv_id', me.driver_id).eq('sender_role','admin').is('read_at', null).is('deleted_at', null);
     if (error) throw error;
     // チャットはお知らせと同じ「連絡」タブ(dnt3)に統合されたため、タブ本体とサブタブの両方に赤丸を出す
     setNavWarnDot('dnt3', (data||[]).length>0);
@@ -1399,9 +1465,12 @@ function renderMyChatGroupList() {
     return `<div onclick="openMyChatGroup(${g.id})" style="padding:10px 12px;margin-bottom:6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
         <span style="font-weight:${unread?'700':'500'};font-size:13px">👥 ${escHtml(g.name)}</span>
-        ${unread?`<span style="width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0"></span>`:''}
+        <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          ${unread?`<span style="width:8px;height:8px;border-radius:50%;background:var(--red)"></span>`:''}
+          <button class="ibtn" style="font-size:13px" title="${isGroupMuted(g.id)?'このグループの通知をオンにする':'このグループの通知をオフにする'}" onclick="toggleGroupMute(${g.id}, event)">${isGroupMuted(g.id)?'🔕':'🔔'}</button>
+        </span>
       </div>
-      ${last?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lastName?escHtml(lastName)+': ':''}${escHtml(last.body||'📎ファイル')}</div>`:''}
+      ${last?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lastName?escHtml(lastName)+': ':''}${last.deleted_at?'送信を取り消しました':escHtml(last.body||'📎ファイル')}</div>`:''}
     </div>`;
   }).join('');
 }
@@ -1411,7 +1480,7 @@ async function openMyChatGroup(id) {
   myChatGroupSelId = id;
   document.getElementById('drvChatGroupListWrap').style.display = 'none';
   document.getElementById('drvChatGroupThreadWrap').style.display = 'flex';
-  document.getElementById('drvChatGroupHeader').innerHTML = `← グループ一覧　👥 ${escHtml(g.name)}`;
+  renderMyChatGroupThreadHeader();
   document.getElementById('drvChatGroupMsgList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
   clearChatFile('drvChatGroupFileInput','drvChatGroupFileChip');
   await loadMyChatGroupMessages(id);
@@ -1424,6 +1493,15 @@ function closeMyChatGroupThread() {
   document.getElementById('drvChatGroupThreadWrap').style.display = 'none';
   document.getElementById('drvChatGroupListWrap').style.display = 'block';
   renderMyChatGroupList();
+}
+/* 開いているグループの見出し。名前の右に通知のオンオフを置く。
+   鈴のボタンだけは見出しの「戻る」に反応させないよう、押した先で伝播を止める */
+function renderMyChatGroupThreadHeader(){
+  const el = document.getElementById('drvChatGroupHeader');
+  const g = (myChatGroups||[]).find(x => x.id === myChatGroupSelId);
+  if (!el || !g) return;
+  el.innerHTML = `← グループ一覧　👥 ${escHtml(g.name)}`
+    + ` <button class="ibtn" style="font-size:13px" title="${isGroupMuted(g.id)?'このグループの通知をオンにする':'このグループの通知をオフにする'}" onclick="toggleGroupMute(${g.id}, event)">${isGroupMuted(g.id)?'🔕':'🔔'}</button>`;
 }
 async function loadMyChatGroupMessages(id) {
   try {
@@ -1440,8 +1518,8 @@ function myChatGroupBubbleHtml(m) {
   const mine = m.sender_key === ('driver:'+me?.driver_id);
   const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
-    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_type==='staff' ? chatCompanyLabel() : (m.sender_name||'ドライバー'))} ・ ${dt}</div>
-    <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${m.body?escHtml(m.body):''}${chatFileChipHtml(m)}</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_type==='staff' ? chatCompanyLabel() : (m.sender_name||'ドライバー'))} ・ ${dt}${chatDelBtn('grp', m, mine)}</div>
+    <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${chatBodyHtml(m)}</div>
   </div>`;
 }
 function renderMyChatGroupMessages() {
@@ -1663,7 +1741,7 @@ async function publishPayStatements() {
   showLoad(false);
   if (notified.length) {
     pushNotify({drv_ids: notified, title: '📄 支払明細書が届きました',
-      body: `${month}分の支払明細書をポータルに配信しました。`, tag: 'stmt-'+month});
+      body: `${month}分の支払明細書をポータルに配信しました。`, tag: 'stmt-'+month, kind: 'statement'});
   }
   if (ok) addLog('明細書配信', `${month} ${ok}名`);
   if (fails.length) showT(`${ok}名に配信、${fails.length}件失敗: ${fails[0]}`, 'twa');
@@ -2324,7 +2402,7 @@ async function submitBoardPost() {
         const notifyIds = targetIds || drvs.map(d=>d.id);
         const excerpt = body.length>200 ? body.slice(0,200)+'…' : body;
         notifyDrivers(notifyIds, 'board', `post-${data.id}`, `掲示板: ${title}`, excerpt);
-        pushNotify({drv_ids: notifyIds, title: `📢 ${title}`, body: excerpt, tag: 'board-'+data.id});
+        pushNotify({drv_ids: notifyIds, title: `📢 ${title}`, body: excerpt, tag: 'board-'+data.id, kind: 'board'});
       }
     }
   } catch(e) { showT('エラー: '+e.message,'ter'); }

@@ -164,13 +164,62 @@ async function sendPushTest(){
   showLoad(false);
 }
 
+/* ===== 通知の受け取り設定 =====
+   「端末ごと全部オフ」だけだと、チャットは要るがお知らせは要らない、といった調整ができない。
+   種類ごとのオフと、グループごとのミュートを本人が選べるようにする。
+   絞り込みはサーバ（web-push関数）側で行う。複数人へ一度に送るとき、
+   人ごとの設定を効かせる必要があるため。 */
+const NOTIFY_PREF_DEFAULT = { chat: true, board: true, statement: true, muted_group_ids: [] };
+let notifyPrefs = null;
+
+async function loadNotifyPrefs(){
+  if (!sb || !me) return;
+  try {
+    const { data } = await sb.from('notify_prefs').select('*').eq('user_id', me.id).maybeSingle();
+    notifyPrefs = data || { ...NOTIFY_PREF_DEFAULT };
+  } catch(e) {
+    console.warn('loadNotifyPrefs:', e.message);
+    notifyPrefs = { ...NOTIFY_PREF_DEFAULT };
+  }
+}
+async function saveNotifyPrefs(patch){
+  if (!sb || !me) return false;
+  const next = { ...NOTIFY_PREF_DEFAULT, ...(notifyPrefs || {}), ...patch };
+  try {
+    const { error } = await sb.from('notify_prefs').upsert({
+      user_id: me.id, chat: next.chat, board: next.board, statement: next.statement,
+      muted_group_ids: next.muted_group_ids || [], updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
+    if (error) throw error;
+    notifyPrefs = next;
+    return true;
+  } catch(e) { showT('設定を保存できませんでした: ' + e.message, 'ter'); return false; }
+}
+async function toggleNotifyKind(kind, el){
+  const ok = await saveNotifyPrefs({ [kind]: !!el.checked });
+  if (ok) showT('通知の設定を保存しました');
+  else el.checked = !el.checked;   // 保存できなければ見た目を戻す
+}
+const isGroupMuted = id => ((notifyPrefs && notifyPrefs.muted_group_ids) || []).includes(id);
+// グループごとの通知オンオフ（LINEのグループミュートと同じ動き）
+async function toggleGroupMute(groupId, ev){
+  if (ev) ev.stopPropagation();
+  const cur = ((notifyPrefs && notifyPrefs.muted_group_ids) || []).slice();
+  const muted = cur.includes(groupId);
+  const next = muted ? cur.filter(x => x !== groupId) : [...cur, groupId];
+  if (!await saveNotifyPrefs({ muted_group_ids: next })) return;
+  showT(muted ? 'このグループの通知をオンにしました' : 'このグループの通知をオフにしました');
+  try { renderMyChatGroupList(); } catch(e) {}
+  try { renderMyChatGroupThreadHeader(); } catch(e) {}
+}
+
 /* 通知を送る。管理・編集者だけが呼べる（サーバ側でも権限を確認している）。
    失敗してもチャットの送信自体は成功させたいので、例外は握りつぶして記録だけ残す。 */
-async function pushNotify({ drv_ids = [], user_ids = [], title, body = '', url = './', tag = 'pgbase' }){
+async function pushNotify({ drv_ids = [], user_ids = [], title, body = '', url = './', tag = 'pgbase', kind = 'chat', group_id = null }){
   if (!sb || (!drv_ids.length && !user_ids.length)) return;
   try {
     const { error } = await sb.functions.invoke('web-push', {
-      body: { op: 'send', drv_ids, user_ids, title, body: String(body).slice(0, 300), url, tag },
+      body: { op: 'send', drv_ids, user_ids, title, body: String(body).slice(0, 300), url, tag, kind, group_id },
     });
     if (error) throw error;
   } catch(e) { console.warn('pushNotify:', e.message); }
@@ -254,6 +303,8 @@ async function renderPushSetting(){
   if (note) {
     html = `<div style="padding:10px 12px;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius);font-size:12px;line-height:1.7">${note}</div>`;
   } else {
+    const prefs = notifyPrefs || NOTIFY_PREF_DEFAULT;
+    const mutedCount = (prefs.muted_group_ids || []).length;
     let on = false;
     try {
       const reg = await navigator.serviceWorker.getRegistration();
@@ -270,6 +321,15 @@ async function renderPushSetting(){
              <button class="btn sml" onclick="sendPushTest()">テスト通知を送る</button>`
           : `<button class="btn pri sml" onclick="enablePush()">🔔 通知を受け取る</button>`}
       </div>
+      ${on ? `<div style="margin-top:8px;border-top:0.5px solid var(--border2);padding-top:6px">
+        <div style="color:var(--text2);margin-bottom:3px">受け取る通知の種類</div>
+        ${[['chat','チャット（個別・グループ）'],['board','会社からのお知らせ'],['statement','支払明細書の配信']].map(([k,label])=>
+          `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer">
+            <input type="checkbox" ${prefs[k] === false ? '' : 'checked'} onchange="toggleNotifyKind('${k}', this)">
+            <span>${escHtml(label)}</span>
+          </label>`).join('')}
+        ${mutedCount ? `<div style="color:var(--text2);margin-top:3px">👥 通知をオフにしているグループ: ${mutedCount}件（グループチャットの一覧から戻せます）</div>` : ''}
+      </div>` : ''}
     </div>`;
   }
   els.forEach(el => { el.innerHTML = html; });

@@ -107,7 +107,7 @@ function proceedAfterLogin() {
   // 新着メッセージのポップアップは、どの画面にいても出したいのでログイン直後から購読を張る
   startMsgPopupWatch().catch(()=>{});
   // 既に通知を許可している端末は、購読を張り直して設定画面の表示も更新しておく
-  pushSyncOnLogin().then(()=>renderPushSetting()).catch(()=>{});
+  loadNotifyPrefs().then(()=>pushSyncOnLogin()).then(()=>renderPushSetting()).catch(()=>{});
   // 未読件数をタブとアプリのアイコンに出す
   reloadUnreadCounts().catch(()=>{});
   startAppUpdateWatch();

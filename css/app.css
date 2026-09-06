@@ -356,3 +356,9 @@ td.dim{color:var(--text2)}
 #appUpdateBar.hide{display:none}
 #appUpdateBar .upd-go{background:#fff;color:var(--blue);border:none;border-radius:99px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0}
 #appUpdateBar .upd-x{background:none;border:none;color:#fff;font-size:13px;cursor:pointer;opacity:0.8;flex-shrink:0}
+
+
+/* 吹き出しの「送信を取り消す」ボタン。日時の隣に小さく置く */
+.msg-del{background:none;border:none;color:var(--text2);font-size:10px;cursor:pointer;padding:0 2px;opacity:0.5;line-height:1}
+.msg-del:hover{opacity:1}
+.msg-gone{opacity:0.75;font-style:italic}
