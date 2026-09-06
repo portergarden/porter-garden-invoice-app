@@ -1454,8 +1454,12 @@ try {
         <div style="font-size:10px;color:var(--text2);margin-bottom:6px">走った分だけ「＋ 運行を追加」してください。取引先ごとに分けて記録します。時間が空いても点呼は1日1回で構いません</div>
         <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px;margin-bottom:8px">
           <div class="fld"><label>取引先 / センター <span style="color:var(--red)">*</span></label>
-            <input type="text" id="drCli" list="drCliList" placeholder="取引先名を入力（候補から選択）">
-            <datalist id="drCliList"></datalist>
+            <div style="position:relative">
+              <input type="text" id="drCli" autocomplete="off" placeholder="2文字以上入力すると候補が出ます"
+                     oninput="onDrCliInput()" onfocus="onDrCliInput()" onblur="setTimeout(hideDrCliSuggest,150)">
+              <div id="drCliSuggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:60;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text2);margin-top:2px">登録にない名前もそのまま入力できます（確認が出ます）</div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="fld"><label>開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripStart"></div>
@@ -3108,7 +3112,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=d6ba21d6"></script>
+<script src="js/03-dashboard-daily.js?v=bceabe06"></script>
 
 
 <script src="js/04-monthly.js?v=318f54fe"></script>

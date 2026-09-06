@@ -2321,15 +2321,14 @@ function isFullPlateNumber(car) {
 // ドライバーはclientsテーブルを直接読めないため、名前のみを返すRPC経由で取引先候補を取得する（セッション中はキャッシュ）
 let driverClientNames = null;
 async function populateDriverCliList() {
-  const listEl = document.getElementById('drCliList');
-  if (!listEl) return;
+  // 候補の見せ方は onDrCliInput() が受け持つ。ここは一覧を1度だけ取ってくる役目
   if (driverClientNames === null) {
     try {
       const {data, error} = await sb.rpc('list_client_names');
       driverClientNames = error ? [] : (data || []);
     } catch(e) { driverClientNames = []; }
   }
-  listEl.innerHTML = driverClientNames.map(c => `<option value="${escHtml(c.name)}">`).join('');
+  // 候補は onDrCliInput() が自前で出すので、ここでは一覧の取得だけ行う
 }
 
 async function initDailyForm(reportId=null) {
@@ -2381,7 +2380,7 @@ async function initDailyForm(reportId=null) {
   if (isDriver) {
     await populateDriverCliList();
   } else {
-    document.getElementById('drCliList').innerHTML = clients.map(c => `<option value="${escHtml(c.name)}">`).join('');
+    // 管理者はclientsをそのまま候補に使う（onDrCliInput()が絞り込む）
   }
 
   // 既存データ編集
@@ -2628,6 +2627,40 @@ function renderDrRests() {
 let pendDrTrips = [];
 
 // 入力欄の取引先名から登録済みの取引先を引く。ドライバーはclientsを直接読めないためRPCの結果を使う
+/* 取引先の候補を絞り込んで出す。
+   ブラウザのdatalistは開いた瞬間に全件（155件）並べてしまい選びにくいので、
+   2文字以上入力してから、一致するものだけを自前で出す。 */
+const DR_CLI_MIN_CHARS = 2;
+function drCliCandidates() {
+  return (me?.role === 'driver') ? (driverClientNames || []) : (clients || []);
+}
+function hideDrCliSuggest() {
+  const box = document.getElementById('drCliSuggest');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+function onDrCliInput() {
+  const box = document.getElementById('drCliSuggest');
+  const inp = document.getElementById('drCli');
+  if (!box || !inp) return;
+  const q = nm(inp.value || '');
+  if (q.length < DR_CLI_MIN_CHARS) { hideDrCliSuggest(); return; }
+  const hits = drCliCandidates().filter(c => nm(c.name).includes(q)).slice(0, 8);
+  if (!hits.length) {
+    box.innerHTML = '<div style="padding:6px 8px;font-size:11px;color:var(--text2)">一致する取引先がありません。このまま入力しても登録できます</div>';
+    box.style.display = 'block';
+    return;
+  }
+  box.innerHTML = hits.map(c => `<div style="padding:6px 8px;font-size:12px;cursor:pointer"
+    onmousedown="selectDrCli('${escAttrJs(c.name)}')"
+    onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">${escHtml(c.name)}</div>`).join('');
+  box.style.display = 'block';
+}
+function selectDrCli(name) {
+  const inp = document.getElementById('drCli');
+  if (inp) inp.value = name;
+  hideDrCliSuggest();
+}
+
 function drResolveClient(name) {
   const src = (me?.role === 'driver') ? (driverClientNames||[]) : clients;
   return name ? (src.find(c => nm(c.name) === nm(name)) || null) : null;
@@ -2638,8 +2671,10 @@ function addDrTrip() {
   const start = document.getElementById('drTripStart').value;
   const end   = document.getElementById('drTripEnd').value;
   if (!cliInput) { showT('取引先を入力してください', 'twa'); return; }
+  /* 登録済みと一致しない場合でも記録できるようにする。
+     ただし取引先IDが付かないため、月報や請求の集計には結び付かない。その点は確認してもらう */
   const cli = drResolveClient(cliInput);
-  if (!cli) { showT(`「${cliInput}」は登録済みの取引先と一致しません`, 'ter'); return; }
+  if (!cli && !confirm(`「${cliInput}」は登録済みの取引先と一致しません。\n\nこのまま手入力の取引先として記録しますか？\n（取引先マスタと結び付かないため、月報や請求の集計には含まれません）`)) return;
   if (!start || !end) { showT('運行の開始・終了時刻を入力してください', 'twa'); return; }
   const waitOn  = document.getElementById('drTripWaitFlag')?.checked;
   const cargoOn = document.getElementById('drTripCargoFlag')?.checked;
@@ -2647,7 +2682,7 @@ function addDrTrip() {
     showT('荷待ちの到着日時を入力してください', 'twa'); return;
   }
   pendDrTrips.push({
-    cli_id: cli.id, cli_name: cli.name,
+    cli_id: cli ? cli.id : null, cli_name: cli ? cli.name : cliInput,
     start, end,
     start_loc: document.getElementById('drTripStartLoc').value.trim(),
     end_loc:   document.getElementById('drTripEndLoc').value.trim(),
