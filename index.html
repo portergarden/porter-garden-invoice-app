@@ -3007,20 +3007,21 @@ try {
       <div style="opacity:.75">通常CSVの列順: 日付, 車番, 種別(charter/regular), 運賃, 高速料金, 立替, 税率, 取引先名, 備考</div>
     </div>
     <div class="fld" style="margin-bottom:8px"><label>反映先の取引先</label>
-      <select id="csvCli" style="width:100%">
+      <select id="csvCli" style="width:100%" onchange="saveCsvImportPrefs()">
         <option value="">自動判定（通常CSVの取引先名列を使用）</option>
       </select>
     </div>
     <div class="fld" style="margin-bottom:8px"><label>消費税の端数処理</label>
-      <select id="csvTaxRound" style="width:100%">
+      <select id="csvTaxRound" style="width:100%" onchange="saveCsvImportPrefs()">
         <option value="round">四捨五入</option>
         <option value="floor">切り捨て（取引先の明細書に合わせる場合）</option>
       </select>
     </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-bottom:8px">
-      <input type="checkbox" id="csvHwAsAdvance">
+      <input type="checkbox" id="csvHwAsAdvance" onchange="saveCsvImportPrefs()">
       高速代はドライバーへの支払時に「立替（消費税込み・非課税扱い）」として計上する（取引先への請求は税別のまま変更しません）
     </label>
+    <div id="csvPrefNote" style="font-size:10px;color:var(--text2);margin-bottom:6px"></div>
     <div class="dropz" onclick="document.getElementById('cFi').click()">↑ CSVファイルを選択<br><span style="font-size:10px">支払予定明細書・通常CSV どちらも対応</span></div>
     <input type="file" id="cFi" accept=".csv" style="display:none" onchange="handleCsv(this.files[0])">
     <div id="cSt" style="margin-top:6px;font-size:11px;min-height:14px;color:var(--text2)"></div>
@@ -3057,7 +3058,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=052016b1"></script>
+<script src="js/01-core.js?v=2abff529"></script>
 
 <script src="js/02-drivers-pay.js?v=761c0a10"></script>
 

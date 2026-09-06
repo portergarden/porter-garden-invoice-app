@@ -3751,14 +3751,41 @@ async function importPdf(){
 }
 
 /* ===== CSV IMPORT ===== */
+/* CSV取込の設定を記憶する。
+   この取込は特定の取引先の支払予定明細書に使うことがほとんどで、
+   毎回「取引先」と「端数処理」を選び直していた（実データでも1894件中1893件が切り捨て）。
+   前回と同じ設定で開くようにして、選び直しを不要にする。 */
+const CSV_IMPORT_PREF_KEY = 'csvImportPrefs';
+function loadCsvImportPrefs() {
+  try { return JSON.parse(localStorage.getItem(CSV_IMPORT_PREF_KEY) || '{}') || {}; }
+  catch(e) { return {}; }
+}
+function saveCsvImportPrefs() {
+  const pref = {
+    cli:       document.getElementById('csvCli')?.value || '',
+    taxRound:  document.getElementById('csvTaxRound')?.value || 'round',
+    hwAdvance: !!document.getElementById('csvHwAsAdvance')?.checked,
+  };
+  try { localStorage.setItem(CSV_IMPORT_PREF_KEY, JSON.stringify(pref)); } catch(e) {}
+  const note = document.getElementById('csvPrefNote');
+  if (note) note.textContent = '次回もこの設定で開きます';
+}
 function openCsvM(){
   parsedCsv=[];document.getElementById('cPv').innerHTML='';document.getElementById('cDups').innerHTML='';document.getElementById('cSt').textContent='';document.getElementById('cImp').classList.add('hide');document.getElementById('cFi').value='';
   const sel=document.getElementById('csvCli');
   if(sel){sel.innerHTML='<option value="">自動判定（通常CSVの取引先名列を使用）</option>'+clients.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');enhanceSelectSearchable('csvCli');}
+  // 前回の設定を復元する。取引先が消えていたら「自動判定」に戻す
+  const pref = loadCsvImportPrefs();
+  if(sel){
+    sel.value = [...sel.options].some(o=>o.value===String(pref.cli||'')) ? String(pref.cli||'') : '';
+    sel._syncSearchInput?.();   // 検索付きプルダウンなので、見えている入力欄にも反映する
+  }
   const taxRoundSel=document.getElementById('csvTaxRound');
-  if(taxRoundSel) taxRoundSel.value='round';
+  if(taxRoundSel) taxRoundSel.value = pref.taxRound === 'floor' ? 'floor' : 'round';
   const hwAdvanceChk=document.getElementById('csvHwAsAdvance');
-  if(hwAdvanceChk) hwAdvanceChk.checked=false;
+  if(hwAdvanceChk) hwAdvanceChk.checked = !!pref.hwAdvance;
+  const note=document.getElementById('csvPrefNote');
+  if(note) note.textContent = Object.keys(pref).length ? '前回の設定を引き継いでいます' : '';
   document.getElementById('mCsv').classList.add('on');
 }
 
