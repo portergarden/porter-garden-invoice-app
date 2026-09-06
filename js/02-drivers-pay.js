@@ -1445,7 +1445,9 @@ function printLeaseStatement(company) {
     [p.zip?`〒${p.zip}`:'', p.address||''].filter(Boolean).join(' '),
     [p.person?`ご担当: ${p.person}`:'', p.tel?`TEL ${p.tel}`:''].filter(Boolean).join('　'),
   ].filter(Boolean) : [];
-  const docNo = `LS-${month.replace('-','')}-${String(p?.partner_no||'0').padStart(3,'0')}`;
+  // 会社番号は clients.client_no。partner_no は取引先マスタへの統合で無くなった列で、
+  // 参照しても常に undefined になり、書類番号が毎回 000 になっていた
+  const docNo = `LS-${month.replace('-','')}-${String(p?.client_no||'0').padStart(3,'0')}`;
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>車両リース代明細書_${escHtml(company)}御中_${month}</title>
   <style>${getDocCss()}${statementDocStyle()}</style></head><body>
