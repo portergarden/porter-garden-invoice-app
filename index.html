@@ -64,7 +64,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css?v=9caf49fb">
+<link rel="stylesheet" href="css/app.css?v=ca14891f">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -1965,9 +1965,9 @@ try {
 
     <!-- D3: お知らせ（掲示板・閲覧のみ）。連絡タブのサブページ -->
     <div id="dpg3" style="display:none">
-      <div style="display:flex;gap:2px;padding:6px 14px 0;border-bottom:0.5px solid var(--border)">
+      <div class="drv-subnav" style="display:flex;gap:2px;padding:6px 14px 0;border-bottom:0.5px solid var(--border)">
         <div class="ntab on">📢 会社からのお知らせ</div>
-        <div class="ntab" id="drvSubChat3" onclick="goDrvPage(5,document.getElementById('dnt3'))">💬 チャット（個別連絡）</div>
+        <div class="ntab" id="drvSubChat3" onclick="goDrvPage(5,document.getElementById('dnt3'))">💬 個別チャット</div>
         <div class="ntab" id="drvSubGroupChat3" onclick="goDrvPage(6,document.getElementById('dnt3'))">👥 グループチャット</div>
       </div>
       <div id="drvLineBanner" style="padding:8px 14px 0"></div>
@@ -1985,9 +1985,9 @@ try {
 
     <!-- D5: チャット（管理者とのやり取り）。連絡タブのサブページ -->
     <div id="dpg5" style="display:none;flex-direction:column;height:100%">
-      <div style="display:flex;gap:2px;padding:6px 14px 0;border-bottom:0.5px solid var(--border);flex-shrink:0">
+      <div class="drv-subnav" style="display:flex;gap:2px;padding:6px 14px 0;border-bottom:0.5px solid var(--border);flex-shrink:0">
         <div class="ntab" onclick="goDrvPage(3,document.getElementById('dnt3'))">📢 会社からのお知らせ</div>
-        <div class="ntab on">💬 チャット（個別連絡）</div>
+        <div class="ntab on">💬 個別チャット</div>
         <div class="ntab" onclick="goDrvPage(6,document.getElementById('dnt3'))">👥 グループチャット</div>
       </div>
       <div id="drvChatPortalList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px;min-height:0"></div>
@@ -2005,9 +2005,9 @@ try {
 
     <!-- D6: グループチャット（複数人参加）。連絡タブのサブページ -->
     <div id="dpg6" style="display:none;flex-direction:column;height:100%">
-      <div style="display:flex;gap:2px;padding:6px 14px 0;border-bottom:0.5px solid var(--border);flex-shrink:0">
+      <div class="drv-subnav" style="display:flex;gap:2px;padding:6px 14px 0;border-bottom:0.5px solid var(--border);flex-shrink:0">
         <div class="ntab" onclick="goDrvPage(3,document.getElementById('dnt3'))">📢 会社からのお知らせ</div>
-        <div class="ntab" onclick="goDrvPage(5,document.getElementById('dnt3'))">💬 チャット（個別連絡）</div>
+        <div class="ntab" onclick="goDrvPage(5,document.getElementById('dnt3'))">💬 個別チャット</div>
         <div class="ntab on">👥 グループチャット</div>
       </div>
       <div id="drvChatGroupListWrap" style="flex:1;overflow-y:auto;padding:10px 14px"></div>

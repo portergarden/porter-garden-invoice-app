@@ -277,9 +277,28 @@ td.dim{color:var(--text2)}
   #dailyFormArea input[type="checkbox"]{width:18px;height:18px;flex-shrink:0}
   #dailyFormArea label[style*="padding:4px 6px"]{padding:8px 10px!important}
   #dailyFormArea button.btn.sml{padding:8px 12px!important;font-size:13px!important;width:100%;justify-content:center}
-  /* ドライバーポータルの上部タブ(.drv-nav)を、横スクロールさせず5個とも画面幅に収まるよう均等割りにする */
-  .drv-nav{overflow-x:hidden}
-  .drv-nav .ntab{flex:1 1 0;min-width:0;justify-content:center;text-align:center;padding:6px 2px;font-size:10px;white-space:normal;line-height:1.25;gap:2px}
+  /* ドライバーポータルのタブを、横スクロールさせず画面幅に収まるよう均等割りにする。
+     .drv-nav は上部の5タブ、.drv-subnav は連絡タブの中の3タブ。
+     素の .ntab は nowrap かつ flex-shrink:0 なので、指定しないと画面外へ出て押せなくなる */
+  /* パネル上部の操作バーは、入りきらないときに折り返す。
+     折り返さないと「＋ 予定追加」などが画面外に出て、スマホから押せなくなる。
+     対象はバー本体（border-bottom を持つ flex 行）と、その直下の小グループだけに絞る */
+  #pgMain [style*="border-bottom"][style*="display:flex"],
+  #pgMain [style*="border-bottom"][style*="display:flex"] > div[style*="display:flex"]{flex-wrap:wrap}
+  /* 一覧の「リスト表示」は列が固定幅で合計900px超になる。狭い画面では
+     はみ出した列が切り取られて見えなくなるため、横スクロールできるようにする
+     （カード表示に強制すると、利用者が選んだ表示モードを勝手に変えることになる） */
+  #drvGrid, #cliGrid{overflow-x:auto}
+  /* 管理側のチャットは「左に一覧・右にスレッド」の横並び。一覧が260px固定のため
+     375pxの画面ではスレッドが115pxまで潰れ、送信ボタンが画面外に出て押せなかった。
+     狭い画面では縦に積んで、どちらも使えるようにする */
+  #pg27 > div[style*="height:calc(100vh"], #pg30 > div[style*="height:calc(100vh"]{flex-direction:column}
+  #chatTabDrvList, #chatGroupList{width:100%!important;max-height:32vh;border-right:none!important;border-bottom:0.5px solid var(--border)}
+  /* flexの中のテキスト入力は既定で縮まないため、隣のボタンが画面外へ押し出される。
+     チャットの送信ボタンが押せなくなっていたのはこれが原因 */
+  #pgMain div[style*="display:flex"] > input[type="text"]{min-width:0}
+  .drv-nav, .drv-subnav{overflow-x:hidden}
+  .drv-nav .ntab, .drv-subnav .ntab{flex:1 1 0;min-width:0;justify-content:center;text-align:center;padding:6px 2px;font-size:10px;white-space:normal;line-height:1.25;gap:2px;word-break:break-word}
 }
 .big-btn{width:100%;padding:12px;font-size:15px;border-radius:var(--radius);border:none;background:var(--blue);color:#fff;cursor:pointer;font-weight:500;margin-top:6px}
 .big-btn:active{background:var(--blue2)}
