@@ -13,6 +13,15 @@ self.addEventListener('push', event => {
   try { d = event.data ? event.data.json() : {}; }
   catch (e) { d = { body: event.data ? event.data.text() : '' }; }
   const title = d.title || 'PG Base';
+  /* ホーム画面アイコンの件数を、アプリを開いていなくても更新する。
+     アプリ側(setAppBadgeCount)は開いている間しか動かないため、閉じている間はここが担当する。
+     件数はサーバが受信者ごとに数えて badge に入れてくる。 */
+  if (typeof d.badge === 'number' && self.navigator) {
+    try {
+      if (d.badge > 0) self.navigator.setAppBadge?.(d.badge);
+      else self.navigator.clearAppBadge?.();
+    } catch (e) {}
+  }
   event.waitUntil(self.registration.showNotification(title, {
     body: d.body || '',
     icon: './icons/icon-192.png',
