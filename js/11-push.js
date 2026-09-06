@@ -77,13 +77,17 @@ async function pushSaveSubscription(sub){
 // 通知を受け取れる状態にする（ボタンから呼ぶ。許可のダイアログは操作起点でないと出せない）
 async function enablePush(){
   if (pushBusy) return;
-  if (!pushSupported()) { showT('この端末・ブラウザは通知に対応していません', 'ter'); return; }
+  // iOSはホーム画面に追加するまで PushManager が無いため、対応判定より先に案内する
   if (pushIsIOS() && !pushIsStandalone()) {
     alert('iPhone・iPadでは、先に「ホーム画面に追加」が必要です。\n\n' +
           '① 画面下の共有ボタン（□に↑）を押す\n' +
           '② 「ホーム画面に追加」を選ぶ\n' +
           '③ 追加されたアイコンからこのアプリを開く\n' +
           '④ もう一度この画面で「通知を受け取る」を押す');
+    return;
+  }
+  if (!pushSupported()) {
+    showT('この端末・ブラウザは通知に対応していません（' + pushMissingReasons().join('・') + 'が使えません）', 'ter');
     return;
   }
   pushBusy = true;
@@ -202,17 +206,38 @@ async function pushClearOnLogout(){
   pushVapidKey = null;
 }
 
-// 通知設定の表示。ドライバーポータルと管理画面の設定、両方に同じものを出す
+// 通知が使えない理由を具体的に返す（「対応していません」だけだと原因が分からないため）
+function pushMissingReasons(){
+  const miss = [];
+  if (!('serviceWorker' in navigator)) miss.push('サービスワーカー');
+  if (!('PushManager' in window)) miss.push('プッシュ');
+  if (!('Notification' in window)) miss.push('通知');
+  return miss;
+}
 function pushStatusHtml(){
-  if (!pushSupported()) {
-    return `<b>🔔 端末への通知</b><br><span style="color:var(--text2)">この端末・ブラウザは対応していません。</span>`;
-  }
+  /* iOS（iPhone・iPad）はホーム画面に追加するまで PushManager 自体が存在しない。
+     そのため対応判定より先にこちらを出す。順番を逆にすると、Safariで開いた全員に
+     「対応していません」と表示されてしまう。 */
   if (pushIsIOS() && !pushIsStandalone()) {
     return `<b>🔔 端末への通知を受け取るには</b><br>
       iPhone・iPadでは、先に<b>ホーム画面に追加</b>が必要です。<br>
       ① 画面下の共有ボタン（□に↑）を押す<br>
       ② 「ホーム画面に追加」を選ぶ<br>
-      ③ 追加されたアイコンからこのアプリを開き、この画面で通知をオンにする`;
+      ③ 追加されたアイコンからこのアプリを開き、この画面で通知をオンにする<br>
+      <span style="color:var(--text2)">※ Safariで開いたままでは通知を出せません（iOSの仕様）。iOS 16.4以降が必要です。</span>`;
+  }
+  if (!pushSupported()) {
+    const miss = pushMissingReasons();
+    const hints = [];
+    if (!window.isSecureContext) hints.push('このページが https で開かれていません');
+    // LINEやXなどアプリ内のブラウザで開くと、プッシュ通知が使えないことが多い
+    if (/Line\/|FBAN|FBAV|Instagram|Twitter/i.test(navigator.userAgent)) {
+      hints.push('LINEなどアプリ内のブラウザで開いています。SafariやChromeで開き直してください');
+    }
+    if (pushIsIOS()) hints.push('iOS 16.4より前のiPhone・iPadでは使えません');
+    return `<b>🔔 端末への通知</b><br><span style="color:var(--text2)">
+      この端末・ブラウザは対応していません（${escHtml(miss.join('・'))}が使えません）。<br>
+      ${hints.map(h => '・' + escHtml(h)).join('<br>')}</span>`;
   }
   if (Notification.permission === 'denied') {
     return `<b>🔔 端末への通知</b><br><span style="color:var(--text2)">
@@ -220,6 +245,7 @@ function pushStatusHtml(){
   }
   return null; // 通常のボタン表示へ
 }
+// 通知設定の表示。ドライバーポータルと管理画面の設定、両方に同じものを出す
 async function renderPushSetting(){
   const els = ['drvPushBanner', 'adminPushSetting'].map(id => document.getElementById(id)).filter(Boolean);
   if (!els.length) return;
