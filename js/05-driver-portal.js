@@ -600,11 +600,17 @@ function chatFileChipHtml(m) {
   }
   return `<a href="${url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:11.5px;padding:6px 8px;background:var(--bg2);border-radius:8px;margin-top:${mt};color:inherit;text-decoration:none">📎 ${escHtml(m.file_name||'ファイル')}${m.file_size?` (${fmtBytes(m.file_size)})`:''}</a>`;
 }
+/* ドライバーに見せる「会社側」の名乗り。
+   LINEの公式アカウントと同じように、ドライバーからは担当者個人ではなく会社とやり取りしている見え方にする。
+   実際に書いた担当者名は sender_name に残り、管理画面側では実名のまま表示される（社内の追跡用）。 */
+function chatCompanyLabel(){ return (companySettings||{}).name || '会社'; }
 // 1件分の吹き出しHTML（本文・添付ファイル共通）。mineRoleは「自分側」とみなすsender_role（管理側は'admin'、ドライバーポータルは'driver'）
 function chatBubbleHtml(m, mineRole) {
   const mine = m.sender_role === mineRole;
   const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
-  const nameLabel = m.sender_name || (m.sender_role==='admin' ? '管理者' : 'ドライバー');
+  const nameLabel = (mineRole === 'driver' && m.sender_role === 'admin')
+    ? chatCompanyLabel()
+    : (m.sender_name || (m.sender_role==='admin' ? '管理者' : 'ドライバー'));
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
     <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(nameLabel)} ・ ${dt}</div>
     <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${m.body?escHtml(m.body):''}${chatFileChipHtml(m)}</div>
@@ -657,7 +663,7 @@ async function sendDrvChatMessage() {
     clearChatFile('drvChatFileInput','drvChatFileChip');
     // LINE/メール通知（1時間に1回まで: refに時間バケットを含めdedupeさせ、連投で通知が溢れないようにする）
     const hourBucket = new Date().toISOString().slice(0,13);
-    notifyDrivers([eChatDrvId], 'chat', `chat-${eChatDrvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
+    notifyDrivers([eChatDrvId], 'chat', `chat-${eChatDrvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -776,7 +782,7 @@ async function sendChatTabMessage() {
     input.value = '';
     clearChatFile('chatTabFileInput','chatTabFileChip');
     const hourBucket = new Date().toISOString().slice(0,13);
-    notifyDrivers([chatTabDrvId], 'chat', `chat-${chatTabDrvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
+    notifyDrivers([chatTabDrvId], 'chat', `chat-${chatTabDrvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
   } catch(e) { showT('送信エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -803,7 +809,7 @@ async function sendBulkChat(){
       const { error } = await sb.from('driver_messages').insert({drv_id: drvId, sender_role:'admin', sender_name: me?.name||'', body});
       if (error) throw error;
       ok++;
-      notifyDrivers([drvId], 'chat', `chat-${drvId}-${hourBucket}`, '管理者からメッセージ', 'ポータルのチャットに新着メッセージがあります。', true);
+      notifyDrivers([drvId], 'chat', `chat-${drvId}-${hourBucket}`, `${chatCompanyLabel()}からメッセージ`, 'ポータルのチャットに新着メッセージがあります。', true);
     } catch(e) { errs.push(`${drvs.find(d=>d.id===drvId)?.name||drvId}: ${e.message}`); }
   }
   showLoad(false);
@@ -1171,7 +1177,7 @@ async function loadMyChatGroups() {
     if (!e2) (reads||[]).forEach(r => { myChatGroupMyReads[r.group_id] = r.last_read_at; });
     myChatGroupLastMsgById = {};
     if (myChatGroups.length) {
-      const { data: msgs } = await sb.from('chat_group_messages').select('group_id, body, created_at, sender_name').in('group_id', myChatGroups.map(g=>g.id)).order('created_at', {ascending:false}).limit(500);
+      const { data: msgs } = await sb.from('chat_group_messages').select('group_id, body, created_at, sender_name, sender_type').in('group_id', myChatGroups.map(g=>g.id)).order('created_at', {ascending:false}).limit(500);
       (msgs||[]).forEach(m => { if (!myChatGroupLastMsgById[m.group_id]) myChatGroupLastMsgById[m.group_id] = m; });
     }
     renderMyChatGroupList();
@@ -1199,12 +1205,13 @@ function renderMyChatGroupList() {
   el.innerHTML = sorted.map(g => {
     const unread = isMyChatGroupUnread(g);
     const last = myChatGroupLastMsgById[g.id];
+    const lastName = !last ? '' : (last.sender_type==='staff' ? chatCompanyLabel() : (last.sender_name||''));
     return `<div onclick="openMyChatGroup(${g.id})" style="padding:10px 12px;margin-bottom:6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
         <span style="font-weight:${unread?'700':'500'};font-size:13px">👥 ${escHtml(g.name)}</span>
         ${unread?`<span style="width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0"></span>`:''}
       </div>
-      ${last?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${last.sender_name?escHtml(last.sender_name)+': ':''}${escHtml(last.body||'📎ファイル')}</div>`:''}
+      ${last?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lastName?escHtml(lastName)+': ':''}${escHtml(last.body||'📎ファイル')}</div>`:''}
     </div>`;
   }).join('');
 }
@@ -1243,7 +1250,7 @@ function myChatGroupBubbleHtml(m) {
   const mine = m.sender_key === ('driver:'+me?.driver_id);
   const dt = m.created_at ? new Date(m.created_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
-    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(m.sender_type==='staff'?'担当者':'ドライバー'))} ・ ${dt}</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_type==='staff' ? chatCompanyLabel() : (m.sender_name||'ドライバー'))} ・ ${dt}</div>
     <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${m.body?escHtml(m.body):''}${chatFileChipHtml(m)}</div>
   </div>`;
 }

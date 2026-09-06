@@ -3401,26 +3401,43 @@ function populateDriverInviteTargets(){
     .map(d=>`<option value="${d.id}">${escHtml(d.name||'')}${d.supplier_id?`（${escHtml(d.supplier_id)}）`:''}${hasLogin.has(String(d.id))?' ※ログイン発行済み':''}</option>`).join('');
   sel.innerHTML = '<option value="">新しく迎えるドライバー（台帳にまだいない方）</option>' + opts;
 }
-// 宛先の絞り込み。人数が多いと一覧から探すのが大変なので名前・仕入先IDで絞れるようにする
+// 宛先の絞り込み。人数が多いと一覧から探すのが大変なので名前・仕入先IDで絞れるようにする。
+// 複数選択できるようになったため、絞り込みでは選択に触れない（絞り込み→選ぶ→絞り直して追加、ができる）
 function filterDriverInviteTargets(){
   const q = nm(document.getElementById('drvInviteFilter')?.value || '');
   const sel = document.getElementById('drvInviteTarget');
   if (!sel) return;
-  let firstVisible = null;
-  [...sel.options].forEach(o => {
-    const hit = !q || o.value === '' || nm(o.text).includes(q);
-    o.hidden = !hit;
-    if (hit && o.value !== '' && !firstVisible) firstVisible = o;
-  });
-  // 絞り込んだら、残った先頭の候補を選んでおく（既定の「新規」のままだと選び忘れる）
-  const cur = sel.selectedOptions[0];
-  if (q && firstVisible && (!cur || cur.hidden || cur.value === '')) sel.value = firstVisible.value;
-  if (!q && cur && cur.hidden) sel.value = '';
+  [...sel.options].forEach(o => { o.hidden = !(!q || o.value === '' || nm(o.text).includes(q)); });
+  renderDriverInviteSelection();
+}
+/* 選択中の宛先を名前で見せる。
+   絞り込みで画面から消えた人が選ばれたままになっても、ここを見れば気づける */
+function renderDriverInviteSelection(){
+  const sel = document.getElementById('drvInviteTarget');
+  const el = document.getElementById('drvInviteSelected');
+  if (!sel || !el) return;
+  const picked = [...sel.selectedOptions];
+  if (!picked.length) { el.textContent = '選択中: なし（このまま発行すると「新しく迎えるドライバー」用の招待になります）'; return; }
+  const names = picked.map(o => o.value ? o.text.replace(/（.*$/, '').trim() : '新しく迎えるドライバー');
+  el.textContent = `選択中: ${picked.length}件 … ${names.join('、')}`;
+}
+// 絞り込んで残っている人を全員選ぶ（入社が重なった時などにまとめて発行するため）
+function selectAllDriverInviteTargets(){
+  const sel = document.getElementById('drvInviteTarget');
+  if (!sel) return;
+  [...sel.options].forEach(o => { o.selected = !o.hidden && o.value !== ''; });
+  renderDriverInviteSelection();
+}
+function clearDriverInviteTargets(){
+  const sel = document.getElementById('drvInviteTarget');
+  if (!sel) return;
+  [...sel.options].forEach(o => { o.selected = false; });
+  renderDriverInviteSelection();
 }
 // 宛先を選ぶところから始める
 function openDriverInviteM(){
   populateDriverInviteTargets();
-  const t = document.getElementById('drvInviteTarget'); if (t) t.value = '';
+  clearDriverInviteTargets();
   const f = document.getElementById('drvInviteFilter'); if (f) f.value = '';
   filterDriverInviteTargets();
   document.getElementById('drvInviteSetup').style.display = 'block';
@@ -3435,37 +3452,58 @@ async function createDriverInviteFor(drvId){
   if (!d) { showT('ドライバーが見つかりません', 'ter'); return; }
   openDriverInviteM();
   const sel = document.getElementById('drvInviteTarget');
-  if (sel) sel.value = String(drvId);
+  if (sel) { [...sel.options].forEach(o => { o.selected = (o.value === String(drvId)); }); renderDriverInviteSelection(); }
   await createDriverInvite();
 }
-/* 1回限りの招待URL/QRコードを発行する。
+/* 1回限りの招待URL/QRコードを発行する。選んだ人数ぶんをまとめて発行できる。
    target_driver_id を入れておくと、その招待では指定した1人にしか合流できなくなる。
+   まとめて発行する場合も1人につき1本のURLを作る（1本を使い回すと、URLが回った人が
+   別人として登録できてしまうため）。
    未指定（新規ドライバー向け）の招待で既存ドライバーに合流した場合は、
    なりすましの可能性が残るためログインの自動発行は行われない（管理者が画面から発行する）。 */
 async function createDriverInvite(){
-  const targetId = +document.getElementById('drvInviteTarget')?.value || null;
-  const targetName = targetId ? ((drvs||[]).find(d=>d.id===targetId)?.name || '') : '';
+  const sel = document.getElementById('drvInviteTarget');
+  const picked = sel ? [...sel.selectedOptions] : [];
+  // 何も選ばれていないときは、これまでどおり「新しく迎えるドライバー」用を1件だけ発行する
+  const ids = picked.length ? [...new Set(picked.map(o => +o.value || null))] : [null];
+  if (ids.length >= 10 && !confirm(`${ids.length}件の招待URLをまとめて発行します。よろしいですか？`)) return;
+  const nameOf = id => id ? ((drvs||[]).find(d=>d.id===id)?.name || '') : '';
   showLoad(true);
   try{
-    const token = genInviteToken();
     const expiresAt = new Date(Date.now() + DRIVER_INVITE_EXPIRY_DAYS*86400000);
-    const{error}=await sb.from('driver_invites').insert({token, created_by: me?.name||'', expires_at: expiresAt.toISOString(), target_driver_id: targetId});
+    const rows = ids.map(id => ({token: genInviteToken(), created_by: me?.name||'', expires_at: expiresAt.toISOString(), target_driver_id: id}));
+    const{error}=await sb.from('driver_invites').insert(rows);
     if(error)throw error;
-    const url = `${location.origin}${location.pathname}?invite=${token}`;
-    document.getElementById('drvInviteUrl').value = url;
+    const urlOf = r => `${location.origin}${location.pathname}?invite=${r.token}`;
     document.getElementById('drvInviteExpiry').textContent = `有効期限: ${expiresAt.toLocaleString('ja-JP')}まで`;
-    const qrEl = document.getElementById('drvInviteQr');
-    qrEl.innerHTML = '';
-    if (window.QRCode) {
-      new QRCode(qrEl, {text: url, width: 200, height: 200});
-    } else {
-      qrEl.textContent = '（QRコードライブラリの読み込みに失敗しました。URLを直接お使いください）';
-    }
     const forEl = document.getElementById('drvInviteFor');
-    if (forEl) forEl.textContent = targetId ? `宛先: ${targetName} さん専用` : '宛先: 新しく迎えるドライバー';
+    const singleEl = document.getElementById('drvInviteSingle');
+    const bulkEl = document.getElementById('drvInviteBulk');
+    if (rows.length === 1) {
+      const url = urlOf(rows[0]);
+      document.getElementById('drvInviteUrl').value = url;
+      const qrEl = document.getElementById('drvInviteQr');
+      qrEl.innerHTML = '';
+      if (window.QRCode) {
+        new QRCode(qrEl, {text: url, width: 200, height: 200});
+      } else {
+        qrEl.textContent = '（QRコードライブラリの読み込みに失敗しました。URLを直接お使いください）';
+      }
+      if (forEl) forEl.textContent = ids[0] ? `宛先: ${nameOf(ids[0])} さん専用` : '宛先: 新しく迎えるドライバー';
+      if (singleEl) singleEl.style.display = 'block';
+      if (bulkEl) bulkEl.style.display = 'none';
+    } else {
+      document.getElementById('drvInviteBulkText').value =
+        rows.map(r => `${nameOf(r.target_driver_id) || '新しく迎えるドライバー'}\n${urlOf(r)}`).join('\n\n');
+      if (forEl) forEl.textContent = `${rows.length}名ぶんを発行しました。それぞれ本人専用のURLです（取り違えにご注意ください）`;
+      if (singleEl) singleEl.style.display = 'none';
+      if (bulkEl) bulkEl.style.display = 'block';
+    }
     document.getElementById('drvInviteSetup').style.display = 'none';
     document.getElementById('drvInviteResult').style.display = 'block';
-    addLog('ドライバー招待発行', targetId ? `${targetName}宛（${DRIVER_INVITE_EXPIRY_DAYS}日間有効）` : `新規ドライバー用（${DRIVER_INVITE_EXPIRY_DAYS}日間有効）`);
+    addLog('ドライバー招待発行', rows.length === 1
+      ? (ids[0] ? `${nameOf(ids[0])}宛（${DRIVER_INVITE_EXPIRY_DAYS}日間有効）` : `新規ドライバー用（${DRIVER_INVITE_EXPIRY_DAYS}日間有効）`)
+      : `${rows.length}名ぶんをまとめて発行（${DRIVER_INVITE_EXPIRY_DAYS}日間有効）`);
     document.getElementById('mDrvInvite').classList.add('on');
   }catch(e){showT('招待URL発行エラー: '+e.message,'ter');}
   showLoad(false);
@@ -3474,6 +3512,12 @@ function copyDriverInviteUrl(){
   const el = document.getElementById('drvInviteUrl');
   el.select();
   navigator.clipboard?.writeText(el.value).then(()=>showT('URLをコピーしました')).catch(()=>showT('コピーに失敗しました。手動で選択してコピーしてください','ter'));
+}
+// まとめて発行したときの「名前＋URL」一覧をそのままコピーする
+function copyDriverInviteBulk(){
+  const el = document.getElementById('drvInviteBulkText');
+  el.select();
+  navigator.clipboard?.writeText(el.value).then(()=>showT('一覧をコピーしました')).catch(()=>showT('コピーに失敗しました。手動で選択してコピーしてください','ter'));
 }
 
 // ログインを新規発行した直後、そのままLINE/SMS等に貼り付けて本人へ送れる文面を表示する

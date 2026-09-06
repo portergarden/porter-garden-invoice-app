@@ -2150,21 +2150,33 @@ try {
       <div class="fld" style="text-align:left">
         <label>誰に送る招待ですか <span style="color:var(--red)">*</span></label>
         <input type="text" id="drvInviteFilter" placeholder="名前や仕入先IDで絞り込む" oninput="filterDriverInviteTargets()" style="margin-bottom:4px">
-        <select id="drvInviteTarget" size="8"></select>
+        <select id="drvInviteTarget" multiple size="8" onchange="renderDriverInviteSelection()"></select>
+        <div style="display:flex;gap:5px;margin-top:4px">
+          <button class="btn sml" onclick="selectAllDriverInviteTargets()">絞り込んだ全員を選ぶ</button>
+          <button class="btn sml" onclick="clearDriverInviteTargets()">選択を外す</button>
+        </div>
+        <div id="drvInviteSelected" style="font-size:10px;color:var(--text2);margin-top:4px"></div>
         <div style="font-size:10px;color:var(--text2);margin-top:4px;background:var(--bg2);border-radius:var(--radius);padding:6px 8px">
-          台帳にいる方を選ぶと、<b>この招待はその方専用</b>になります。URLが別の人の手に渡っても、他のドライバーとして登録することはできません。<br>
+          <b>複数人まとめて選べます</b>（パソコンはCtrlキーを押しながら、スマホはタップで追加）。選んだ人数ぶんのURLを一度に発行します。<br>
+          台帳にいる方を選ぶと、<b>その招待はその方専用</b>になります。URLが別の人の手に渡っても、他のドライバーとして登録することはできません。<br>
           新しく迎える方の場合は「新しく迎えるドライバー」を選んでください。
         </div>
       </div>
-      <button class="btn pri" style="width:100%" onclick="createDriverInvite()">🔗 この宛先で発行する</button>
+      <button class="btn pri" style="width:100%" onclick="createDriverInvite()">🔗 選んだ宛先に発行する</button>
     </div>
     <div id="drvInviteResult" style="display:none">
       <div style="font-size:11px;color:var(--text2);margin-bottom:6px">このURL（またはQRコード）を本人に送ってください。1回限り・7日間有効です。ドライバーが名前・電話番号・車番を入力すると仮登録され、手数料率などは登録後に管理者が設定してください。</div>
       <div id="drvInviteFor" style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:8px"></div>
-      <div id="drvInviteQr" style="display:flex;justify-content:center;margin-bottom:10px"></div>
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <input type="text" id="drvInviteUrl" readonly style="flex:1;padding:6px 8px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text)">
-        <button class="btn sml" onclick="copyDriverInviteUrl()">📋 コピー</button>
+      <div id="drvInviteSingle">
+        <div id="drvInviteQr" style="display:flex;justify-content:center;margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <input type="text" id="drvInviteUrl" readonly style="flex:1;padding:6px 8px;font-size:11px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text)">
+          <button class="btn sml" onclick="copyDriverInviteUrl()">📋 コピー</button>
+        </div>
+      </div>
+      <div id="drvInviteBulk" style="display:none;text-align:left;margin-bottom:6px">
+        <textarea id="drvInviteBulkText" readonly style="width:100%;height:180px;padding:6px 8px;font-size:11px;line-height:1.5;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text);resize:vertical"></textarea>
+        <button class="btn" style="width:100%;margin-top:6px" onclick="copyDriverInviteBulk()">📋 一覧をまとめてコピー</button>
       </div>
       <div id="drvInviteExpiry" style="font-size:10px;color:var(--text2)"></div>
     </div>
@@ -3027,7 +3039,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=4b411cdd"></script>
+<script src="js/01-core.js?v=ce7caaaf"></script>
 
 <script src="js/02-drivers-pay.js?v=bfc7aadb"></script>
 
@@ -3088,7 +3100,7 @@ try {
 <script src="js/04-monthly.js?v=318f54fe"></script>
 
 
-<script src="js/05-driver-portal.js?v=f22ac35b"></script>
+<script src="js/05-driver-portal.js?v=055dc5c4"></script>
 
 
 
