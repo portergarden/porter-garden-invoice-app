@@ -9,6 +9,17 @@
    ============================================================ */
 
 /* ===== ドライバーポータル ===== */
+/* 支払明細書のタブを出すかどうか（ドライバー編集の「支払明細書のポータル表示」）。
+     auto … 所属協力会社が設定されていれば非表示（支払先が協力会社のため）、自社所属なら表示
+     show … 常に表示（協力会社所属でも直接お支払いする方）
+     hide … 常に非表示
+   旧仕様は「表示しない」のチェックだけで、協力会社所属の例外を表せなかった。 */
+function shouldHideStatement(d){
+  const v = d?.statement_visibility || 'auto';
+  if (v === 'hide') return true;
+  if (v === 'show') return false;
+  return d?.company_client_id != null;
+}
 function applyDriverPortal() {
   // メイン画面を非表示、ポータルを表示
   const main = document.getElementById('pgMain');
@@ -29,11 +40,7 @@ function applyDriverPortal() {
   const drvDmEl = document.getElementById('drvDailyMonth');
   if (drvDmEl) drvDmEl.value = thisM;
 
-  /* 支払明細書のタブを出すかどうか。
-     協力会社に所属しているドライバーには会社から直接支払わない（支払先は協力会社）ため、
-     所属が設定されていれば自動で隠す。自社所属でも個別に隠したい場合は
-     ドライバー編集の「支払明細書をドライバーポータルに表示しない」で指定する。 */
-  const hideStatement = !!(me?.driver_data?.hide_statement || me?.driver_data?.company_client_id);
+  const hideStatement = shouldHideStatement(me?.driver_data);
   const stmtTabEl = document.getElementById('dnt2');
   if (stmtTabEl) stmtTabEl.style.display = hideStatement ? 'none' : '';
 

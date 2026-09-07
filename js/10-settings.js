@@ -77,7 +77,8 @@ CREATE TABLE IF NOT EXISTS drivers (
   bank text, company text, note text, lease_company text,
   company_client_id bigint REFERENCES clients(id) ON DELETE SET NULL, -- 所属会社（会社マスタへの直接紐づけ。companyは表示・集計用の複製）
   partner_id bigint, -- 統合前の協力会社ID。参照はしていないが切り戻し用に残している
-  hide_statement boolean NOT NULL DEFAULT false,
+  -- 支払明細書をポータルに出すか。auto=協力会社所属なら非表示 / show=常に表示 / hide=常に非表示
+  statement_visibility text NOT NULL DEFAULT 'auto' CHECK (statement_visibility IN ('auto','show','hide')),
   is_company boolean NOT NULL DEFAULT false,  -- 旧：会社を支払先とするドライバーレコード。2026-09に会社マスタへ移し、現在は常にfalse
   email text,           -- LINE未連携時の通知先メールアドレス
   line_user_id text,    -- LINE通知の宛先（webhook経由で連携コード照合時に自動設定）

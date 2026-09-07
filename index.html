@@ -2534,8 +2534,14 @@ try {
       </div>
       <div class="fld"><label>車両リース代（円）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1"></div>
       <div class="fld"><label>リース会社（任意・車両代の支払先を集計する際に使用）</label><select id="dLeaseCompany" onchange="onLeaseCompanySelChange()"><option value="">（未設定）</option></select></div>
-      <div class="fld"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="dHideStatement" style="width:auto"> 支払明細書をドライバーポータルに表示しない</label>
-        <div style="font-size:10px;color:var(--text2);margin-top:2px">※ 所属協力会社を設定している方は、支払先が協力会社になるため、このチェックに関わらず自動で非表示になります</div></div>
+      <div class="fld"><label>支払明細書のポータル表示</label>
+        <select id="dStmtVis">
+          <option value="auto">自動（協力会社所属なら表示しない）</option>
+          <option value="show">常に表示する</option>
+          <option value="hide">表示しない</option>
+        </select>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">※「自動」は、所属協力会社が設定されていれば非表示、自社所属なら表示します。<br>
+          協力会社所属でも直接お支払いする方は「常に表示する」を選んでください。</div></div>
       <div style="border-top:0.5px solid var(--border2);margin:10px 0;padding-top:10px">
         <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">タスク管理の提出ルール（支払明細書発行の期限を毎月自動計算します）</div>
         <div class="g2">
@@ -3075,7 +3081,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=319b3889"></script>
+<script src="js/01-core.js?v=287a4cd6"></script>
 
 <script src="js/02-drivers-pay.js?v=bfc7aadb"></script>
 
@@ -3136,7 +3142,7 @@ try {
 <script src="js/04-monthly.js?v=b0e18fa3"></script>
 
 
-<script src="js/05-driver-portal.js?v=b4734d02"></script>
+<script src="js/05-driver-portal.js?v=4bce0912"></script>
 
 
 
@@ -3151,7 +3157,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=809dc416"></script>
+<script src="js/10-settings.js?v=087fc086"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>
