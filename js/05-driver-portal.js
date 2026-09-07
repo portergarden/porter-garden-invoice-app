@@ -29,8 +29,11 @@ function applyDriverPortal() {
   const drvDmEl = document.getElementById('drvDailyMonth');
   if (drvDmEl) drvDmEl.value = thisM;
 
-  // 協力会社経由で支払うなど、ポータルで支払明細書を見せないドライバーは「支払明細書」タブごと非表示にする
-  const hideStatement = !!me?.driver_data?.hide_statement;
+  /* 支払明細書のタブを出すかどうか。
+     協力会社に所属しているドライバーには会社から直接支払わない（支払先は協力会社）ため、
+     所属が設定されていれば自動で隠す。自社所属でも個別に隠したい場合は
+     ドライバー編集の「支払明細書をドライバーポータルに表示しない」で指定する。 */
+  const hideStatement = !!(me?.driver_data?.hide_statement || me?.driver_data?.company_client_id);
   const stmtTabEl = document.getElementById('dnt2');
   if (stmtTabEl) stmtTabEl.style.display = hideStatement ? 'none' : '';
 
@@ -63,6 +66,11 @@ function applyDriverPortal() {
 }
 
 function goDrvPage(n, el) {
+  /* 隠しているタブ（協力会社所属の方の支払明細書など）には、
+     戻る操作や履歴の復元といった別の経路でも入らせない。
+     チャット(5)・グループ(6)は連絡タブ(dnt3)配下でdnt5/dnt6が無いため、この判定は素通りする */
+  const guard = document.getElementById('dnt'+n);
+  if (guard && guard.style.display === 'none') { n = 3; el = document.getElementById('dnt3'); }
   for (let i=0; i<7; i++) {
     const p = document.getElementById('dpg'+i);
     if (p) p.style.display = i===n ? ((i===5||i===6)?'flex':'block') : 'none';
