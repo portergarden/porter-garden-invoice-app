@@ -115,6 +115,37 @@ async function syncVehiclesFromDriverCars(cars) {
   } catch(e) { console.warn('syncVehiclesFromDriverCars:', e.message); }
 }
 
+/* ドライバー登録で入力した車番を、車両管理の乗務履歴にも「使用開始」として記録する。
+   これまでは車両台帳に車番が作られるだけで、誰がいつから乗っているかは
+   車両管理タブで別途入力する必要があった。
+   すでに誰かが使用中の車番には触らない。前の記録をいつ終わらせるかは引き継ぎの判断が要るため、
+   車両管理タブ（開始日を入れると前の記録が自動で終了する）でやってもらう。 */
+async function syncVehicleAssignmentsForDriver(driverId, cars, startDate) {
+  const skipped = [];
+  if (!sb || !driverId || !startDate || !cars?.length) return {added: 0, skipped};
+  // 他の人が使用中かどうかを正しく見るため、最新の乗務履歴を読み直してから判断する
+  await loadVehicleAssignments();
+  const add = [];
+  for (const car of [...new Set(cars.filter(c => c && !c.includes('----') && isFullPlateNumber(c)))]) {
+    const open = (vehicleAssignments||[]).filter(a => nm(a.car) === nm(car) && !a.end_date);
+    if (open.some(a => a.driver_id === driverId)) continue;   // 既にこの人が使用中
+    if (open.length) { skipped.push(car); continue; }         // 他の人が使用中
+    add.push({car, driver_id: driverId, start_date: startDate, end_date: null,
+              daily_rate: null, note: 'ドライバー登録の使用開始日から自動作成'});
+  }
+  if (!add.length) return {added: 0, skipped};
+  try {
+    const {data, error} = await sb.from('vehicle_assignments').insert(add).select();
+    if (error) throw error;
+    vehicleAssignments.push(...(data||[]));
+    invalidateVehicleAssignIndex();
+    return {added: add.length, skipped};
+  } catch(e) {
+    console.warn('syncVehicleAssignmentsForDriver:', e.message);
+    return {added: 0, skipped, error: e.message};
+  }
+}
+
 /* ドライバー登録に無い車番を車両管理へまとめて取り込む（種別は未分類。あとで分類する） */
 async function importUnregisteredCars() {
   if (!sb) return;

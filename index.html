@@ -2515,6 +2515,10 @@ try {
         <div id="cTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
         <div style="display:flex;gap:5px"><input type="text" id="dCi" placeholder="例: 品川300あ1234" style="flex:1" onkeydown="if(event.key==='Enter'){addTag();event.preventDefault()}"><button class="btn" onclick="addTag()">＋ 追加</button></div>
       </div>
+      <div class="fld"><label>車両の使用開始日（任意・車両管理の乗務履歴に記録します）</label>
+        <input type="date" id="dCarStart">
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">※ 上の車番のうち、まだ誰も使用していないものを「この日から使用開始」として車両管理に記録します。<br>
+          すでに他の方が使用中の車番は、引き継ぎの判断が必要なため車両管理タブで登録してください。</div></div>
       <div class="fld"><label>電話番号（任意）</label><input type="text" id="dTel" placeholder="090-0000-0000"></div>
       <div class="fld"><label>メールアドレス（任意・LINE未連携時の通知先）</label><input type="email" id="dEmail" placeholder="driver@example.com"></div>
       <div class="fld"><label>振込先口座（任意・支払明細書に表示）</label><input type="text" id="dBank" placeholder="〇〇銀行 〇〇支店 普通 1234567"></div>
@@ -3081,9 +3085,9 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=287a4cd6"></script>
+<script src="js/01-core.js?v=78f81873"></script>
 
-<script src="js/02-drivers-pay.js?v=bfc7aadb"></script>
+<script src="js/02-drivers-pay.js?v=97e29d39"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">

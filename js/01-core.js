@@ -2516,7 +2516,7 @@ async function onLeaseCompanySelChange(){
     populateLeaseCompanyList(name);
   } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
-function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dHideStatement').checked=false;document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dStmtVis').value='auto';document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('dCarStart').value=fmtLocalDate(new Date());document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
 function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');const v=inp.value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
@@ -2541,7 +2541,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.company_client_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dStmtVis').value=d.statement_visibility||'auto';document.getElementById('dSubmitRuleType').value=d.submit_rule_type||'none';document.getElementById('dSubmitRuleDay').value=d.submit_rule_day??'';document.getElementById('dSendMemo').value=d.send_memo||'';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.company_client_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dStmtVis').value=d.statement_visibility||'auto';document.getElementById('dCarStart').value='';document.getElementById('dSubmitRuleType').value=d.submit_rule_type||'none';document.getElementById('dSubmitRuleDay').value=d.submit_rule_day??'';document.getElementById('dSendMemo').value=d.send_memo||'';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -2606,12 +2606,13 @@ async function saveDrv(){
     invoice_no:document.getElementById('dInvoiceNo').value.trim()||null,
     other_deductions:pendOtherDeductions,
   };
+  let savedDrvId = eDrvId;   // 新規登録のときは挿入後に採番されたidを入れる
   showLoad(true);
   try{
     if(eDrvId!==null){const{data,error}=await sb.from('drivers').update(obj).eq('id',eDrvId).select().single();if(error)throw error;const idx=drvs.findIndex(x=>x.id===eDrvId);if(idx>=0)drvs[idx]=data;invalidateDriverIndexes();addLog('ドライバー編集',name);}
     else{
       obj.line_link_code=genDriverLinkCode(); // LINE通知の連携コードは新規登録時に発行
-      const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);invalidateDriverIndexes();addLog('ドライバー追加',name);
+      const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);savedDrvId=data.id;invalidateDriverIndexes();addLog('ドライバー追加',name);
       if(createLogin){
         try{
           // ログイン用のSupabase AuthアカウントをEdge Function（管理者権限）経由で作成。初期パスワードはランダム生成し、初回ログイン時に本人へ変更を求める
@@ -2626,6 +2627,15 @@ async function saveDrv(){
       }
     }
     await syncVehiclesFromDriverCars(pendTags);  // 車両管理を車両の唯一の台帳に保つ
+    // 使用開始日が入っていれば、誰がいつから乗るかも車両管理の乗務履歴に残す
+    const carStart = document.getElementById('dCarStart').value;
+    if (carStart && savedDrvId) {
+      const res = await syncVehicleAssignmentsForDriver(savedDrvId, pendTags, carStart);
+      if (res.added) addLog('車両の使用開始を記録', `${name}（${carStart}から ${res.added}台)`);
+      if (res.skipped.length) {
+        showT(`${res.skipped.join('・')} は別の方が使用中のため記録しませんでした。車両管理タブで引き継ぎを登録してください`, 'twa');
+      }
+    }
     closeM('mDrv');renderDrv();renderInv();
     refreshPayAggIfVisible(); // 支払明細書作成タブから開いた場合、その場で集計テーブルにも反映する
     if(createLogin && createdInitialPw && users.find(u=>u.id===loginId)){showT('ドライバーとログインを登録しました');showLoginCreatedInfo(loginId,createdInitialPw);}
