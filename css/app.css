@@ -362,3 +362,47 @@ td.dim{color:var(--text2)}
 .msg-del{background:none;border:none;color:var(--text2);font-size:10px;cursor:pointer;padding:0 2px;opacity:0.5;line-height:1}
 .msg-del:hover{opacity:1}
 .msg-gone{opacity:0.75;font-style:italic}
+
+
+/* ===== 管理画面のスマホ表示 =====
+   管理画面はPCの横幅を前提に作ってあり、スマホでは見出しが切れる・
+   一覧の列が重なるといった崩れが出ていた。ここでまとめて詰める。
+   ドライバーポータル(.drv-nav / .drv-subnav)は別に調整済みなので触らない。 */
+@media (max-width:767px){
+  /* 上部バー: 会社名とユーザー名は畳んで、操作ボタンを1行に収める */
+  .topbar{padding:6px 8px;gap:4px}
+  .topbar-l{font-size:12px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #tbCompanyName, #tbName, #tbBdg{display:none}
+  .topbar-r{flex-shrink:0;gap:2px}
+  .topbar-r .btn.sml{padding:4px 8px;font-size:11px}
+
+  /* ナビ: 横スクロールだと端のタブが画面外に隠れ、存在に気づけない。折り返して全部見せる */
+  .nav-group, .nav{flex-wrap:wrap;overflow-x:visible;padding-left:8px;padding-right:8px}
+  .nav-group > .ntab, .nav > .ntab{font-size:11px;padding:6px 8px}
+
+  /* KPI: 4〜5列のままだと見出しが縦に潰れるので2列に畳む。
+     列数は各画面のインライン指定で書かれているため、!important で上書きする */
+  .kpi-grid, .mets{grid-template-columns:repeat(2,1fr);padding:8px 10px}
+  .mets > div{min-width:0}
+  #pgMain [style*="grid-template-columns:repeat(4,1fr)"],
+  #pgMain [style*="grid-template-columns:repeat(5,1fr)"],
+  #pgMain [style*="grid-template-columns:repeat(3,1fr)"]{grid-template-columns:repeat(2,1fr)!important}
+  .kpi-card{display:flex;flex-direction:column;justify-content:flex-end}
+  .kpi-label{min-height:2.4em}
+
+  /* 一覧のリスト表示はPC幅の固定列で組んであるため、縮めると列が重なる。
+     横スクロールさせて重なりを防ぐ（カード表示(.cardgrid)は縦に積むので対象外） */
+  #drvGrid:not(.cardgrid), #cliGrid:not(.cardgrid){overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #drvGrid:not(.cardgrid) > div, #cliGrid:not(.cardgrid) > div{min-width:860px}
+
+  /* 横長の表は画面ごと押し広げず、その場でスクロールさせる */
+  #pgMain .pnl-body, #pgMain .tbl-wrap{overflow-x:auto}
+
+  /* 絞り込みなどのツールバーは折り返す。縮みすぎて重なるのを防ぐ */
+  .tbar{flex-wrap:wrap;gap:6px}
+  .tbar select{width:auto;max-width:48vw}
+
+  /* 合計欄など、区切り線で横に並べている行は折り返す */
+  #pgMain [style*="display:flex"][style*="gap"] > span,
+  #pgMain [style*="display:flex"][style*="gap"] > div{min-width:0}
+}

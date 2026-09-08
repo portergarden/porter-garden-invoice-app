@@ -111,6 +111,12 @@ function proceedAfterLogin() {
   // 未読件数をタブとアプリのアイコンに出す
   reloadUnreadCounts().catch(()=>{});
   startAppUpdateWatch();
+  /* スマホでは一覧のリスト表示（PC幅の固定列）が収まらず列が重なるため、
+     カード表示から始める。切り替えボタンでリストにも戻せる。 */
+  if (window.innerWidth < 768) {
+    try { setDriverView('card'); } catch(e) {}
+    try { setCliView('card'); } catch(e) {}
+  }
   // ドライバーロールの場合はポータル画面に切替。ここで例外が起きた場合、
   // 以前は「フォールバックとして管理画面(pgMain)を表示する」実装になっていたが、
   // これだとドライバーに他ドライバー・他取引先のデータが見える管理画面がそのまま表示されてしまう
