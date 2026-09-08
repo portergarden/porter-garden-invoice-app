@@ -572,6 +572,7 @@ async function startMsgPopupWatch(){
         // 送信取消は相手の画面からもすぐ消えてほしいので、更新も見る
         .on('postgres_changes', {event:'UPDATE', schema:'public', table:'driver_messages', filter:`drv_id=eq.${me.driver_id}`}, ({new: m}) => {
           if (m.deleted_at) applyChatRetraction(m.id, 'dm');
+          else applyChatReadMark(m);
         })
         .on('postgres_changes', {event:'INSERT', schema:'public', table:'driver_messages', filter:`drv_id=eq.${me.driver_id}`}, ({new: m}) => {
           if (m.sender_role !== 'admin') return;                                   // 自分が送った分は出さない
@@ -597,6 +598,7 @@ async function startMsgPopupWatch(){
     msgPopChannels.push(sb.channel('msgpop_dm_admin')
       .on('postgres_changes', {event:'UPDATE', schema:'public', table:'driver_messages'}, ({new: m}) => {
         if (m.deleted_at) applyChatRetraction(m.id, 'dm');
+        else applyChatReadMark(m);
       })
       .on('postgres_changes', {event:'INSERT', schema:'public', table:'driver_messages'}, ({new: m}) => {
         if (m.sender_role !== 'driver') return;
@@ -813,6 +815,55 @@ function chatFileChipHtml(m) {
   }
   return `<a href="${url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:11.5px;padding:6px 8px;background:var(--bg2);border-radius:8px;margin-top:${mt};color:inherit;text-decoration:none">📎 ${escHtml(m.file_name||'ファイル')}${m.file_size?` (${fmtBytes(m.file_size)})`:''}</a>`;
 }
+/* ===== 既読・未読の表示 =====
+   自分が送ったメッセージにだけ付ける（LINEと同じ。相手の発言には出さない）。
+   1対1は driver_messages.read_at が「相手が読んだ時刻」で、相手がスレッドを
+   開いたときに markDrvChatRead() が付ける。 */
+const readStampFmt = t => new Date(t).toLocaleString('ja-JP', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+const readMarkHtml = txt => `<div style="font-size:9.5px;color:var(--text2);text-align:right;margin-top:1px">${txt}</div>`;
+
+function chatReadMark(m, mine){
+  if (!mine || m.deleted_at) return '';
+  return readMarkHtml(m.read_at ? '既読 ' + readStampFmt(m.read_at) : '未読');
+}
+
+/* グループの既読。chat_group_reads は本人の行しか読めないため、
+   誰が読んだかは伏せて人数だけ返す関数(chat_group_read_summary)を使う。
+   自分の既読は数えない（送った時点で自分は読んでいるため差し引く）。 */
+let chatGroupReadInfo = {};   // group_id -> {members, times[]}
+async function loadChatGroupReadSummary(groupId){
+  if (!sb || !groupId) return;
+  try {
+    const { data, error } = await sb.rpc('chat_group_read_summary', { p_group_id: groupId });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    chatGroupReadInfo[groupId] = row
+      ? { members: row.member_count || 0, times: (row.read_times || []).map(t => new Date(t).getTime()) }
+      : null;
+  } catch(e) { chatGroupReadInfo[groupId] = null; console.warn('loadChatGroupReadSummary:', e.message); }
+}
+function chatGroupReadMark(m, mine){
+  if (!mine || m.deleted_at) return '';
+  const info = chatGroupReadInfo[m.group_id];
+  if (!info || !info.members) return '';
+  const t = new Date(m.created_at).getTime();
+  const others = Math.max(0, info.members - 1);        // 自分以外の人数
+  const read = Math.max(0, info.times.filter(x => x >= t).length - 1);
+  if (!others) return '';
+  return readMarkHtml(read ? `既読 ${Math.min(read, others)}/${others}` : '未読');
+}
+// 相手が読んだことを、送った側の画面にもその場で反映する
+function applyChatReadMark(m){
+  let changed = false;
+  [drvChatMessages, chatTabMessages].forEach(arr => (arr||[]).forEach(x => {
+    if (x.id === m.id && x.read_at !== m.read_at) { x.read_at = m.read_at; changed = true; }
+  }));
+  if (!changed) return;
+  try { renderDrvChatMessages(); } catch(e) {}
+  try { renderChatTabMessages(); } catch(e) {}
+  try { renderDrvPortalChatMessages(); } catch(e) {}
+}
+
 /* ===== メッセージの送信取消（LINEと同じ考え方） =====
    行ごと消すと会話が飛んで読めなくなるため、本文と添付だけを消して
    「送信を取り消しました」と残す。誰が取り消せるかはサーバ側の関数で判定する
@@ -879,6 +930,7 @@ function chatBubbleHtml(m, mineRole) {
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
     <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(nameLabel)} ・ ${dt}${chatDelBtn('dm', m, mine)}</div>
     <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${chatBodyHtml(m)}</div>
+    ${chatReadMark(m, mine)}
   </div>`;
 }
 // メッセージ一覧の共通描画。添付ファイルの署名付きURLが未取得なら取得後に再描画する
@@ -1165,6 +1217,7 @@ async function openChatGroup(id) {
   document.getElementById('chatGroupMsgList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
   clearChatFile('chatGroupFileInput','chatGroupFileChip');
   renderChatGroupList();
+  await loadChatGroupReadSummary(id);
   await loadChatGroupMessages(id);
   await markChatGroupRead(id);
   renderChatGroupList();
@@ -1187,6 +1240,7 @@ function chatGroupBubbleHtml(m) {
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
     <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_name||(m.sender_type==='driver'?'ドライバー':'担当者'))} ・ ${dt}${chatDelBtn('grp', m, mine)}</div>
     <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${chatBodyHtml(m)}</div>
+    ${chatGroupReadMark(m, mine)}
   </div>`;
 }
 function renderChatGroupMessages() {
@@ -1498,6 +1552,7 @@ async function openMyChatGroup(id) {
   renderMyChatGroupThreadHeader();
   document.getElementById('drvChatGroupMsgList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
   clearChatFile('drvChatGroupFileInput','drvChatGroupFileChip');
+  await loadChatGroupReadSummary(id);
   await loadMyChatGroupMessages(id);
   await markMyChatGroupRead(id);
   renderMyChatGroupList();
@@ -1535,6 +1590,7 @@ function myChatGroupBubbleHtml(m) {
   return `<div style="align-self:${mine?'flex-end':'flex-start'};max-width:80%">
     <div style="font-size:10px;color:var(--text2);margin-bottom:2px;${mine?'text-align:right':''}">${escHtml(m.sender_type==='staff' ? chatCompanyLabel() : (m.sender_name||'ドライバー'))} ・ ${dt}${chatDelBtn('grp', m, mine)}</div>
     <div style="padding:7px 10px;border-radius:12px;background:${mine?'var(--blue)':'var(--bg2)'};color:${mine?'#fff':'var(--text)'};font-size:12px;white-space:pre-wrap;line-height:1.5">${chatBodyHtml(m)}</div>
+    ${chatGroupReadMark(m, mine)}
   </div>`;
 }
 function renderMyChatGroupMessages() {

@@ -1266,6 +1266,33 @@ END;
 $function$;
 GRANT EXECUTE ON FUNCTION public.get_driver_login_info(text, integer) TO anon, authenticated;
 
+/* グループチャットの既読数を出すための関数。
+   chat_group_reads は「本人の行しか読めない」ため、ドライバーは他の人の既読を見られない。
+   誰が読んだかは伏せたまま、既読の時刻の一覧と参加人数だけを返す（LINEの「既読N」と同じ見せ方）。
+   自分が参加していないグループには答えない。 */
+CREATE OR REPLACE FUNCTION public.chat_group_read_summary(p_group_id bigint)
+RETURNS TABLE(member_count integer, read_times timestamptz[])
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE v_role text; v_drv integer; v_uid text; g record;
+BEGIN
+  SELECT role, driver_id, id INTO v_role, v_drv, v_uid FROM users WHERE auth_uid = auth.uid();
+  IF v_role IS NULL THEN RETURN; END IF;
+  SELECT * INTO g FROM chat_groups WHERE id = p_group_id;
+  IF NOT FOUND THEN RETURN; END IF;
+  -- 社内は全グループ、ドライバーは自分が入っているグループだけ
+  IF v_role NOT IN ('admin','editor','viewer')
+     AND NOT (v_drv IS NOT NULL AND v_drv = ANY(g.driver_ids)) THEN
+    RETURN;
+  END IF;
+  RETURN QUERY
+    SELECT coalesce(array_length(g.driver_ids,1),0) + coalesce(array_length(g.staff_user_ids,1),0),
+           coalesce(array_agg(r.last_read_at), '{}'::timestamptz[])
+      FROM chat_group_reads r WHERE r.group_id = p_group_id;
+END;
+$function$;
+REVOKE EXECUTE ON FUNCTION public.chat_group_read_summary(bigint) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_group_read_summary(bigint) TO authenticated;
+
 /* メッセージの送信取消（LINEと同じ考え方）。行は残し、本文と添付だけを消す。
    取り消せるのは自分が送ったものだけ。管理・編集者は不適切な投稿を消せるようどれでも。
    テーブルを直接UPDATEさせると本文以外まで書き換えられるため、必ずこの関数を通す。 */
