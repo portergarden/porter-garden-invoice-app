@@ -195,10 +195,26 @@ function openMrMatrixCell(reportId) {
   goPage(10, document.getElementById('nt10'));
   showDailyForm(reportId);
 }
-function renderMrMatrix(targetDrvs, reports, from, to) {
+// 日付の見出しを押したときに、その日の日報を取り出せるよう控えておく
+let mrMatrixReports = [];
+/* 日付の見出しを押すと、その日の日報をまとめてPDF用の書式で開く。
+   別ウィンドウではなくアプリの中のプレビューに出す（ホーム画面から開いた
+   アプリでは別ウィンドウだと戻る手段が無くなるため） */
+function openMrMatrixDay(dateStr) {
+  const list = (mrMatrixReports || []).filter(r => r.date === dateStr)
+    .sort((a,b) => String(recDrv(a)?.name||'').localeCompare(String(recDrv(b)?.name||''), 'ja')
+                || String(a.start_time||'').localeCompare(String(b.start_time||'')));
+  if (!list.length) { showT(`${dateStr} の日報はありません`, 'twa'); return; }
+  openDocPreview(buildDailyReportsPrintDoc(list), `${dateStr} の日報（${list.length}件）`);
+  addLog('日報印刷', `${dateStr} ${list.length}件`);
+}
+/* shownDrvs = 表に出すドライバー（既定は提出者のみ）
+   allDrvs   = 絞り込む前の対象。出していない人が何名いるかを知らせるために使う */
+function renderMrMatrix(shownDrvs, allDrvs, reports, from, to) {
   const wrap  = document.getElementById('mrMatrix');
   const sumEl = document.getElementById('mrMatrixSummary');
   if (!wrap) return;
+  mrMatrixReports = reports || [];
   const note = txt => {
     wrap.innerHTML = `<div style="font-size:11px;color:var(--text2);padding:8px 0">${txt}</div>`;
     if (sumEl) sumEl.textContent = '';
@@ -206,7 +222,9 @@ function renderMrMatrix(targetDrvs, reports, from, to) {
   const days = mrDayList(from, to);
   if (!days.length) return note('期間を指定してください');
   if (days.length > MR_MATRIX_MAX_DAYS) return note(`期間が長いため提出状況の表は出していません（${MR_MATRIX_MAX_DAYS}日まで）。1〜2か月に絞ってください`);
-  if (!targetDrvs.length) return note('対象のドライバーがいません');
+  if (!shownDrvs.length) return note((allDrvs && allDrvs.length)
+    ? 'この期間に日報を提出したドライバーがいません（上の「提出者のみ表示」を押すと全員出せます）'
+    : '対象のドライバーがいません');
 
   /* 「誰の・いつの」で引ける形に1回だけ組み替える。
      マスごとに日報を探すと 人数 × 日数 ぶん走ってしまうため */
@@ -220,9 +238,8 @@ function renderMrMatrix(targetDrvs, reports, from, to) {
   });
 
   const today = fmtLocalDate(new Date());
-  /* 気にすべき人を上に出す。提出ゼロ → 要確認あり → 差戻しあり → 残りは仕入先ID順。
-     100人を上から順に見ていけば、対応が要る人から目に入る */
-  const rows = targetDrvs.map(d => {
+  /* 気にすべき人を上に出す。提出ゼロ → 要確認あり → 差戻しあり → 残りは仕入先ID順 */
+  const rows = shownDrvs.map(d => {
     const cells = days.map(ds => {
       const list = byKey.get(d.id + '|' + ds) || [];
       return { ds, list, st: mrCellState(list) };
@@ -235,29 +252,39 @@ function renderMrMatrix(targetDrvs, reports, from, to) {
       || String(a.d.supplier_id||'999').localeCompare(String(b.d.supplier_id||'999'))
       || String(a.d.name||'').localeCompare(String(b.d.name||''), 'ja'));
 
-  const zero     = rows.filter(r => r.submitted === 0).length;
   const totalSub = rows.reduce((a,r) => a + r.submitted, 0);
   const warnDays = rows.reduce((a,r) => a + r.cells.filter(c=>c.st==='warn').length, 0);
   const rejDays  = rows.reduce((a,r) => a + r.cells.filter(c=>c.st==='reject').length, 0);
+  const hidden   = Math.max(0, (allDrvs ? allDrvs.length : rows.length) - rows.length);
   if (sumEl) {
-    sumEl.innerHTML = `対象${rows.length}名 ・ 提出のべ<b>${totalSub}</b>日`
-      + (zero     ? ` ・ <b style="color:var(--red-text)">提出ゼロ ${zero}名</b>` : '')
+    sumEl.innerHTML = `${rows.length}名 ・ 提出のべ<b>${totalSub}</b>日`
       + (warnDays ? ` ・ <b style="color:var(--red-text)">要確認 ${warnDays}日</b>` : '')
-      + (rejDays  ? ` ・ <b style="color:var(--amber-text)">差戻し ${rejDays}日</b>` : '');
+      + (rejDays  ? ` ・ <b style="color:var(--amber-text)">差戻し ${rejDays}日</b>` : '')
+      + (hidden   ? ` ・ <span style="color:var(--text3)">未提出 ${hidden}名（上のボタンで全員表示に切り替えると出ます）</span>` : '');
   }
 
-  const TH  = 'padding:2px 0;border:0.5px solid var(--border);background:var(--bg2);font-size:9.5px;font-weight:600;width:20px;min-width:20px;text-align:center';
-  const THL = 'padding:2px 6px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;text-align:left;white-space:nowrap;position:sticky;left:0;z-index:2';
-  const TDL = 'padding:2px 6px;border:0.5px solid var(--border);background:var(--bg);font-size:10.5px;text-align:left;white-space:nowrap;position:sticky;left:0;z-index:1';
+  /* スクロールしても日付の見出しと氏名が残るようにする。
+     真ん中あたりを見ているときに、その列が何日なのか分からなくなるため */
+  const STICK_H = 'position:sticky;top:0';                 // 日付の見出し（上に貼り付く）
+  const STICK_L = 'position:sticky;left:0';                // 氏名（左に貼り付く）
+  const STICK_R = 'position:sticky;right:0';               // 提出日数（右に貼り付く）
+  const TH  = `padding:2px 0;border:0.5px solid var(--border);background:var(--bg2);font-size:9.5px;font-weight:600;width:20px;min-width:20px;text-align:center;${STICK_H};z-index:3`;
+  const THL = `padding:2px 6px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;text-align:left;white-space:nowrap;${STICK_L};top:0;position:sticky;z-index:5`;
+  const THR = `padding:2px 5px;border:0.5px solid var(--border);background:var(--bg2);font-size:9.5px;font-weight:600;text-align:center;white-space:nowrap;${STICK_R};top:0;position:sticky;z-index:5`;
+  const TDL = `padding:2px 6px;border:0.5px solid var(--border);background:var(--bg);font-size:10.5px;text-align:left;white-space:nowrap;${STICK_L};z-index:2`;
+  const TDR = `padding:2px 5px;border:0.5px solid var(--border);background:var(--bg);font-size:10px;font-weight:600;text-align:center;white-space:nowrap;${STICK_R};z-index:2`;
   const TD  = 'border:0.5px solid var(--border);font-size:10px;text-align:center;height:19px;line-height:1';
   const weekday = ['日','月','火','水','木','金','土'];
+  // 週の変わり目（月曜の左）に太い線を入れて、列を数えなくても日にちを追えるようにする
+  const weekLine = ds => new Date(ds + 'T00:00:00').getDay() === 1 ? ';border-left:1.5px solid var(--text3)' : '';
 
   const dayHead = days.map(ds => {
     const dt = new Date(ds + 'T00:00:00');
     const wd = dt.getDay();
     const hol = (typeof jpHolidayName === 'function') ? (jpHolidayName(ds) || '') : '';
     const col = (hol || wd === 0) ? 'var(--red-text)' : wd === 6 ? 'var(--blue)' : 'var(--text2)';
-    return `<th style="${TH};color:${col}" title="${ds}${hol?' '+escHtml(hol):''}">${dt.getDate()}<div style="font-weight:400;font-size:8px">${weekday[wd]}</div></th>`;
+    const tip = `${ds}${hol ? ' ' + hol : ''} — この日の日報をまとめて開きます（PDF保存できます）`;
+    return `<th style="${TH};color:${col};cursor:pointer${weekLine(ds)}" title="${escHtml(tip)}" onclick="openMrMatrixDay('${ds}')">${dt.getDate()}<div style="font-weight:400;font-size:8px">${weekday[wd]}</div></th>`;
   }).join('');
 
   const bodyRows = rows.map(row => {
@@ -270,28 +297,29 @@ function renderMrMatrix(targetDrvs, reports, from, to) {
       const bg = c.st === 'none' ? (future ? 'var(--bg2)' : 'transparent') : st.bg;
       const label = c.list.length ? (many || st.label) : '';
       const tip = `${row.d.name} ${c.ds}：${c.list.length ? st.name + (many?`（${c.list.length}枚）`:'') : (future ? 'これから' : '提出なし')}`;
-      return `<td style="${TD};background:${bg};color:${st.fg}${rep?';cursor:pointer':''}"${rep?` onclick="openMrMatrixCell(${rep.id})"`:''} title="${escHtml(tip)}">${label}</td>`;
+      return `<td style="${TD};background:${bg};color:${st.fg}${weekLine(c.ds)}${rep?';cursor:pointer':''}"${rep?` onclick="openMrMatrixCell(${rep.id})"`:''} title="${escHtml(tip)}">${label}</td>`;
     }).join('');
     const zeroMark = row.submitted === 0 ? ';color:var(--red-text);font-weight:700' : '';
     return `<tr>
       <td style="${TDL}${zeroMark}">${escHtml(row.d.name)}${row.d.supplier_id?`<span style="color:var(--text3);font-weight:400;font-size:9px"> ${escHtml(row.d.supplier_id)}</span>`:''}</td>
       ${cells}
-      <td style="${TD};font-weight:600;padding:0 5px;white-space:nowrap${zeroMark}">${row.submitted}</td>
+      <td style="${TDR}${zeroMark}">${row.submitted}</td>
     </tr>`;
   }).join('');
 
-  wrap.innerHTML = `<table style="border-collapse:collapse;background:var(--bg)">
-      <thead><tr><th style="${THL}">ドライバー</th>${dayHead}<th style="${TH};width:auto;padding:2px 5px">提出<div style="font-weight:400;font-size:8px">日数</div></th></tr></thead>
+  wrap.innerHTML = `<table style="border-collapse:separate;border-spacing:0;background:var(--bg)">
+      <thead><tr><th style="${THL}">ドライバー</th>${dayHead}<th style="${THR}">提出<div style="font-weight:400;font-size:8px">日数</div></th></tr></thead>
       <tbody>${bodyRows}</tbody>
-    </table>
-    <div style="font-size:10px;color:var(--text2);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap">
+    </table>`;
+  const legend = document.getElementById('mrMatrixLegend');
+  if (legend) legend.innerHTML = `
       <span><b style="color:var(--green-text)">●</b> 提出済</span>
       <span><b style="color:var(--amber-text)">差</b> 差戻し</span>
       <span><b style="color:var(--red-text)">⚠</b> 要確認（アルコール超過・体調不良・事故）</span>
       <span>数字 その日に複数枚</span>
-      <span>空欄 その日の日報なし（休みの日も空欄になります）</span>
-      <span>マスを押すとその日の日報が開きます</span>
-    </div>`;
+      <span>空欄 その日の日報なし</span>
+      <span>マス → その日報を開く</span>
+      <span><b>日付 → その日の日報をまとめて開く（PDF保存できます）</b></span>`;
   wrap.style.display = mrMatrixOpen ? '' : 'none';
 }
 
@@ -336,15 +364,15 @@ async function renderMonthlyReport() {
     const ids = new Set(targetDrvs.map(d=>d.id));
     drReports = drReports.filter(r => ids.has(recDrv(r)?.id));
   }
-  /* 提出状況の表は「誰が出していないか」を見るためのものなので、
-     下の「提出者のみ表示」で絞る前の一覧で作る */
-  renderMrMatrix(targetDrvs, drReports, from, to);
+  const allTargetDrvs = targetDrvs;   // 絞り込む前の対象（未提出が何名いるかを出すのに使う）
   if (!mrDrvId && !mrDrvIds.size && !mrShowAll) {
-    // 既定では対象期間に日報の提出があるドライバーのみを表示する（未提出者はカード一覧から省く）。
-    // 「全員表示」ボタンで切り替えられる
+    // 既定では対象期間に日報の提出があるドライバーのみを表示する（未提出者は省く）。
+    // 「提出者のみ表示／全員表示中」ボタンで切り替えられる
     const submittedIds = new Set(drReports.map(r => recDrv(r)?.id).filter(id => id != null));
     targetDrvs = targetDrvs.filter(d => submittedIds.has(d.id));
   }
+  // 提出状況の表もこのボタンに従う。未提出の人数は表の上に出す
+  renderMrMatrix(targetDrvs, allTargetDrvs, drReports, from, to);
 
   /* ──── 全体KPI ──── */
   const totalKm    = drReports.reduce((a,r) => a + (+r.distance_km||0), 0);
@@ -425,7 +453,7 @@ async function renderMonthlyReport() {
 
       return `<div class="pnl-card" style="${hasDiff?'border-color:var(--amber-border);':''}">
         <div class="pnl-head" onclick="togglePnl(this)">
-          <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
             <div class="av drv" style="width:24px;height:24px;font-size:10px">${escHtml((d.name||'').slice(-2))}</div>
             <div>
               <div style="font-size:12px;font-weight:500">
@@ -439,9 +467,10 @@ async function renderMonthlyReport() {
               </div>
             </div>
           </div>
-          <div style="text-align:right">
+          <div style="text-align:right;flex-shrink:0;padding-left:8px">
             <div style="font-size:13px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
-            <div style="font-size:10px;color:var(--text2)">配送個数計${drChar?` ／ チャーター${drChar}件`:''}</div>
+            <div style="font-size:10px;color:var(--text2);white-space:nowrap">配送個数計</div>
+            ${drChar?`<div style="font-size:10px;color:var(--text2);white-space:nowrap">チャーター${drChar}件</div>`:''}
           </div>
         </div>
         <div class="pnl-body">
