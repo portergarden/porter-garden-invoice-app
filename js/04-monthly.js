@@ -300,8 +300,9 @@ function renderMrMatrix(shownDrvs, allDrvs, reports, from, to) {
       return `<td style="${TD};background:${bg};color:${st.fg}${weekLine(c.ds)}${rep?';cursor:pointer':''}"${rep?` onclick="openMrMatrixCell(${rep.id})"`:''} title="${escHtml(tip)}">${label}</td>`;
     }).join('');
     const zeroMark = row.submitted === 0 ? ';color:var(--red-text);font-weight:700' : '';
-    return `<tr>
-      <td style="${TDL}${zeroMark}">${escHtml(row.d.name)}${row.d.supplier_id?`<span style="color:var(--text3);font-weight:400;font-size:9px"> ${escHtml(row.d.supplier_id)}</span>`:''}</td>
+    const sel = row.d.id === mrSelDrvId;
+    return `<tr data-drv="${row.d.id}"${sel?' style="outline:1.5px solid var(--blue)"':''}>
+      <td style="${TDL}${zeroMark};cursor:pointer${sel?';background:var(--blue-bg)':''}" onclick="selectMrDrv(${row.d.id})" title="このドライバーの明細と月報を出します">${escHtml(row.d.name)}${row.d.supplier_id?`<span style="color:var(--text3);font-weight:400;font-size:9px"> ${escHtml(row.d.supplier_id)}</span>`:''}</td>
       ${cells}
       <td style="${TDR}${zeroMark}">${row.submitted}</td>
     </tr>`;
@@ -319,7 +320,8 @@ function renderMrMatrix(shownDrvs, allDrvs, reports, from, to) {
       <span>数字 その日に複数枚</span>
       <span>空欄 その日の日報なし</span>
       <span>マス → その日報を開く</span>
-      <span><b>日付 → その日の日報をまとめて開く（PDF保存できます）</b></span>`;
+      <span><b>日付 → その日の日報をまとめて開く（PDF保存できます）</b></span>
+      <span><b>ドライバー名 → その人の明細と月報を出す</b></span>`;
   wrap.style.display = mrMatrixOpen ? '' : 'none';
 }
 
@@ -401,6 +403,44 @@ async function renderMonthlyReport() {
     return;
   }
 
+  /* ドライバー別の明細は、提出状況の表で名前を押したときだけ組み立てる。
+     100人分を常に作ると重く、実際に見るのは1人ずつのため */
+  mrCardData = { targetDrvs, drReports, invMonth };
+  renderMrCards();
+}
+
+/* ===== ドライバー別の明細（提出状況の表から呼ぶ） =====
+   月報タブを読み直さずに出し入れできるよう、必要なデータは控えておく */
+let mrCardData = null;
+let mrSelDrvId = null;
+// 表のドライバー名を押したときの動き。もう一度押すと閉じる
+function selectMrDrv(id) {
+  mrSelDrvId = (mrSelDrvId === id) ? null : id;
+  renderMrCards();
+  highlightMrRow();
+  // 表の下に隠れてしまわないよう、明細を画面の上まで持ってくる
+  if (mrSelDrvId != null) {
+    const el = document.getElementById('mrBody');
+    /* 組み立てた直後は高さが確定しておらず、その場で動かすと戻されることがある。
+       描画が落ち着いた次のフレームで動かす。
+       behavior:'smooth' は「動きを減らす」設定の端末で無視されるため使わない */
+    if (el) requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({block:'start'})));
+  }
+}
+// 選んだ行が分かるように色を付ける（表全体は作り直さない）
+function highlightMrRow() {
+  document.querySelectorAll('#mrMatrix tbody tr[data-drv]').forEach(tr => {
+    const on = String(tr.dataset.drv) === String(mrSelDrvId);
+    tr.style.outline = on ? '1.5px solid var(--blue)' : '';
+    const name = tr.firstElementChild;
+    if (name) name.style.background = on ? 'var(--blue-bg)' : 'var(--bg)';
+  });
+}
+function renderMrCards() {
+  const bodyEl = document.getElementById('mrBody');
+  const diffEl = document.getElementById('mrDiffBanner');
+  if (!bodyEl || !diffEl || !mrCardData) return;
+  const { targetDrvs, drReports, invMonth } = mrCardData;
   const diffWarnings = [];
 
   const cards = targetDrvs
@@ -450,6 +490,9 @@ async function renderMonthlyReport() {
       }
 
       const hasDiff = diffs.length > 0;
+      /* 明細を組み立てるのは、提出状況の表で選んだ1人だけ。
+         差異チェックは全員ぶん上で計算済みなので、警告の帯は今までどおり全員が対象 */
+      if (d.id !== mrSelDrvId) return '';
 
       return `<div class="pnl-card" style="${hasDiff?'border-color:var(--amber-border);':''}">
         <div class="pnl-head" onclick="togglePnl(this)">
@@ -468,8 +511,12 @@ async function renderMonthlyReport() {
             </div>
           </div>
           <div style="text-align:right;flex-shrink:0;padding-left:8px">
+            <div style="display:flex;gap:4px;justify-content:flex-end;margin-bottom:3px">
+              <button class="btn sml" onclick="event.stopPropagation();printMonthlyReportA4(${d.id})" title="このドライバーの月報をA4縦1枚で見る（PDF保存できます）">📄 月報</button>
+              <button class="btn sml" onclick="event.stopPropagation();selectMrDrv(${d.id})" title="閉じる">✕</button>
+            </div>
             <div style="font-size:13px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
-            <div style="font-size:10px;color:var(--text2);white-space:nowrap">配送個数計</div>
+            <div style="font-size:10px;color:var(--text2);white-space:nowrap">配送個数計 <span data-pnl-mark>▼</span></div>
             ${drChar?`<div style="font-size:10px;color:var(--text2);white-space:nowrap">チャーター${drChar}件</div>`:''}
           </div>
         </div>
@@ -538,13 +585,16 @@ async function renderMonthlyReport() {
       </div>`;
     });
 
-  bodyEl.innerHTML = cards.join('');
+  bodyEl.innerHTML = cards.join('')
+    || '<div style="color:var(--text2);font-size:11.5px;padding:14px;text-align:center">上の提出状況で<b>ドライバー名を押す</b>と、その人の明細と月報が出ます</div>';
 
   // 差異バナー表示
   if (diffWarnings.length) {
     diffEl.style.display = 'block';
     diffEl.innerHTML = `<div style="font-weight:500;margin-bottom:4px">⚠ 以下のドライバーで日報と支払明細書に差異があります：</div>` +
       diffWarnings.map(w => `<div>・<b>${w.name}</b>: ${w.diffs[0]}${w.diffs.length>1?` 他${w.diffs.length-1}件`:''}</div>`).join('');
+  } else {
+    diffEl.style.display = 'none';
   }
 }
 
@@ -585,7 +635,7 @@ function jpHolidayName(dateStr) {
 // 印字する（休みとして扱わず、単に空欄で「未提出/非稼働」を表す）。1ドライバー分がA4縦1枚に
 // 収まるよう、列は既存の日別明細テーブルと同じ構成（走行距離・宅配便・ポスト便・チャーター・
 // Alc前後・体調・状態）にとどめ、フォントを小さくして31行+ヘッダーが収まるようにしている
-async function printMonthlyReportA4() {
+async function printMonthlyReportA4(onlyDrvId) {
   const from = document.getElementById('mrFrom')?.value;
   if (!from) { alert('対象期間を選択してください'); return; }
   const [y, m] = from.slice(0,7).split('-').map(Number);
@@ -607,9 +657,11 @@ async function printMonthlyReportA4() {
   const weekdayLabel = ['日','月','火','水','木','金','土'];
   const cAll = companySettings || {};
 
-  // 月報タブで選択中のドライバーがいればその1名分のみ、未選択（全ドライバー）ならこれまで通り全員分を出力する
-  const mrDrvId = +document.getElementById('mrDrvSel')?.value || null;
-  const targetDrvs = mrTargetDrvs();
+  /* 提出状況の表から1名を指定して呼ばれたときはその人だけ。
+     そうでなければ、月報タブで選択中のドライバー（未選択なら全員）を対象にする */
+  const targetDrvs = onlyDrvId != null
+    ? drvs.filter(d => d.id === onlyDrvId)
+    : mrTargetDrvs();
 
   const pages = targetDrvs
     .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
@@ -677,7 +729,10 @@ async function printMonthlyReportA4() {
     })
     .filter(Boolean);
 
-  if (!pages.length) { alert(mrDrvId ? '選択中のドライバーは対象月に日報データがありません' : '対象月に日報データがありません'); return; }
+  if (!pages.length) {
+    alert(targetDrvs.length === 1 ? '対象のドライバーは対象月に日報データがありません' : '対象月に日報データがありません');
+    return;
+  }
 
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>月報_${monthStr}</title>

@@ -48,7 +48,11 @@ function renderKpiCards() {
 function togglePnl(head) {
   const body = head.nextElementSibling;
   body.classList.toggle('open');
-  head.querySelector(':scope > div:last-child > div:last-child').textContent = body.classList.contains('open') ? '手取り額 ▲' : '手取り額';
+  /* 以前はここで見出し右下の文字を「手取り額」に書き換えていたが、これは無くなった
+     支払パネルの名残で、月報カードでは「配送個数計」の表示を壊していた。
+     開閉の印を付けたい場合は data-pnl-mark を付けた要素を置く */
+  const mark = head.querySelector('[data-pnl-mark]');
+  if (mark) mark.textContent = body.classList.contains('open') ? '▲' : '▼';
 }
 
 /* ===== ③ 稼働カレンダー ===== */
@@ -3588,24 +3592,29 @@ function exportDailyReportCsv() {
 
 /* ===== 乗務日報 印刷用書式（紙の日報に近いレイアウト） ===== */
 function dailyReportPrintCss() {
+  /* 1日分がA4縦1枚に収まる大きさにしている。
+     用紙の大きさを指定していなかったため、以前は2枚に割れていた。
+     運行が多い日（8件以上を目安）は、記録を削るより2枚目に送るほうが良いので
+     高さは固定せず min-height にとどめている。 */
   return `
   *{box-sizing:border-box}
-  body{font-family:"Noto Sans JP","Hiragino Sans",sans-serif;margin:0;padding:0;color:#1a1a1a;font-size:12px}
-  .drp-page{padding:14mm 12mm;page-break-after:always}
+  @page{size:A4 portrait;margin:0}
+  body{font-family:"Noto Sans JP","Hiragino Sans",sans-serif;margin:0;padding:0;color:#1a1a1a;font-size:10px}
+  .drp-page{width:210mm;min-height:297mm;padding:10mm 10mm;page-break-after:always}
   .drp-page:last-child{page-break-after:auto}
-  .drp-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin-bottom:10px}
-  .drp-title{font-size:20px;font-weight:700;letter-spacing:2px}
-  .drp-sub{font-size:11px;color:#555}
-  table.drp-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px}
-  table.drp-table th,table.drp-table td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}
+  .drp-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid #1a1a1a;padding-bottom:3px;margin-bottom:6px}
+  .drp-title{font-size:16px;font-weight:700;letter-spacing:2px}
+  .drp-sub{font-size:9px;color:#555}
+  table.drp-table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:4px;table-layout:fixed}
+  table.drp-table th,table.drp-table td{border:1px solid #999;padding:2px 4px;text-align:left;vertical-align:top;word-break:break-word;line-height:1.35}
   table.drp-table th{background:#f0f0f0;font-weight:600;width:15%;white-space:nowrap}
-  .drp-section-title{font-size:11px;font-weight:700;background:#e6f1fb;padding:3px 6px;margin:10px 0 6px}
-  .drp-insp{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;font-size:10px;margin-bottom:4px}
-  .drp-insp span{border:1px solid #ccc;padding:2px 4px;display:block}
+  .drp-section-title{font-size:9.5px;font-weight:700;background:#e6f1fb;padding:2px 5px;margin:5px 0 3px}
+  .drp-insp{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;font-size:8.5px;margin-bottom:3px}
+  .drp-insp span{border:1px solid #ccc;padding:1px 3px;display:block}
   .drp-insp span.ng{background:#fce8e8;color:#a32d2d;font-weight:600}
   .drp-print-bar{text-align:right;padding:8px 16px}
   .drp-print-bar button{font-size:13px;padding:6px 14px;cursor:pointer}
-  @media print{.drp-print-bar{display:none}}
+  @media print{.drp-print-bar{display:none}.drp-page{min-height:0}}
   `;
 }
 function buildDailyReportHtml(r) {
@@ -3682,7 +3691,7 @@ function buildDailyReportHtml(r) {
     ${r.insp_note?`<div style="font-size:11px;margin-bottom:8px">点検異常内容: ${escHtml(r.insp_note)}</div>`:''}
 
     <div class="drp-section-title">⑥ 特記事項</div>
-    <table class="drp-table"><tr><td style="min-height:32px">${escHtml(r.note).replace(/\n/g,'<br>')||'—'}</td></tr></table>
+    <table class="drp-table"><tr><td>${escHtml(r.note).replace(/\n/g,'<br>')||'—'}</td></tr></table>
     ${r.incident_flag?`<table class="drp-table"><tr><th>事故原因</th><td>${escHtml(r.incident_cause)||'—'}</td></tr><tr><th>再発防止策</th><td>${escHtml(r.incident_prevention)||'—'}</td></tr></table>`:''}
 
     ${r.status==='rejected'?`<table class="drp-table">
