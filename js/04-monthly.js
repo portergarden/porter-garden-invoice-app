@@ -448,7 +448,7 @@ function renderMrCards() {
     .map(d => {
       // 日報・請求書ともドライバーの特定はrecDrv()で行う（drv_id優先→乗務履歴の代車→登録車両）。
       // 登録車両(d.cars)の文字列一致だけだと、代車を使った日の分が抜け落ちるため。
-      // 同じ日に複数枚提出されることがあるため、日付→乗務開始時刻の順で時系列に並べる
+      // 同じ日に複数枚提出されることがあるため、日付→業務開始時刻の順で時系列に並べる
       // （日付だけのDB側ソートでは同日内の順序が保証されないため）
       const dReports = drReports.filter(r => recDrv(r)?.id === d.id)
         .sort((a,b) => (a.date||'').localeCompare(b.date||'') || (a.start_time||'').localeCompare(b.start_time||''));

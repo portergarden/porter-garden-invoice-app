@@ -340,7 +340,7 @@ CREATE TABLE IF NOT EXISTS invoice_slips (
   rows jsonb NOT NULL DEFAULT '[]', saved_at timestamptz NOT NULL DEFAULT now(), saved_by text
 );
 
--- 乗務日報（貨物軽自動車運送事業 法定様式準拠）
+-- 業務記録（貨物軽自動車運送事業 法定様式準拠）
 CREATE TABLE IF NOT EXISTS daily_reports (
   id bigserial PRIMARY KEY, date date NOT NULL, car text NOT NULL,
   driver_name text, start_time time, end_time time, distance_km numeric,
@@ -351,8 +351,8 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- 運転者名・車両番号・酒気帯び・日常点検は上下の既存列で満たしている。
   -- 中間点呼は一般貨物のみ（貨物軽の様式に欄が無い）ため列を作らない。
   tenko_executor text,          -- ① 点呼執行者名。貨物軽の一人事業者は自ら実施でき対面扱い
-  tenko_before_at time,         -- ④ 乗務前の点呼日時
-  tenko_after_at time,          -- ④ 乗務後の点呼日時
+  tenko_before_at time,         -- ④ 業務前の点呼日時
+  tenko_after_at time,          -- ④ 業務後の点呼日時
   alc_detector_used boolean NOT NULL DEFAULT true,  -- ⑤イ アルコール検知器の使用の有無
   tenko_method text NOT NULL DEFAULT 'face'
     CHECK (tenko_method IN ('face','phone','remote','auto','other')),  -- ⑤ロ 点呼方法
@@ -389,7 +389,7 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   --   cargo: {loc, work_start, work_end, extra_start, extra_end, desc, shipper_check}}]
   --   shipper_check は 'yes'（確認を得た）/'no'（得られなかった）/''（該当なし）
   trips jsonb NOT NULL DEFAULT '[]',
-  -- 車のメーター（オドメーター）。乗務前・乗務後の点呼のときはドライバーが車の前にいるので、
+  -- 車のメーター（オドメーター）。業務前・業務後の点呼のときはドライバーが車の前にいるので、
   -- その場で読み取れる。両方入っていれば distance_km は差分から自動計算する。
   -- 代車への乗り換えなどでメーターが連続しない日もあるため、メーターは任意・距離は必須のまま。
   start_odometer integer,
@@ -917,7 +917,7 @@ CREATE POLICY "invoice_slips_update" ON invoice_slips FOR UPDATE TO authenticate
 DROP POLICY IF EXISTS "invoice_slips_delete" ON invoice_slips;
 CREATE POLICY "invoice_slips_delete" ON invoice_slips FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
 
--- 乗務日報: 社内は全件、ドライバーは自分の日報のみ閲覧・編集可（他人の日報は不可）
+-- 業務記録: 社内は全件、ドライバーは自分の日報のみ閲覧・編集可（他人の日報は不可）
 ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "daily_reports_select" ON daily_reports;
 CREATE POLICY "daily_reports_select" ON daily_reports FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR drv_id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid()));

@@ -1,5 +1,5 @@
 /* js/03-dashboard-daily.js
-   ダッシュボードのKPI、稼働カレンダー、従業員予定、タスク管理、支払スケジュール、法定乗務日報
+   ダッシュボードのKPI、稼働カレンダー、従業員予定、タスク管理、支払スケジュール、法定業務記録
 
    このファイルは index.html から読み込まれます。読み込む順番に意味があるので、
    index.html の <script> の並びを入れ替えないでください。 */
@@ -2175,7 +2175,7 @@ async function bulkUnmarkSchedDone(){
 // markSchedDone → v9新実装に移行済み（async版）
 // deleteSchedItem → v9新実装に移行済み（async版）
 
-/* ===== ⑤ 法定乗務日報 ===== */
+/* ===== ⑤ 法定業務記録 ===== */
 /* 運行の配列を取り出す。trips が無い旧データは、それまでの平坦な項目から1件ぶんに見立てる。
    一覧・印刷・CSVがどちらの形式でも同じように扱えるようにするため */
 /* 印刷帳票で、運行の下に荷待ち・荷役作業の行をぶら下げる。
@@ -2489,7 +2489,7 @@ async function initDailyForm(reportId=null) {
     document.getElementById('drResult').textContent = '';
   }
 
-  // ドライバーロールなら乗務員名は常に自分自身。新規入力時、車両1台のみなら自動選択する
+  // ドライバーロールなら運転者名は常に自分自身。新規入力時、車両1台のみなら自動選択する
   if (isDriver) {
     document.getElementById('drName').value = me.name || '';
     if (!reportId) {
@@ -2505,7 +2505,7 @@ async function initDailyForm(reportId=null) {
 }
 
 // 車両番号セレクトの選択変更時: ドライバーは「その他（手入力）」欄の表示切替のみ、
-// 管理者は選択した車両の所有ドライバー名を乗務員名欄へ自動反映する
+// 管理者は選択した車両の所有ドライバー名を運転者名欄へ自動反映する
 function onDrCarChange() {
   const carSel = document.getElementById('drCar');
   const carCustom = document.getElementById('drCarCustom');
@@ -2542,7 +2542,7 @@ function checkAlc(input, warnId) {
 }
 
 // 改善基準告示の「430ルール」チェック：連続運転4時間ごとに合計30分以上の休憩が必要。
-// リアルタイム計測ではなく、提出内容（乗務開始〜終了・休憩時刻）から事後的に判定する
+// リアルタイム計測ではなく、提出内容（業務開始〜終了・休憩時刻）から事後的に判定する
 function checkContinuousDrivingWarning() {
   const start = document.getElementById('drStart').value;
   const end = document.getElementById('drEnd').value;
@@ -2561,7 +2561,7 @@ function checkContinuousDrivingWarning() {
   const requiredMin = Math.floor(totalMin / 240) * 30;
   if (requiredMin > 0 && restMin < requiredMin) {
     const h = Math.floor(totalMin/60), m = totalMin%60;
-    return `⚠️ 乗務開始から終了まで${h}時間${m}分のうち、休憩の合計が${restMin}分しか記録されていません。連続運転4時間ごとに合計30分以上の休憩が必要です（改善基準告示）。目安: 合計${requiredMin}分以上。`;
+    return `⚠️ 業務開始から終了まで${h}時間${m}分のうち、休憩の合計が${restMin}分しか記録されていません。連続運転4時間ごとに合計30分以上の休憩が必要です（改善基準告示）。目安: 合計${requiredMin}分以上。`;
   }
   return null;
 }
@@ -2815,7 +2815,7 @@ function renderDrTrips() {
 /* 運行から1日の枠を埋める。埋めるのは時刻だけにしている。
    地点は種類が違うため運行からは持ってこない。1日の出発・帰着地点は自宅や配属先の
    店舗（業務を始めた／終えた場所）で、運行の場所はセンターや配達エリアだから。
-   業務開始時刻も、乗務前点呼で本人が入れていれば触らない（点呼から出発までの時間が消えるため） */
+   業務開始時刻も、業務前点呼で本人が入れていれば触らない（点呼から出発までの時間が消えるため） */
 function applyDrTripRollup() {
   if (!pendDrTrips.length) return;
   const starts = pendDrTrips.map(t=>t.start).filter(Boolean).sort();
@@ -2892,7 +2892,7 @@ function mirrorDrTime(fromId, toId) {
   const a = document.getElementById(fromId), b = document.getElementById(toId);
   if (a && b && a.value && !b.value) b.value = a.value;
 }
-// 乗務前（点呼 ⇄ 業務開始）と乗務後（業務終了 ⇄ 点呼）を、空いているほうへ写す
+// 業務前（点呼 ⇄ 業務開始）と業務後（業務終了 ⇄ 点呼）を、空いているほうへ写す
 function syncDrTenkoTimes() {
   mirrorDrTime('drTenkoBeforeAt', 'drStart');
   mirrorDrTime('drStart', 'drTenkoBeforeAt');
@@ -2902,13 +2902,13 @@ function syncDrTenkoTimes() {
 
 /* ===== 日報の3ステップ =====
    1日の流れ（出発前に点呼 → 走る → 帰着後に点呼）に合わせている。
-   走り終わるまで確定しない項目（走行距離・帰着時刻・乗務後アルコール）を最後にまとめ、
+   走り終わるまで確定しない項目（走行距離・帰着時刻・業務後アルコール）を最後にまとめ、
    出発前に分かることだけ先に入れられるようにするため。
    途中で画面を閉じても失わないよう、ステップを移るたびに下書きを端末に保存する */
 const DR_STEPS = [
-  {n:1, label:'乗務前点呼'},
+  {n:1, label:'業務前点呼'},
   {n:2, label:'稼働'},
-  {n:3, label:'乗務後点呼'},
+  {n:3, label:'業務後点呼'},
 ];
 let drStep = 1;
 
@@ -2956,13 +2956,13 @@ function validateDrStep(step) {
   if (step === 1) {
     let car = v('drCar');
     if (car === '__custom__') car = v('drCarCustom');
-    if (!v('drD') || !car) return '乗務日と車両番号は必須です';
+    if (!v('drD') || !car) return '業務日と車両番号は必須です';
     if (!v('drTenkoExecutor')) return '点呼執行者を入力してください（点呼記録簿の必須項目です）';
     if (v('drTenkoMethod') !== 'face' && !v('drTenkoMethodNote')) return '対面以外の点呼は、具体的な方法の記録が必要です';
     // 点呼をしなければ業務は始められないため、時刻の記録も必須にしている
-    if (!v('drTenkoBeforeAt')) return '乗務前の点呼時刻を入力してください（点呼記録簿の必須項目です）';
-    if (v('drAlcBefore') === '' || isNaN(+v('drAlcBefore'))) return '乗務前アルコール検知値を入力してください';
-    if (!v('drHealthBefore')) return '乗務前の体調を選択してください';
+    if (!v('drTenkoBeforeAt')) return '業務前の点呼時刻を入力してください（点呼記録簿の必須項目です）';
+    if (v('drAlcBefore') === '' || isNaN(+v('drAlcBefore'))) return '業務前アルコール検知値を入力してください';
+    if (!v('drHealthBefore')) return '業務前の体調を選択してください';
     if (!v('drStart')) return '業務開始時刻を入力してください';
     if (!v('drStartLoc')) return '出発地点（業務を始めた場所）を入力してください';
   }
@@ -2977,7 +2977,7 @@ function validateDrStep(step) {
    別の車に乗り換えた日はその車の記録を探すため、勝手に前の車の数字が入ることはない。
    既に入力済みのときと、既存の日報を編集しているときは触らない。 */
 const DR_ODO_HINT_DEFAULT = '車のメーターの数字をそのまま入れてください。帰着時にも入れると走行距離が自動で計算されます';
-// 乗務日を変えると「前回」が変わるため、まだ空なら引き継ぎ直す
+// 業務日を変えると「前回」が変わるため、まだ空なら引き継ぎ直す
 function onDrDateChange() {
   const carSel = document.getElementById('drCar');
   const car = carSel?.value === '__custom__'
@@ -3149,7 +3149,7 @@ async function submitDailyReport() {
   const healthBefore = document.getElementById('drHealthBefore').value;
   const resultEl = document.getElementById('drResult');
 
-  // 貨物自動車運送事業輸送安全規則 第8条：乗務の開始・終了の地点・日時は乗務記録の必須記載事項。
+  // 貨物自動車運送事業輸送安全規則 第8条：業務の開始・終了の地点・日時は業務の記録の必須記載事項。
   // ステップ1・2の必須項目は各ステップで確認済みだが、戻って消された場合に備えてここでも通す
   for (const st of [1, 2]) {
     const err = validateDrStep(st);
@@ -3161,11 +3161,11 @@ async function submitDailyReport() {
     }
   }
   if (!km || isNaN(+km)) { resultEl.textContent = '⚠ 走行距離を入力してください'; resultEl.style.color='var(--red)'; return; }
-  if (!startTime || !endTime) { resultEl.textContent = '⚠ 乗務開始時刻・乗務終了時刻は必須です'; resultEl.style.color='var(--red)'; return; }
+  if (!startTime || !endTime) { resultEl.textContent = '⚠ 業務開始時刻・業務終了時刻は必須です'; resultEl.style.color='var(--red)'; return; }
   if (!startLoc || !endLoc) { resultEl.textContent = '⚠ 出発地点（業務を始めた場所）と帰着地点（業務を終えた場所）は必須です'; resultEl.style.color='var(--red)'; return; }
-  if (alcBefore === '' || isNaN(+alcBefore)) { resultEl.textContent = '⚠ 乗務前アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
-  if (alcAfter === '' || isNaN(+alcAfter)) { resultEl.textContent = '⚠ 乗務後アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
-  if (!healthBefore) { resultEl.textContent = '⚠ 乗務前の体調を選択してください'; resultEl.style.color='var(--red)'; return; }
+  if (alcBefore === '' || isNaN(+alcBefore)) { resultEl.textContent = '⚠ 業務前アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
+  if (alcAfter === '' || isNaN(+alcAfter)) { resultEl.textContent = '⚠ 業務後アルコール検知値を入力してください'; resultEl.style.color='var(--red)'; return; }
+  if (!healthBefore) { resultEl.textContent = '⚠ 業務前の体調を選択してください'; resultEl.style.color='var(--red)'; return; }
   // 点呼記録簿の必須項目
   const tenkoExecutor = document.getElementById('drTenkoExecutor').value.trim();
   const tenkoMethod = document.getElementById('drTenkoMethod').value;
@@ -3175,13 +3175,13 @@ async function submitDailyReport() {
     resultEl.textContent = '⚠ 対面以外の点呼は、具体的な方法の記録が必要です'; resultEl.style.color='var(--red)'; return;
   }
   if (!document.getElementById('drTenkoAfterAt').value) {
-    resultEl.textContent = '⚠ 乗務後の点呼時刻を入力してください（点呼記録簿の必須項目です）'; resultEl.style.color='var(--red)'; return;
+    resultEl.textContent = '⚠ 業務後の点呼時刻を入力してください（点呼記録簿の必須項目です）'; resultEl.style.color='var(--red)'; return;
   }
   if (!document.getElementById('drAlcDetectorUsed').checked) {
     if (!confirm('⚠ アルコール検知器を使用していない記録になります。\n検知器の使用は義務です。このまま提出しますか？')) return;
   }
   if (+alcBefore >= 0.15) {
-    if (!confirm('⚠ 乗務前アルコール値が0.15mg/L以上です。記録を提出しますか？（管理者に即時報告してください）')) return;
+    if (!confirm('⚠ 業務前アルコール値が0.15mg/L以上です。記録を提出しますか？（管理者に即時報告してください）')) return;
   }
   const drivingWarning = checkContinuousDrivingWarning();
   if (drivingWarning) {
@@ -3532,20 +3532,24 @@ function formatRests(r) {
 // 日報一覧（list）をCSVとしてダウンロードする。管理画面・ドライバーポータル両方の日報CSV出力で共有する
 function downloadDailyReportCsv(list, filenameLabel) {
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
-  const headers = ['日付','車番','乗務員','出発地点','出発時刻','帰着地点','帰着時刻','走行距離(km)','種別',
+  const headers = ['日付','車番','運転者','出発地点','出発時刻','帰着地点','帰着時刻','走行距離(km)',
+    'メーター(出発)','メーター(帰着)','種別',
     '休憩',
     '点呼執行者','点呼方法','点呼方法の詳細','点呼日時(前)','点呼日時(後)',
     'アルコール前(mg/L)','アルコール後(mg/L)','検知器の使用','検知器ID','体調(前)','体調(後)',
     '疾病','疲労','睡眠','指示事項','運行の状況','交替運転者への通告',
+    // 日常点検（道路運送車両法 第47条の2）。項目ごとに残す
+    ...DAILY_INSP_ITEMS.map(([, label]) => `点検:${label}`), '点検異常内容',
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
     '業務交替あり','交替地点','交替時刻','交替相手',
     '運行件数','取引先','運行明細','運行ごとの荷待ち','運行ごとの荷役作業等',
     '宅配便','ポスト便','チャーター便','その他','備考',
-    '事故あり','事故原因','再発防止策','ステータス'];
+    '事故あり','事故原因','再発防止策','ステータス',
+    '提出者','提出日時','差戻し者','差戻し日時'];
   const rows = list.map(r=>[
     r.date,r.car,r.driver_name,
     r.start_location||'',r.start_time||'',r.end_location||'',r.end_time||'',
-    r.distance_km||0, typeShort(r.type),
+    r.distance_km||0, r.start_odometer??'', r.end_odometer??'', typeShort(r.type),
     formatRests(r),
     r.tenko_executor||'', TENKO_METHOD_LABEL[r.tenko_method||'face'], r.tenko_method_note||'',
     r.tenko_before_at||'', r.tenko_after_at||'',
@@ -3555,6 +3559,8 @@ function downloadDailyReportCsv(list, filenameLabel) {
     r.health_fatigue_ok===false?'疲労あり':'なし',
     r.health_sleep_ok===false?'睡眠不足':'十分',
     r.tenko_instructions||'', r.route_report||'', r.handover_note||'',
+    // 日常点検。未入力（列が無い古い日報）も「良」として扱わないよう、falseのときだけ異常にする
+    ...DAILY_INSP_ITEMS.map(([key]) => r[key] === false ? '✕' : '良'), r.insp_note||'',
     r.wait_flag?'あり':'', r.wait_start||'', r.wait_end||'', r.wait_location||'',
     r.cargo_work_flag?'あり':'', r.cargo_work_start||'', r.cargo_work_end||'',
     r.shipper_confirmed?'確認済':'',
@@ -3574,12 +3580,14 @@ function downloadDailyReportCsv(list, filenameLabel) {
     r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_charter||0,r.qty_other||0,
     (r.note||'').replace(/\n/g,' '),
     r.incident_flag?'あり':'', r.incident_cause||'', r.incident_prevention||'',
-    r.status==='rejected'?'差戻し':''
+    r.status==='rejected'?'差戻し':'',
+    r.submitted_by||'', (r.created_at||'').slice(0,16).replace('T',' '),
+    r.reviewed_by||'', (r.reviewed_at||'').slice(0,16).replace('T',' ')
   ].map(v=>`"${csvSafe(v).replace(/"/g,'""')}"`).join(','));
   const bom = new Uint8Array([0xEF,0xBB,0xBF]);
   const blob = new Blob([bom,[headers.join(','),...rows].join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`乗務日報_${filenameLabel||'全期間'}.csv`;a.click();
+  a.download=`業務記録_${filenameLabel||'全期間'}.csv`;a.click();
   addLog('日報CSV出力', filenameLabel||'全期間');
 }
 
@@ -3590,7 +3598,7 @@ function exportDailyReportCsv() {
   downloadDailyReportCsv(filteredDailyReportsForExport(), month);
 }
 
-/* ===== 乗務日報 印刷用書式（紙の日報に近いレイアウト） ===== */
+/* ===== 業務記録 印刷用書式（紙の日報に近いレイアウト） ===== */
 function dailyReportPrintCss() {
   /* 1日分がA4縦1枚に収まる大きさにしている。
      用紙の大きさを指定していなかったため、以前は2枚に割れていた。
@@ -3617,29 +3625,32 @@ function dailyReportPrintCss() {
   @media print{.drp-print-bar{display:none}.drp-page{min-height:0}}
   `;
 }
+/* 日常点検の項目（道路運送車両法 第47条の2）。印刷とCSVで同じ並びを使う */
+const DAILY_INSP_ITEMS = [
+  ['insp_tire','タイヤ'],['insp_brake','ブレーキ'],['insp_light','灯火類'],['insp_wiper','ワイパー'],['insp_engine','エンジン'],
+  ['insp_mirror','ミラー'],['insp_horn','ホーン'],['insp_battery','バッテリー'],['insp_cargo','積載装置'],['insp_fuel','燃料'],
+];
 function buildDailyReportHtml(r) {
   // 取引先名は lkCliAny() で解決する（ドライバーはclientsを読めないため lkC() だけでは常に空になる）
   const cli = lkCliAny(r.cli);
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
-  const inspList = [['insp_tire','タイヤ'],['insp_brake','ブレーキ'],['insp_light','灯火類'],['insp_wiper','ワイパー'],['insp_engine','エンジン'],
-    ['insp_mirror','ミラー'],['insp_horn','ホーン'],['insp_battery','バッテリー'],['insp_cargo','積載装置'],['insp_fuel','燃料']];
-  const inspHtml = inspList.map(([k,label]) => {
+  const inspHtml = DAILY_INSP_ITEMS.map(([k,label]) => {
     const ok = r[k] !== false;
     return `<span class="${ok?'':'ng'}">${ok?'✓':'✕'} ${label}</span>`;
   }).join('');
   return `<div class="drp-page">
     <div class="drp-head">
-      <div><div class="drp-title">乗務日報</div><div class="drp-sub">貨物軽自動車運送事業 法定様式準拠</div></div>
+      <div><div class="drp-title">業務記録</div><div class="drp-sub">貨物軽自動車運送事業 法定様式準拠</div></div>
       <div class="drp-sub">発行日: ${fmtLocalDate(new Date())}</div>
     </div>
     <table class="drp-table">
-      <tr><th>乗務日</th><td>${r.date||''}</td><th>車両番号</th><td>${escHtml(r.car)}</td></tr>
-      <tr><th>乗務員名</th><td>${escHtml(r.driver_name)}</td><th>乗務形態</th><td>${typeShort(r.type)}</td></tr>
+      <tr><th>業務日</th><td>${r.date||''}</td><th>車両番号</th><td>${escHtml(r.car)}</td></tr>
+      <tr><th>運転者名</th><td>${escHtml(r.driver_name)}</td><th>業務形態</th><td>${typeShort(r.type)}</td></tr>
       <tr><th>稼働先</th><td>${cli?escHtml(cli.name):'—'}</td>
           <th>提出者・提出日時</th><td>${escHtml(r.submitted_by||'')||'—'}${r.created_at?`　${(r.created_at||'').slice(0,16).replace('T',' ')}`:''}</td></tr>
     </table>
 
-    <div class="drp-section-title">① 乗務記録</div>
+    <div class="drp-section-title">① 業務の記録</div>
     <table class="drp-table">
       <tr><th>業務開始</th><td>${r.start_time||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
           <th>業務終了</th><td>${r.end_time||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
@@ -3709,7 +3720,7 @@ function buildDailyReportsPrintDoc(reports) {
   const label = sorted.length ? `${sorted[0].date}${sorted.length>1?`〜${sorted[sorted.length-1].date}`:''}` : '';
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>乗務日報_${label}</title>
+  <title>業務記録_${label}</title>
   <style>${dailyReportPrintCss()}</style></head><body>
   <div class="drp-print-bar"><button onclick="window.print()">🖨 印刷 / PDF保存</button></div>
   ${pages}
