@@ -2294,6 +2294,8 @@ async function populateDriverCliList() {
 }
 
 async function initDailyForm(reportId=null) {
+  // 別の日報を開いたときに、前の運行を編集中のままにしない
+  editDrTripIdx = null;
   // 日付
   const dEl = document.getElementById('drD');
   if (!dEl.value) dEl.value = fmtLocalDate(new Date());
@@ -2589,6 +2591,9 @@ function renderDrRests() {
    既存の集計（月報・分析・CSV・印刷）は start_time / end_time / cli / qty_* を見ているため、
    保存時にこの配列から積み上げてそれらの列にも入れておく。 */
 let pendDrTrips = [];
+/* 編集中の運行の位置。null なら新規追加、数値ならその位置を置き換える。
+   以前は削除して入れ直すしかなく、荷待ち・荷役まで入れ直しになっていた */
+let editDrTripIdx = null;
 
 // 入力欄の取引先名から登録済みの取引先を引く。ドライバーはclientsを直接読めないためRPCの結果を使う
 /* 取引先の候補を絞り込んで出す。
@@ -2630,22 +2635,49 @@ function drResolveClient(name) {
   return name ? (src.find(c => nm(c.name) === nm(name)) || null) : null;
 }
 
-function addDrTrip() {
+// 運行の入力欄。追加・編集・取消で同じ並びを使う
+const DR_TRIP_INPUT_IDS = ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc',
+   'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drTripNote',
+   'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
+   'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
+   'drTripCargoDesc','drTripShipperCheck'];
+
+function clearDrTripInputs() {
+  DR_TRIP_INPUT_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['drTripWaitFlag','drTripCargoFlag'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.checked = false;
+  });
+  toggleDrTripSubFields();
+}
+// 新規追加中か編集中かで、ボタンの文言と「取消」の出し方を変える
+function updateDrTripFormMode() {
+  const editing = editDrTripIdx !== null;
+  const btn = document.getElementById('drTripAddBtn');
+  const cancel = document.getElementById('drTripCancelBtn');
+  if (btn) {
+    btn.textContent = editing ? '✓ この運行を更新' : '＋ 運行を追加';
+    btn.classList.toggle('grn', !editing);
+    btn.classList.toggle('pri', editing);
+  }
+  if (cancel) cancel.style.display = editing ? '' : 'none';
+}
+// 入力欄の内容を運行1件分にまとめる。入力に不備があれば null を返す
+function collectDrTrip() {
   const cliInput = document.getElementById('drCli').value.trim();
   const start = document.getElementById('drTripStart').value;
   const end   = document.getElementById('drTripEnd').value;
-  if (!cliInput) { showT('取引先を入力してください', 'twa'); return; }
+  if (!cliInput) { showT('取引先を入力してください', 'twa'); return null; }
   /* 登録済みと一致しない場合でも記録できるようにする。
      ただし取引先IDが付かないため、月報や請求の集計には結び付かない。その点は確認してもらう */
   const cli = drResolveClient(cliInput);
-  if (!cli && !confirm(`「${cliInput}」は登録済みの取引先と一致しません。\n\nこのまま手入力の取引先として記録しますか？\n（取引先マスタと結び付かないため、月報や請求の集計には含まれません）`)) return;
-  if (!start || !end) { showT('運行の開始・終了時刻を入力してください', 'twa'); return; }
+  if (!cli && !confirm(`「${cliInput}」は登録済みの取引先と一致しません。\n\nこのまま手入力の取引先として記録しますか？\n（取引先マスタと結び付かないため、月報や請求の集計には含まれません）`)) return null;
+  if (!start || !end) { showT('運行の開始・終了時刻を入力してください', 'twa'); return null; }
   const waitOn  = document.getElementById('drTripWaitFlag')?.checked;
   const cargoOn = document.getElementById('drTripCargoFlag')?.checked;
   if (waitOn && !document.getElementById('drTripWaitArrive').value) {
-    showT('荷待ちの到着日時を入力してください', 'twa'); return;
+    showT('荷待ちの到着日時を入力してください', 'twa'); return null;
   }
-  pendDrTrips.push({
+  return {
     cli_id: cli ? cli.id : null, cli_name: cli ? cli.name : cliInput,
     start, end,
     start_loc: document.getElementById('drTripStartLoc').value.trim(),
@@ -2672,25 +2704,74 @@ function addDrTrip() {
       desc:        document.getElementById('drTripCargoDesc').value.trim(),
       shipper_check: document.getElementById('drTripShipperCheck').value || '',
     } : null,
-  });
-  ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc',
-   'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drTripNote',
-   'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
-   'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
-   'drTripCargoDesc','drTripShipperCheck']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  ['drTripWaitFlag','drTripCargoFlag'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.checked = false;
-  });
-  toggleDrTripSubFields();
+  };
+}
+// 「＋ 運行を追加」／編集中は「✓ この運行を更新」
+function addDrTrip() {
+  const trip = collectDrTrip();
+  if (!trip) return;
+  if (editDrTripIdx !== null && pendDrTrips[editDrTripIdx]) {
+    pendDrTrips[editDrTripIdx] = trip;
+    editDrTripIdx = null;
+    showT('運行を更新しました');
+  } else {
+    pendDrTrips.push(trip);
+  }
+  clearDrTripInputs();
+  updateDrTripFormMode();
   renderDrTrips();
   applyDrTripRollup();
 }
-function rmDrTrip(i) { pendDrTrips.splice(i,1); renderDrTrips(); applyDrTripRollup(); }
+// 追加済みの運行を入力欄へ戻して、そのまま直せるようにする
+function editDrTrip(i) {
+  const t = pendDrTrips[i];
+  if (!t) return;
+  editDrTripIdx = i;
+  const put = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v === 0 || v) ? v : ''; };
+  put('drCli', t.cli_name);      put('drTripStart', t.start);      put('drTripEnd', t.end);
+  put('drTripStartLoc', t.start_loc); put('drTripEndLoc', t.end_loc);
+  // 0個は空欄として戻す（0を入れ直させない）
+  put('drQtyTak', t.qty_tak || ''); put('drQtyNeko', t.qty_neko || '');
+  put('drQtyCharter', t.qty_charter || ''); put('drQtyOther', t.qty_other || '');
+  put('drTripNote', t.note);
+  const waitEl = document.getElementById('drTripWaitFlag');
+  if (waitEl) waitEl.checked = !!t.wait;
+  put('drTripWaitLoc', t.wait && t.wait.loc);       put('drTripWaitArrive', t.wait && t.wait.arrive);
+  put('drTripWaitDepart', t.wait && t.wait.depart); put('drTripWaitAppointed', t.wait && t.wait.appointed);
+  const cargoEl = document.getElementById('drTripCargoFlag');
+  if (cargoEl) cargoEl.checked = !!t.cargo;
+  put('drTripCargoLoc', t.cargo && t.cargo.loc);         put('drTripCargoStart', t.cargo && t.cargo.work_start);
+  put('drTripCargoEnd', t.cargo && t.cargo.work_end);    put('drTripExtraStart', t.cargo && t.cargo.extra_start);
+  put('drTripExtraEnd', t.cargo && t.cargo.extra_end);   put('drTripCargoDesc', t.cargo && t.cargo.desc);
+  put('drTripShipperCheck', t.cargo && t.cargo.shipper_check);
+  toggleDrTripSubFields();
+  updateDrTripFormMode();
+  renderDrTrips();
+  const top = document.getElementById('drCli');
+  if (top) top.scrollIntoView({block:'center', behavior:'smooth'});
+}
+// 編集をやめる。運行はそのまま残る
+function cancelDrTripEdit() {
+  editDrTripIdx = null;
+  clearDrTripInputs();
+  updateDrTripFormMode();
+  renderDrTrips();
+}
+/* 削除。編集中の運行を消したら編集も終わりにし、
+   それより前を消したときは編集中の位置がひとつ前へずれる */
+function rmDrTrip(i) {
+  if (editDrTripIdx === i) { editDrTripIdx = null; clearDrTripInputs(); }
+  else if (editDrTripIdx !== null && editDrTripIdx > i) editDrTripIdx--;
+  pendDrTrips.splice(i,1);
+  updateDrTripFormMode();
+  renderDrTrips();
+  applyDrTripRollup();
+}
 
 function renderDrTrips() {
   const el = document.getElementById('drTripList');
   if (!el) return;
+  updateDrTripFormMode();
   if (!pendDrTrips.length) {
     el.innerHTML = '<div style="font-size:11px;color:var(--amber-text);background:var(--amber-bg);border-radius:var(--radius);padding:6px 8px">運行が1件も追加されていません。上の欄を埋めて「＋ 運行を追加」を押してください</div>';
     return;
@@ -2710,7 +2791,8 @@ function renderDrTrips() {
         t.cargo ? `📦荷役${escHtml(t.cargo.desc ? '（'+t.cargo.desc+'）' : '')}` : '',
         t.note ? escHtml(t.note) : '',
       ].filter(Boolean).join('　');
-      return `<div style="display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:6px 8px;margin-bottom:4px;background:var(--bg2);border-radius:var(--radius)">
+      const editing = editDrTripIdx === i;
+      return `<div style="display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:6px 8px;margin-bottom:4px;background:${editing?'var(--blue-bg)':'var(--bg2)'};border-radius:var(--radius)${editing?';outline:1.5px solid var(--blue)':''}">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
             <span style="font-weight:600;white-space:nowrap">${t.start||''}〜${t.end||''}</span>
@@ -2718,6 +2800,7 @@ function renderDrTrips() {
           </div>
           ${sub?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow-wrap:break-word;word-break:break-word">${sub}</div>`:''}
         </div>
+        <button class="ibtn" style="flex-shrink:0" onclick="editDrTrip(${i})" title="この運行を直す">✎</button>
         <button class="ibtn" style="flex-shrink:0" onclick="rmDrTrip(${i})" title="削除">🗑</button>
       </div>`;
     }).join('');
@@ -3037,6 +3120,7 @@ function applyDrDraft(d) {
   const odoHint = document.getElementById('drOdoStartHint');
   if (odoHint) odoHint.textContent = DR_ODO_HINT_DEFAULT;
   pendDrTrips = Array.isArray(d.trips) ? d.trips : [];
+  editDrTripIdx = null;   // 下書きから戻したときも編集状態は持ち越さない
   pendDrRests = Array.isArray(d.rests) ? d.rests : [];
   renderDrTrips(); renderDrRests();
   onDrTenkoMethodChange(); toggleDrWaitFields(); toggleDrIncidentFields(); onDrOdoChange();
@@ -3350,7 +3434,7 @@ function renderDailyList() {
             ${r.start_time?`<span>⏱ ${r.start_time}〜${r.end_time||'?'}</span>`:''}
             ${(r.start_location||r.end_location)?`<span>📍 ${escHtml(r.start_location)||'?'}→${escHtml(r.end_location)||'?'}</span>`:''}
             <span>🍺 前:${r.alc_before??'—'} 後:${r.alc_after??'—'} mg/L</span>
-            ${(r.qty_takkyubin||r.qty_nekopos||r.qty_charter)?`<span>📦 宅配便:${r.qty_takkyubin||0} ポスト便:${r.qty_nekopos||0} チャーター便:${r.qty_charter||0}</span>`:''}
+            ${(r.qty_takkyubin||r.qty_nekopos||r.qty_charter||r.qty_other)?`<span>📦 宅配便:${r.qty_takkyubin||0} ポスト便:${r.qty_nekopos||0} チャーター便:${r.qty_charter||0}件 その他:${r.qty_other||0}</span>`:''}
             ${(() => {
               const names = dailyTripClients(r);
               if (!names.length) return '';

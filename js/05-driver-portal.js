@@ -2028,7 +2028,7 @@ async function loadDriverDailyList() {
               ${inspFailed?'<span style="color:var(--amber-text);font-size:10px;margin-left:4px">⚠ 点検</span>':''}
             </div>
             <div style="font-size:10px;color:var(--text2);margin-top:2px">
-              走行${r.distance_km||0}km · 宅配便${r.qty_takkyubin||0} · ポスト便${r.qty_nekopos||0} · チャーター便${r.qty_charter||0}
+              走行${r.distance_km||0}km · 宅配便${r.qty_takkyubin||0} · ポスト便${r.qty_nekopos||0} · チャーター便${r.qty_charter||0}件 · その他${r.qty_other||0}
             </div>
             ${r.note?`<div style="font-size:10px;color:var(--text2)">${escHtml(r.note)}</div>`:''}
           </div>
@@ -2063,6 +2063,7 @@ async function renderDriverMonthly() {
     const totalTak = reps.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
     const totalNeko = reps.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
     const totalCharter = reps.reduce((a,r)=>a+(+r.qty_charter||0),0);
+    const totalOther = reps.reduce((a,r)=>a+(+r.qty_other||0),0);
     const workDays = new Set(reps.map(r=>r.date)).size;
     // 稼働先ごとの日数。同じ日に同じ稼働先が複数件あっても1日と数える
     const daysBySite = {};
@@ -2079,11 +2080,12 @@ async function renderDriverMonthly() {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
         <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
         <div class="kpi-card"><div class="kpi-label">走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
-        <div class="kpi-card"><div class="kpi-label">配送個数</div><div class="kpi-val">${(totalTak+totalNeko).toLocaleString()}個</div></div>
+        <div class="kpi-card"><div class="kpi-label">配送個数</div><div class="kpi-val">${(totalTak+totalNeko+totalOther).toLocaleString()}個</div></div>
       </div>
       <div class="pnl-row"><span>宅配便</span><span>${totalTak.toLocaleString()}個</span></div>
       <div class="pnl-row"><span>ポスト便</span><span>${totalNeko.toLocaleString()}個</span></div>
       <div class="pnl-row"><span>チャーター便</span><span>${totalCharter.toLocaleString()}件</span></div>
+      <div class="pnl-row"><span>その他</span><span>${totalOther.toLocaleString()}個</span></div>
       <div style="margin-top:12px;border-top:0.5px solid var(--border);padding-top:8px">
         <div style="font-size:10px;color:var(--text2);margin-bottom:4px;font-weight:500">稼働先ごとの日数</div>
         ${siteRows || '<div class="pnl-row sub"><span style="color:var(--text2)">記録なし</span><span></span></div>'}
@@ -2094,7 +2096,7 @@ async function renderDriverMonthly() {
           const site = lkCliAny(r.cli);
           return `<div class="pnl-row sub">
             <span>${escHtml(r.date||'')}${site?` <span style="color:var(--text2)">${escHtml(site.short||site.name)}</span>`:''}</span>
-            <span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ポスト${r.qty_nekopos||0}</span>
+            <span>${r.distance_km||0}km / 宅${r.qty_takkyubin||0} ポスト${r.qty_nekopos||0} チャーター${r.qty_charter||0} 他${r.qty_other||0}</span>
           </div>`;
         }).join('')}
       </div>`;

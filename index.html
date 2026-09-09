@@ -1534,7 +1534,10 @@ try {
             </div>
           </div>
 
-          <button class="btn sml grn" type="button" style="width:100%;justify-content:center" onclick="addDrTrip()">＋ 運行を追加</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn sml" type="button" id="drTripCancelBtn" style="display:none;justify-content:center" onclick="cancelDrTripEdit()">取消</button>
+            <button class="btn sml grn" type="button" id="drTripAddBtn" style="flex:1;justify-content:center" onclick="addDrTrip()">＋ 運行を追加</button>
+          </div>
         </div>
         <div id="drTripList" style="margin-bottom:12px"></div>
 
@@ -1718,7 +1721,17 @@ try {
   </div>
 
   <!-- KPIサマリー -->
-  <div id="mrKpi" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+  <div id="mrKpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--border)"></div>
+
+  <!-- 提出状況（人 × 日）。100人規模で「誰が出していないか」を1画面で見るための表 -->
+  <div style="border-bottom:0.5px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 14px;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:600">🗓 提出状況</span>
+      <span id="mrMatrixSummary" style="font-size:11px;color:var(--text2)"></span>
+      <button class="btn sml" id="mrMatrixToggle" style="margin-left:auto" onclick="toggleMrMatrix()">閉じる</button>
+    </div>
+    <div id="mrMatrix" style="padding:0 14px 10px;overflow-x:auto"></div>
+  </div>
 
   <!-- 差異警告バナー -->
   <div id="mrDiffBanner" style="display:none;margin:6px 14px;padding:8px 10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11px;color:var(--amber-text)"></div>
@@ -3162,13 +3175,13 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=b3a5c90b"></script>
+<script src="js/03-dashboard-daily.js?v=0e9431ac"></script>
 
 
-<script src="js/04-monthly.js?v=b0e18fa3"></script>
+<script src="js/04-monthly.js?v=4e408113"></script>
 
 
-<script src="js/05-driver-portal.js?v=832478a9"></script>
+<script src="js/05-driver-portal.js?v=fc46e35c"></script>
 
 
 

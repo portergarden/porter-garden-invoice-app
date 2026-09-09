@@ -151,6 +151,150 @@ function populateMrDrvSel() {
   if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
 }
 
+/* ===== 提出状況マトリクス（人 × 日） =====
+   日報を1件ずつカードにして並べると、100人規模では描画も閲覧も追いつかない。
+   ここは1マス1文字にしてあるので、人数が増えても重くならない。
+   空欄は「その日の日報が無い」という意味で、休みの日も空欄になる点に注意。 */
+let mrMatrixOpen = true;
+function toggleMrMatrix() {
+  mrMatrixOpen = !mrMatrixOpen;
+  const el = document.getElementById('mrMatrix');
+  const btn = document.getElementById('mrMatrixToggle');
+  if (el) el.style.display = mrMatrixOpen ? '' : 'none';
+  if (btn) btn.textContent = mrMatrixOpen ? '閉じる' : '開く';
+}
+// 1〜2か月で見る想定。長い期間は列が増えすぎて表として読めないので出さない
+const MR_MATRIX_MAX_DAYS = 62;
+function mrDayList(from, to) {
+  const out = [];
+  const d = new Date(from + 'T00:00:00'), end = new Date(to + 'T00:00:00');
+  if (isNaN(d) || isNaN(end)) return out;
+  while (d <= end && out.length <= MR_MATRIX_MAX_DAYS + 1) {
+    out.push(fmtLocalDate(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+/* マスの状態。要確認（アルコール超過・体調不良・事故）を最優先で出す */
+function mrCellState(list) {
+  if (!list || !list.length) return 'none';
+  if (list.some(r => +r.alc_before >= 0.15 || +r.alc_after >= 0.15
+                  || r.health_before === 'bad' || r.health_after === 'bad' || r.incident_flag)) return 'warn';
+  if (list.some(r => r.status === 'rejected')) return 'reject';
+  return 'ok';
+}
+const MR_CELL_STYLE = {
+  none:   {label:'',   bg:'transparent',     fg:'var(--text3)',      name:'提出なし'},
+  ok:     {label:'●',  bg:'var(--green-bg)', fg:'var(--green-text)', name:'提出済'},
+  reject: {label:'差', bg:'var(--amber-bg)', fg:'var(--amber-text)', name:'差戻し'},
+  warn:   {label:'⚠',  bg:'var(--red-bg)',   fg:'var(--red-text)',   name:'要確認'},
+};
+// マスを押したら、その日の日報を日報タブで開く
+function openMrMatrixCell(reportId) {
+  if (!reportId) return;
+  goPage(10, document.getElementById('nt10'));
+  showDailyForm(reportId);
+}
+function renderMrMatrix(targetDrvs, reports, from, to) {
+  const wrap  = document.getElementById('mrMatrix');
+  const sumEl = document.getElementById('mrMatrixSummary');
+  if (!wrap) return;
+  const note = txt => {
+    wrap.innerHTML = `<div style="font-size:11px;color:var(--text2);padding:8px 0">${txt}</div>`;
+    if (sumEl) sumEl.textContent = '';
+  };
+  const days = mrDayList(from, to);
+  if (!days.length) return note('期間を指定してください');
+  if (days.length > MR_MATRIX_MAX_DAYS) return note(`期間が長いため提出状況の表は出していません（${MR_MATRIX_MAX_DAYS}日まで）。1〜2か月に絞ってください`);
+  if (!targetDrvs.length) return note('対象のドライバーがいません');
+
+  /* 「誰の・いつの」で引ける形に1回だけ組み替える。
+     マスごとに日報を探すと 人数 × 日数 ぶん走ってしまうため */
+  const byKey = new Map();
+  reports.forEach(r => {
+    const d = recDrv(r);
+    if (!d || !r.date) return;
+    const k = d.id + '|' + r.date;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(r);
+  });
+
+  const today = fmtLocalDate(new Date());
+  /* 気にすべき人を上に出す。提出ゼロ → 要確認あり → 差戻しあり → 残りは仕入先ID順。
+     100人を上から順に見ていけば、対応が要る人から目に入る */
+  const rows = targetDrvs.map(d => {
+    const cells = days.map(ds => {
+      const list = byKey.get(d.id + '|' + ds) || [];
+      return { ds, list, st: mrCellState(list) };
+    });
+    const submitted = cells.filter(c => c.st !== 'none').length;
+    const warn   = cells.some(c => c.st === 'warn');
+    const reject = cells.some(c => c.st === 'reject');
+    return { d, cells, submitted, rank: submitted === 0 ? 0 : warn ? 1 : reject ? 2 : 3 };
+  }).sort((a,b) => a.rank - b.rank
+      || String(a.d.supplier_id||'999').localeCompare(String(b.d.supplier_id||'999'))
+      || String(a.d.name||'').localeCompare(String(b.d.name||''), 'ja'));
+
+  const zero     = rows.filter(r => r.submitted === 0).length;
+  const totalSub = rows.reduce((a,r) => a + r.submitted, 0);
+  const warnDays = rows.reduce((a,r) => a + r.cells.filter(c=>c.st==='warn').length, 0);
+  const rejDays  = rows.reduce((a,r) => a + r.cells.filter(c=>c.st==='reject').length, 0);
+  if (sumEl) {
+    sumEl.innerHTML = `対象${rows.length}名 ・ 提出のべ<b>${totalSub}</b>日`
+      + (zero     ? ` ・ <b style="color:var(--red-text)">提出ゼロ ${zero}名</b>` : '')
+      + (warnDays ? ` ・ <b style="color:var(--red-text)">要確認 ${warnDays}日</b>` : '')
+      + (rejDays  ? ` ・ <b style="color:var(--amber-text)">差戻し ${rejDays}日</b>` : '');
+  }
+
+  const TH  = 'padding:2px 0;border:0.5px solid var(--border);background:var(--bg2);font-size:9.5px;font-weight:600;width:20px;min-width:20px;text-align:center';
+  const THL = 'padding:2px 6px;border:0.5px solid var(--border);background:var(--bg2);font-size:10.5px;font-weight:600;text-align:left;white-space:nowrap;position:sticky;left:0;z-index:2';
+  const TDL = 'padding:2px 6px;border:0.5px solid var(--border);background:var(--bg);font-size:10.5px;text-align:left;white-space:nowrap;position:sticky;left:0;z-index:1';
+  const TD  = 'border:0.5px solid var(--border);font-size:10px;text-align:center;height:19px;line-height:1';
+  const weekday = ['日','月','火','水','木','金','土'];
+
+  const dayHead = days.map(ds => {
+    const dt = new Date(ds + 'T00:00:00');
+    const wd = dt.getDay();
+    const hol = (typeof jpHolidayName === 'function') ? (jpHolidayName(ds) || '') : '';
+    const col = (hol || wd === 0) ? 'var(--red-text)' : wd === 6 ? 'var(--blue)' : 'var(--text2)';
+    return `<th style="${TH};color:${col}" title="${ds}${hol?' '+escHtml(hol):''}">${dt.getDate()}<div style="font-weight:400;font-size:8px">${weekday[wd]}</div></th>`;
+  }).join('');
+
+  const bodyRows = rows.map(row => {
+    const cells = row.cells.map(c => {
+      const st  = MR_CELL_STYLE[c.st];
+      const rep = c.list[0];
+      const many = c.list.length > 1 ? String(c.list.length) : '';
+      // これから来る日は「出していない」ではないので、薄く塗って区別する
+      const future = c.ds > today;
+      const bg = c.st === 'none' ? (future ? 'var(--bg2)' : 'transparent') : st.bg;
+      const label = c.list.length ? (many || st.label) : '';
+      const tip = `${row.d.name} ${c.ds}：${c.list.length ? st.name + (many?`（${c.list.length}枚）`:'') : (future ? 'これから' : '提出なし')}`;
+      return `<td style="${TD};background:${bg};color:${st.fg}${rep?';cursor:pointer':''}"${rep?` onclick="openMrMatrixCell(${rep.id})"`:''} title="${escHtml(tip)}">${label}</td>`;
+    }).join('');
+    const zeroMark = row.submitted === 0 ? ';color:var(--red-text);font-weight:700' : '';
+    return `<tr>
+      <td style="${TDL}${zeroMark}">${escHtml(row.d.name)}${row.d.supplier_id?`<span style="color:var(--text3);font-weight:400;font-size:9px"> ${escHtml(row.d.supplier_id)}</span>`:''}</td>
+      ${cells}
+      <td style="${TD};font-weight:600;padding:0 5px;white-space:nowrap${zeroMark}">${row.submitted}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table style="border-collapse:collapse;background:var(--bg)">
+      <thead><tr><th style="${THL}">ドライバー</th>${dayHead}<th style="${TH};width:auto;padding:2px 5px">提出<div style="font-weight:400;font-size:8px">日数</div></th></tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+    <div style="font-size:10px;color:var(--text2);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap">
+      <span><b style="color:var(--green-text)">●</b> 提出済</span>
+      <span><b style="color:var(--amber-text)">差</b> 差戻し</span>
+      <span><b style="color:var(--red-text)">⚠</b> 要確認（アルコール超過・体調不良・事故）</span>
+      <span>数字 その日に複数枚</span>
+      <span>空欄 その日の日報なし（休みの日も空欄になります）</span>
+      <span>マスを押すとその日の日報が開きます</span>
+    </div>`;
+  wrap.style.display = mrMatrixOpen ? '' : 'none';
+}
+
 async function renderMonthlyReport() {
   const from = document.getElementById('mrFrom')?.value;
   const to = document.getElementById('mrTo')?.value;
@@ -191,7 +335,11 @@ async function renderMonthlyReport() {
   if (mrDrvId || mrDrvIds.size) {
     const ids = new Set(targetDrvs.map(d=>d.id));
     drReports = drReports.filter(r => ids.has(recDrv(r)?.id));
-  } else if (!mrShowAll) {
+  }
+  /* 提出状況の表は「誰が出していないか」を見るためのものなので、
+     下の「提出者のみ表示」で絞る前の一覧で作る */
+  renderMrMatrix(targetDrvs, drReports, from, to);
+  if (!mrDrvId && !mrDrvIds.size && !mrShowAll) {
     // 既定では対象期間に日報の提出があるドライバーのみを表示する（未提出者はカード一覧から省く）。
     // 「全員表示」ボタンで切り替えられる
     const submittedIds = new Set(drReports.map(r => recDrv(r)?.id).filter(id => id != null));
@@ -202,6 +350,8 @@ async function renderMonthlyReport() {
   const totalKm    = drReports.reduce((a,r) => a + (+r.distance_km||0), 0);
   const totalTak   = drReports.reduce((a,r) => a + (+r.qty_takkyubin||0), 0);
   const totalNeko  = drReports.reduce((a,r) => a + (+r.qty_nekopos||0), 0);
+  const totalChar  = drReports.reduce((a,r) => a + (+r.qty_charter||0), 0);
+  const totalOther = drReports.reduce((a,r) => a + (+r.qty_other||0), 0);
   const workDays   = new Set(drReports.map(r=>r.date)).size;
   const alcAlerts  = drReports.filter(r => +r.alc_before>=0.15 || +r.alc_after>=0.15).length;
 
@@ -210,6 +360,8 @@ async function renderMonthlyReport() {
     <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
     <div class="kpi-card"><div class="kpi-label">宅配便計</div><div class="kpi-val">${totalTak.toLocaleString()}個</div></div>
     <div class="kpi-card"><div class="kpi-label">ポスト便計</div><div class="kpi-val">${totalNeko.toLocaleString()}個</div></div>
+    <div class="kpi-card"><div class="kpi-label">チャーター便計</div><div class="kpi-val">${totalChar.toLocaleString()}件</div></div>
+    <div class="kpi-card"><div class="kpi-label">その他計</div><div class="kpi-val">${totalOther.toLocaleString()}個</div></div>
     <div class="kpi-card ${alcAlerts?'':''}"><div class="kpi-label">🍺 アルコール超過</div><div class="kpi-val" style="color:${alcAlerts?'var(--red)':'var(--green)'}">${alcAlerts}件</div></div>
   `;
 
@@ -236,6 +388,7 @@ async function renderMonthlyReport() {
       const drKm  = dReports.reduce((a,r)=>a+(+r.distance_km||0),0);
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
       const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
+      const drChar= dReports.reduce((a,r)=>a+(+r.qty_charter||0),0);
       const drOtherQty=dReports.reduce((a,r)=>a+(+r.qty_other||0),0);
       const drAlcAlert = dReports.filter(r=>+r.alc_before>=0.15||+r.alc_after>=0.15);
       const drHealthBad= dReports.filter(r=>r.health_before==='bad'||r.health_after==='bad');
@@ -282,13 +435,13 @@ async function renderMonthlyReport() {
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
               </div>
               <div style="font-size:10px;color:var(--text2)">
-                稼働${drWorkDays}日 · ${drKm}km · 宅配便${drTak}個 · ポスト便${drNeko}個
+                稼働${drWorkDays}日 · ${drKm}km · 宅配便${drTak}個 · ポスト便${drNeko}個 · チャーター便${drChar}件 · その他${drOtherQty}個
               </div>
             </div>
           </div>
           <div style="text-align:right">
             <div style="font-size:13px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
-            <div style="font-size:10px;color:var(--text2)">配送個数計</div>
+            <div style="font-size:10px;color:var(--text2)">配送個数計${drChar?` ／ チャーター${drChar}件`:''}</div>
           </div>
         </div>
         <div class="pnl-body">
@@ -314,7 +467,7 @@ async function renderMonthlyReport() {
             <div class="kpi-card" style="padding:6px 8px">
               <div class="kpi-label">配送個数計</div>
               <div style="font-size:14px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
-              <div class="kpi-diff kpi-eq">宅${drTak} ポスト${drNeko} 他${drOtherQty}</div>
+              <div class="kpi-diff kpi-eq">宅${drTak} ポスト${drNeko} 他${drOtherQty}${drChar?` ／ チャーター${drChar}件`:''}</div>
             </div>
           </div>
 
