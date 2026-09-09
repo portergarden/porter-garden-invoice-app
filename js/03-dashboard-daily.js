@@ -3635,13 +3635,16 @@ function buildDailyReportHtml(r) {
     <table class="drp-table">
       <tr><th>乗務日</th><td>${r.date||''}</td><th>車両番号</th><td>${escHtml(r.car)}</td></tr>
       <tr><th>乗務員名</th><td>${escHtml(r.driver_name)}</td><th>乗務形態</th><td>${typeShort(r.type)}</td></tr>
+      <tr><th>稼働先</th><td>${cli?escHtml(cli.name):'—'}</td>
+          <th>提出者・提出日時</th><td>${escHtml(r.submitted_by||'')||'—'}${r.created_at?`　${(r.created_at||'').slice(0,16).replace('T',' ')}`:''}</td></tr>
     </table>
 
     <div class="drp-section-title">① 乗務記録</div>
     <table class="drp-table">
       <tr><th>業務開始</th><td>${r.start_time||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
           <th>業務終了</th><td>${r.end_time||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
-      <tr><th>走行距離</th><td>${r.distance_km??''} km</td>
+      <tr><th>走行距離</th><td>${r.distance_km??''} km${(r.start_odometer!=null||r.end_odometer!=null)
+            ? `　<span style="color:#555">（メーター ${r.start_odometer??'—'} → ${r.end_odometer??'—'}）</span>` : ''}</td>
           <th>休憩</th><td>${escHtml(formatRests(r)) || '—'}</td></tr>
     </table>
 
