@@ -1054,6 +1054,7 @@ async function loadPersonalTasks() {
     const {data, error} = await fetchAllRows(() => sb.from('tasks').select('*').order('due_date', {nullsFirst:false}).order('id'));
     if (error) { if (/does not exist|relation/.test(error.message)) { personalTasks=[]; return; } throw error; }
     personalTasks = data || [];
+    await ptGenerateDueRepeats();   // 毎月繰り返すタスクの当月分をここで作る
   } catch(e) { console.warn('loadPersonalTasks:', e.message); personalTasks = []; }
 }
 /* 他人から自分あてに来た依頼＝担当者が自分で、依頼者が自分以外の未完了タスク。
@@ -1083,6 +1084,107 @@ function ptStamp(iso) {
   const hh = String(d.getHours()).padStart(2,'0'), mi = String(d.getMinutes()).padStart(2,'0');
   const y = d.getFullYear() === new Date().getFullYear() ? '' : `${d.getFullYear()}/`;
   return `${y}${mm}/${dd} ${hh}:${mi}`;
+}
+
+/* ===== 毎月固定のタスクの引き継ぎ =====
+   「毎月繰り返す」を付けたタスクは、月が変わったときに翌月分を自動で作る。
+   前月分が未完了でも当月分は出す（毎月やる仕事なので、前月の遅れとは別に数える）。
+   同じ系列のタスクは repeat_key（最初のタスクのid）でつながっている。 */
+const ptSeriesKey = t => t.repeat_key ?? t.id;
+const ptMonthOf   = t => (t.due_date || '').slice(0, 7);
+const ptThisMonth = () => fmtLocalDate(new Date()).slice(0, 7);
+// 'YYYY-MM' の翌月
+function ptNextMonth(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+/* その月の期限日。31日のように無い月は月末に丸める。
+   丸めた日から次を計算すると日がずれていくので、元の日(repeat_day)は別に持っておく */
+function ptDueOfMonth(ym, day) {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return `${ym}-${String(Math.min(day || last, last)).padStart(2,'0')}`;
+}
+const ptDayOf = t => t.repeat_day || (t.due_date ? +t.due_date.slice(8, 10) : null);
+
+// 引き継ぐ1件分の中身。担当者・依頼者・メモは引き継ぎ、進捗はまっさらに戻す
+function ptCarryRow(src, ym) {
+  return {
+    title: src.title,
+    assignee_user_id: src.assignee_user_id ?? null,
+    requester_user_id: src.requester_user_id ?? null,
+    due_date: ptDueOfMonth(ym, ptDayOf(src)),
+    status: 'not_started',
+    note: src.note ?? null,
+    completed_at: null,
+    acknowledged_at: null,
+    created_by: me?.name || null,
+    repeat_monthly: !!src.repeat_monthly,
+    repeat_day: ptDayOf(src),
+    repeat_key: src.repeat_monthly ? ptSeriesKey(src) : null,
+  };
+}
+/* 月が変わったぶんをまとめて作る。タスクを読み込んだ直後に呼ぶ。
+   複数人が同時にアプリを開いても二重にならないよう、重複はDB側の一意制約に任せ、
+   はじかれた分(23505)は黙って読み飛ばす */
+async function ptGenerateDueRepeats() {
+  if (!sb || !me || me.role === 'viewer') return 0;
+  const now = ptThisMonth();
+  // 系列ごとに、一番新しい月の1件を代表にする
+  const latest = {};
+  personalTasks.forEach(t => {
+    if (!ptMonthOf(t)) return;
+    const k = String(ptSeriesKey(t));
+    if (!latest[k] || ptMonthOf(t) > ptMonthOf(latest[k])) latest[k] = t;
+  });
+  const rows = [];
+  Object.values(latest).forEach(t => {
+    // 一番新しい分でレ点を外せば、そこで繰り返しは止まる
+    if (!t.repeat_monthly) return;
+    let ym = ptMonthOf(t);
+    for (let i = 0; i < 24 && ym < now; i++) {
+      ym = ptNextMonth(ym);
+      rows.push(ptCarryRow(t, ym));
+    }
+  });
+  let made = 0;
+  for (const row of rows) {
+    try {
+      const {data, error} = await sb.from('tasks').insert(row).select().single();
+      if (error) {
+        if (error.code !== '23505') console.warn('ptGenerateDueRepeats:', error.message);
+        continue;   // 23505 = 他の人が先に作っていた
+      }
+      personalTasks.push(data);
+      made++;
+    } catch(e) { console.warn('ptGenerateDueRepeats:', e.message); }
+  }
+  return made;
+}
+/* 1件だけ手動で翌月へ引き継ぐ。毎月繰り返しにしていない単発のタスクでも使える */
+async function carryPtToNextMonth(id) {
+  const t = personalTasks.find(x => x.id === id);
+  if (!t || !sb) return;
+  const ym   = ptMonthOf(t) || ptThisMonth();
+  const next = ptNextMonth(ym);
+  const due  = ptDueOfMonth(next, ptDayOf(t));
+  if (!confirm(`「${t.title}」を ${next} へ引き継ぎますか？\n\n`
+    + `期限 ${due} で新しく作ります。担当者・依頼者・メモは引き継ぎ、ステータスは「未着手」に戻ります。\n`
+    + `${ym} の分はそのまま残ります。`)) return;
+  showLoad(true);
+  try {
+    const {data, error} = await sb.from('tasks').insert(ptCarryRow(t, next)).select().single();
+    if (error) {
+      if (error.code === '23505') { showT('その月の分はすでにあります', 'twa'); showLoad(false); return; }
+      throw error;
+    }
+    personalTasks.push(data);
+    renderPersonalTasks();
+    addLog('個人タスク 翌月引き継ぎ', `${t.title} → ${due}`);
+    showT(`${next} へ引き継ぎました`);
+  } catch(e) { showT('引き継ぎエラー: '+e.message, 'ter'); }
+  showLoad(false);
 }
 
 const ptIsOverdue = t => !!t.due_date && t.due_date < fmtLocalDate(new Date()) && t.status !== 'done';
@@ -1147,7 +1249,8 @@ function renderPersonalTasks() {
              style="width:16px;height:16px;cursor:${canAck?'pointer':'not-allowed'};accent-color:var(--green)">`
         : '<span style="color:var(--text3)">—</span>'}</td>
       <td style="${td};text-align:left"><span style="font-weight:600">${escHtml(t.title||'')}</span>
-        ${needsAck?'<span class="bdg" style="background:var(--red-bg);color:var(--red-text);margin-left:5px">未確認</span>':''}</td>
+        ${needsAck?'<span class="bdg" style="background:var(--red-bg);color:var(--red-text);margin-left:5px">未確認</span>':''}
+        ${t.repeat_monthly?'<span class="bdg" style="background:var(--blue-bg);color:var(--blue-text);margin-left:5px" title="毎月繰り返すタスクです。月が変わると翌月分が自動で作られます">毎月</span>':''}</td>
       <td style="${td};text-align:center">
         <select style="${inp};background:var(${sc[0]});color:var(${sc[1]});font-weight:600" onchange="savePtField(${t.id},'status',this.value)">
           ${Object.entries(PT_STATUS_LABEL).map(([k,v])=>`<option value="${k}" ${t.status===k?'selected':''}>${v}</option>`).join('')}
@@ -1161,7 +1264,9 @@ function renderPersonalTasks() {
       <td style="${td};max-width:220px"><span style="font-size:10.5px;color:var(--text2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t.note||'')}">${escHtml(t.note||'')||'—'}</span></td>
       <td style="${td};text-align:center;white-space:nowrap">${escHtml(uname(t.assignee_user_id))}</td>
       <td style="${td};text-align:center;white-space:nowrap;color:var(--text2)">${escHtml(uname(t.requester_user_id))}</td>
-      <td style="${td};text-align:center">${me&&me.role!=='viewer'?`<button class="ibtn" onclick="openPtM(${t.id})" title="編集">✎</button>`:''}</td>
+      <td style="${td};text-align:center;white-space:nowrap">${me&&me.role!=='viewer'?
+        `<button class="ibtn" onclick="carryPtToNextMonth(${t.id})" title="翌月へ引き継ぐ（担当者・依頼者・メモを引き継ぎ、ステータスは未着手に戻ります）">⏭</button>`
+        + `<button class="ibtn" onclick="openPtM(${t.id})" title="編集">✎</button>`:''}</td>
     </tr>`;
   };
 
@@ -1178,7 +1283,7 @@ function renderPersonalTasks() {
           <th style="${th};text-align:left">メモ</th>
           <th style="${th}">担当者</th>
           <th style="${th}">依頼者</th>
-          <th style="${th};width:40px"></th>
+          <th style="${th};width:64px"></th>
         </tr></thead>
         <tbody>${sortRows(list).map(t => rowHtml(t, isMine)).join('')}</tbody></table>`;
 
@@ -1245,6 +1350,7 @@ function openPtM(id) {
   document.getElementById('ptStatus').innerHTML = Object.entries(PT_STATUS_LABEL)
     .map(([k,v])=>`<option value="${k}" ${(t?.status||'not_started')===k?'selected':''}>${v}</option>`).join('');
   document.getElementById('ptNote').value = t?.note || '';
+  document.getElementById('ptRepeat').checked = !!t?.repeat_monthly;
   document.getElementById('ptErr').textContent = '';
   document.getElementById('ptDelBtn').style.display = t ? '' : 'none';
   document.getElementById('mPt').classList.add('on');
@@ -1255,12 +1361,18 @@ async function savePersonalTask() {
   errEl.textContent = '';
   if (!title) { errEl.textContent = 'タスク名を入力してください'; return; }
   const status = document.getElementById('ptStatus').value;
+  const repeat = document.getElementById('ptRepeat').checked;
+  const due    = document.getElementById('ptDue').value || null;
+  // 毎月の期限日は期限の「日」から取るので、繰り返すなら期限が要る
+  if (repeat && !due) { errEl.textContent = '毎月繰り返す場合は期限を入れてください（その日が毎月の期限になります）'; return; }
   const obj = {
     title,
     assignee_user_id: document.getElementById('ptAssignee').value || null,
     requester_user_id: document.getElementById('ptRequester').value || null,
-    due_date: document.getElementById('ptDue').value || null,
+    due_date: due,
     status,
+    repeat_monthly: repeat,
+    repeat_day: repeat ? +due.slice(8, 10) : null,
     note: document.getElementById('ptNote').value.trim() || null,
     // 完了日時は「完了になった瞬間」を残す。既に完了済みのタスクを編集し直しても打ち直さない
     completed_at: status === 'done'

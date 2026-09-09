@@ -2987,6 +2987,16 @@ try {
       <div class="fld"><label>ステータス</label><select id="ptStatus" style="width:100%"></select></div>
     </div>
     <div class="fld"><label>メモ（任意）</label><textarea id="ptNote" rows="2" placeholder="任意"></textarea></div>
+    <div class="fld">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400">
+        <input type="checkbox" id="ptRepeat" style="width:15px;height:15px;accent-color:var(--blue)">
+        毎月繰り返す（翌月分を自動で作ります）
+      </label>
+      <div style="font-size:10.5px;color:var(--text2);margin-top:4px;line-height:1.5">
+        期限の「日」が毎月の期限になります。31日など無い月は月末になります。<br>
+        繰り返しを止めるときは、一番新しい月の分でこのレ点を外してください。
+      </div>
+    </div>
     <div id="ptErr" style="font-size:11px;color:var(--red);min-height:14px"></div>
     <div class="mfoot">
       <button class="btn" id="ptDelBtn" style="display:none;color:var(--red-text)" onclick="deletePersonalTask()">削除</button>
@@ -3140,7 +3150,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=26dc7a51"></script>
+<script src="js/03-dashboard-daily.js?v=aab8e49f"></script>
 
 
 <script src="js/04-monthly.js?v=b0e18fa3"></script>
@@ -3161,7 +3171,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=fd2d4db8"></script>
+<script src="js/10-settings.js?v=9f53010b"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

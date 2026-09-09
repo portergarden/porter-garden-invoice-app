@@ -245,8 +245,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at timestamptz DEFAULT now(),
   completed_at timestamptz,
   requester_user_id text REFERENCES users(id),  -- 依頼者。担当者と別なら「依頼」として扱う
-  acknowledged_at timestamptz  -- 依頼を受け取った担当者本人がレ点を付けた日時。未入力の依頼だけがダッシュボードのお知らせに出る
+  acknowledged_at timestamptz,  -- 依頼を受け取った担当者本人がレ点を付けた日時。未入力の依頼だけがダッシュボードのお知らせに出る
+  -- 毎月固定のタスクを翌月へ引き継ぐための項目
+  repeat_monthly boolean NOT NULL DEFAULT false,  -- 毎月繰り返すタスクかどうか
+  repeat_day smallint,   -- 毎月の期限日(1-31)。31日など無い月は月末に丸めるが、丸めた日から次を計算すると日がずれるため元の日を覚えておく
+  repeat_key bigint      -- 繰り返しの系列ID。最初のタスクのidが入る（最初のタスク自身はNULL）
 );
+-- 同じ系列の同じ期限日が二重に作られないようにする（複数人が同時にアプリを開いた場合の保険）
+CREATE UNIQUE INDEX IF NOT EXISTS tasks_repeat_uniq ON tasks(repeat_key, due_date) WHERE repeat_key IS NOT NULL;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "tasks_select" ON tasks FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 CREATE POLICY "tasks_insert" ON tasks FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
