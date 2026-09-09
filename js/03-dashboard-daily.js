@@ -2389,6 +2389,8 @@ async function initDailyForm(reportId=null) {
       document.getElementById('drRouteReport').value = r.route_report || '';
       document.getElementById('drHandoverNote').value = r.handover_note || '';
       onDrTenkoMethodChange();
+      // 点呼時刻が入っていない過去の日報は、業務開始・終了の時刻を候補として入れておく
+      syncDrTenkoTimes();
       document.getElementById('drCli').value = '';
       // 運行。旧データ（trips が無い）は、それまでの平坦な項目から1件ぶんに組み立てる
       pendDrTrips = Array.isArray(r.trips) && r.trips.length ? r.trips.map(t=>({...t}))
@@ -2732,6 +2734,7 @@ function applyDrTripRollup() {
   const starts = pendDrTrips.map(t=>t.start).filter(Boolean).sort();
   const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
   fillIfEmpty('drStart', starts[0]);
+  syncDrTenkoTimes();
 }
 /* ステップ3に入った時点で、業務終了時刻を最後の運行から補う。
    帰着地点は運行の到着先ではなく、出発地点と同じ場所（自宅・営業所）に戻ることが
@@ -2742,6 +2745,7 @@ function applyDrTripEndRollup() {
   const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
   fillIfEmpty('drEnd', ends[ends.length-1]);
   fillIfEmpty('drEndLoc', document.getElementById('drStartLoc')?.value || '');
+  syncDrTenkoTimes();
 }
 
 // 保存する日報に、運行から積み上げた値を載せる（既存の集計がそのまま動くようにするため）
@@ -2790,6 +2794,23 @@ function onDrTenkoMethodChange() {
   const m = document.getElementById('drTenkoMethod')?.value || 'face';
   const w = document.getElementById('drTenkoMethodNoteWrap');
   if (w) w.style.display = m === 'face' ? 'none' : 'block';
+}
+
+/* ===== 点呼時刻と業務開始・終了時刻の連動 =====
+   点呼をしなければ業務は始められないので、この2つは基本的に同じ時刻になる。
+   ただし別々の帳票の項目（点呼時刻＝点呼記録簿、業務開始・終了＝業務の記録で拘束時間の起点）で、
+   帰着してから点呼した日のように数分ずれることもあるため、欄は分けたままにしてある。
+   写すのは空いているほうだけで、既に入っている値には触らない。 */
+function mirrorDrTime(fromId, toId) {
+  const a = document.getElementById(fromId), b = document.getElementById(toId);
+  if (a && b && a.value && !b.value) b.value = a.value;
+}
+// 乗務前（点呼 ⇄ 業務開始）と乗務後（業務終了 ⇄ 点呼）を、空いているほうへ写す
+function syncDrTenkoTimes() {
+  mirrorDrTime('drTenkoBeforeAt', 'drStart');
+  mirrorDrTime('drStart', 'drTenkoBeforeAt');
+  mirrorDrTime('drTenkoAfterAt', 'drEnd');
+  mirrorDrTime('drEnd', 'drTenkoAfterAt');
 }
 
 /* ===== 日報の3ステップ =====
@@ -2851,6 +2872,8 @@ function validateDrStep(step) {
     if (!v('drD') || !car) return '乗務日と車両番号は必須です';
     if (!v('drTenkoExecutor')) return '点呼執行者を入力してください（点呼記録簿の必須項目です）';
     if (v('drTenkoMethod') !== 'face' && !v('drTenkoMethodNote')) return '対面以外の点呼は、具体的な方法の記録が必要です';
+    // 点呼をしなければ業務は始められないため、時刻の記録も必須にしている
+    if (!v('drTenkoBeforeAt')) return '乗務前の点呼時刻を入力してください（点呼記録簿の必須項目です）';
     if (v('drAlcBefore') === '' || isNaN(+v('drAlcBefore'))) return '乗務前アルコール検知値を入力してください';
     if (!v('drHealthBefore')) return '乗務前の体調を選択してください';
     if (!v('drStart')) return '業務開始時刻を入力してください';
@@ -3062,6 +3085,9 @@ async function submitDailyReport() {
   if (!tenkoExecutor) { resultEl.textContent = '⚠ 点呼執行者を入力してください（点呼記録簿の必須項目です）'; resultEl.style.color='var(--red)'; return; }
   if (tenkoMethod !== 'face' && !tenkoMethodNote) {
     resultEl.textContent = '⚠ 対面以外の点呼は、具体的な方法の記録が必要です'; resultEl.style.color='var(--red)'; return;
+  }
+  if (!document.getElementById('drTenkoAfterAt').value) {
+    resultEl.textContent = '⚠ 乗務後の点呼時刻を入力してください（点呼記録簿の必須項目です）'; resultEl.style.color='var(--red)'; return;
   }
   if (!document.getElementById('drAlcDetectorUsed').checked) {
     if (!confirm('⚠ アルコール検知器を使用していない記録になります。\n検知器の使用は義務です。このまま提出しますか？')) return;

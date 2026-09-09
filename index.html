@@ -1383,7 +1383,10 @@ try {
           <input type="text" id="drTenkoMethodNote" placeholder="例: 携帯電話で通話し、検知器の測定値を写真で受信">
           <div style="font-size:10px;color:var(--text2);margin-top:2px">対面以外のときは、どのように点呼したかの記録が必要です</div>
         </div>
-        <div class="fld"><label>乗務前 点呼時刻</label><input type="time" id="drTenkoBeforeAt"></div>
+        <div class="fld"><label>乗務前 点呼時刻 <span style="color:var(--red)">*</span></label>
+          <input type="time" id="drTenkoBeforeAt" onchange="syncDrTenkoTimes()">
+          <div style="font-size:10px;color:var(--text2);margin-top:2px">点呼記録簿の必須項目です。③の業務開始時刻と片方を入れると、空いているもう片方にも同じ時刻が入ります</div>
+        </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="fld">
@@ -1429,7 +1432,10 @@ try {
           最初に向かったセンターや配達先ではありません（そちらは⑤の運行に入れてください）。
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drStart"></div>
+          <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label>
+            <input type="time" id="drStart" onchange="syncDrTenkoTimes()">
+            <div style="font-size:10px;color:var(--text2);margin-top:2px">②の乗務前点呼時刻と入れ合います</div>
+          </div>
           <div class="fld"><label>出発地点（業務を始めた場所） <span style="color:var(--red)">*</span></label>
             <input type="text" id="drStartLoc" placeholder="例: 自宅 ／ 仙台営業所">
             <div id="drStartLocHint" style="font-size:10px;color:var(--text2);margin-top:2px"></div>
@@ -1569,7 +1575,10 @@ try {
           ここは<b>その日の業務を終えた場所</b>です。出発地点と同じく、自宅や配属先の店舗・営業所が基本になります。
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="fld"><label>業務終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drEnd"></div>
+          <div class="fld"><label>業務終了時刻 <span style="color:var(--red)">*</span></label>
+            <input type="time" id="drEnd" onchange="syncDrTenkoTimes()">
+            <div style="font-size:10px;color:var(--text2);margin-top:2px">⑨の乗務後点呼時刻と入れ合います</div>
+          </div>
           <div class="fld"><label>帰着地点（業務を終えた場所） <span style="color:var(--red)">*</span></label>
             <input type="text" id="drEndLoc" placeholder="例: 自宅 ／ 仙台営業所">
           </div>
@@ -1583,7 +1592,10 @@ try {
         </div>
 
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑨ 乗務後点呼</div>
-        <div class="fld"><label>乗務後 点呼時刻</label><input type="time" id="drTenkoAfterAt"></div>
+        <div class="fld"><label>乗務後 点呼時刻 <span style="color:var(--red)">*</span></label>
+          <input type="time" id="drTenkoAfterAt" onchange="syncDrTenkoTimes()">
+          <div style="font-size:10px;color:var(--text2);margin-top:2px">点呼記録簿の必須項目です。帰着してから点呼した日など、⑧の業務終了時刻と違うときはこの欄を直してください</div>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="fld">
             <label>乗務後アルコール（mg/L） <span style="color:var(--red)">*</span></label>
@@ -3150,7 +3162,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=aab8e49f"></script>
+<script src="js/03-dashboard-daily.js?v=b3a5c90b"></script>
 
 
 <script src="js/04-monthly.js?v=b0e18fa3"></script>
