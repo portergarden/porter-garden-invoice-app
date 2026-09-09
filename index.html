@@ -863,7 +863,11 @@ try {
         <span id="staffSchedTitle" style="font-size:13px;font-weight:500;min-width:80px;text-align:center"></span>
         <button class="btn sml" onclick="staffSchedNext()">▶</button>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <input type="text" id="staffSchedSearch" placeholder="🔍 予定を検索（件名・備考・担当者）"
+               oninput="renderStaffSchedCalDebounced()"
+               title="全期間から探します。上の担当者の絞り込みは掛かりません"
+               style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:220px">
         <span style="font-size:10px;color:var(--text2)">担当者:</span>
         <select id="staffSchedUserSel" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderStaffSchedCal()">
           <option value="">全員</option>
@@ -872,6 +876,8 @@ try {
       </div>
     </div>
     <div id="staffSchedLegend" style="display:flex;gap:10px;flex-wrap:wrap;padding:6px 14px;border-bottom:0.5px solid var(--border)"></div>
+    <!-- 検索結果。検索欄が空のときは出さない -->
+    <div id="staffSchedResults" style="display:none;padding:6px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2);max-height:240px;overflow-y:auto"></div>
     <div class="cal-wrap"><div id="staffSchedGrid"></div></div>
   </div>
   <!-- ===== pg29: タスク管理 ===== -->
@@ -3176,10 +3182,10 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=0d722cd3"></script>
+<script src="js/03-dashboard-daily.js?v=61dd1b18"></script>
 
 
-<script src="js/04-monthly.js?v=cc3304bd"></script>
+<script src="js/04-monthly.js?v=d604616a"></script>
 
 
 <script src="js/05-driver-portal.js?v=fc46e35c"></script>

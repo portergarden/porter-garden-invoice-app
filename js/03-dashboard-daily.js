@@ -212,6 +212,70 @@ function initStaffSched() {
 function staffSchedPrev() { staffSchedMonth--; if(staffSchedMonth<0){staffSchedMonth=11;staffSchedYear--;} renderStaffSchedCal(); }
 function staffSchedNext() { staffSchedMonth++; if(staffSchedMonth>11){staffSchedMonth=0;staffSchedYear++;} renderStaffSchedCal(); }
 
+/* ===== 予定の検索 =====
+   カレンダーは1か月ずつしか出ないので、入れた予定を探すには全期間から拾う。
+   件名・備考・担当者名・日付のどれかに当たれば拾う。
+   上の「担当者」の絞り込みは掛けない（見えていない人の予定も探せるようにする）。
+   並びは「今日以降を近い順 → 過去を新しい順」。探すのはたいていこれからの予定で、
+   次に直近の過去のため */
+const STAFF_SCHED_MAX_HITS = 200;
+function staffSchedMatches() {
+  const q = nm((document.getElementById('staffSchedSearch')?.value || '').trim());
+  if (!q) return null;                       // null = 検索していない
+  const uname = id => users.find(u => String(u.id) === String(id))?.name || '';
+  const today = fmtLocalDate(new Date());
+  return staffSchedules
+    .filter(s => nm(`${s.title||''} ${s.note||''} ${uname(s.user_id)} ${s.date||''} ${s.end_date||''}`).includes(q))
+    .sort((a,b) => {
+      const fa = (a.date||'') >= today, fb = (b.date||'') >= today;
+      if (fa !== fb) return fa ? -1 : 1;
+      return fa ? String(a.date||'').localeCompare(String(b.date||''))
+                : String(b.date||'').localeCompare(String(a.date||''));
+    });
+}
+// 検索結果の一覧。押すとその月へ移動して、その予定を開く
+function renderStaffSchedResults() {
+  const el = document.getElementById('staffSchedResults');
+  if (!el) return;
+  const hits = staffSchedMatches();
+  if (hits === null) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  if (!hits.length) {
+    el.innerHTML = '<div style="font-size:11.5px;color:var(--text2);padding:4px 0">該当する予定はありません</div>';
+    return;
+  }
+  const today = fmtLocalDate(new Date());
+  const uname = id => users.find(u => String(u.id) === String(id))?.name || '—';
+  const shown = hits.slice(0, STAFF_SCHED_MAX_HITS);
+  el.innerHTML =
+    `<div style="font-size:11px;color:var(--text2);margin-bottom:4px">
+       ${hits.length}件${hits.length > shown.length ? `（先頭${shown.length}件を表示）` : ''}
+       <span style="color:var(--text3)">・押すとその月へ移動して開きます</span>
+     </div>`
+    + shown.map(s => {
+        const c = staffSchedColorFor(s.user_id);
+        const past = (s.date||'') < today;
+        const span = (s.end_date && s.end_date > s.date) ? `〜${s.end_date}` : '';
+        const time = s.start_time ? ` ${s.start_time}${s.end_time?`-${s.end_time}`:''}` : '';
+        return `<div onclick="jumpToStaffSched(${s.id})" style="display:flex;align-items:baseline;gap:8px;padding:3px 6px;margin-bottom:2px;border-radius:var(--radius);background:var(--bg);cursor:pointer;font-size:11.5px${past?';opacity:.65':''}">
+          <span style="white-space:nowrap;flex-shrink:0;color:var(--text2);font-variant-numeric:tabular-nums">${escHtml(s.date||'')}${escHtml(span)}${escHtml(time)}</span>
+          <span style="font-weight:600;min-width:0;flex-shrink:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.title||'')}</span>
+          <span class="bdg" style="background:${c.bg};color:${c.text};flex-shrink:0">${escHtml(uname(s.user_id))}</span>
+          ${s.note?`<span style="color:var(--text2);min-width:0;flex-shrink:2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.note)}</span>`:''}
+        </div>`;
+      }).join('');
+}
+// 検索結果から、その予定のある月へ移動して開く
+function jumpToStaffSched(id) {
+  const s = staffSchedules.find(x => x.id === id);
+  if (!s || !s.date) return;
+  const d = new Date(s.date + 'T00:00:00');
+  staffSchedYear = d.getFullYear();
+  staffSchedMonth = d.getMonth();
+  renderStaffSchedCal();
+  openStaffSchedM(id);
+}
+
 function renderStaffSchedCal() {
   const title = document.getElementById('staffSchedTitle');
   if (title) title.textContent = `${staffSchedYear}年${staffSchedMonth+1}月`;
@@ -220,6 +284,9 @@ function renderStaffSchedCal() {
   const userId = document.getElementById('staffSchedUserSel')?.value || '';
   let items = staffSchedules;
   if (userId) items = items.filter(s=>String(s.user_id)===String(userId));
+  // 検索中は、当たった予定をカレンダー上でも枠で囲って分かるようにする
+  const hits = staffSchedMatches();
+  const hitIds = hits ? new Set(hits.map(x => x.id)) : null;
 
   // 終了日(end_date)が開始日より後なら、その範囲の日付すべてにこの予定を表示する（月をまたぐ場合も含む）
   const dayMap = {};
@@ -269,7 +336,8 @@ function renderStaffSchedCal() {
         const isStartDay = dateStr === s.date;
         const titleHtml = (isSpan && !isStartDay ? '▸ ' : '') + escHtml(s.title) + (isSpan && isStartDay ? `〜${s.end_date.slice(5).replace('-','/')}` : '');
         const c = staffSchedColorFor(s.user_id);
-        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:11.5px;background:${c.bg};color:${c.text};border-radius:3px;padding:2px 4px;margin:2px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${isStartDay&&s.start_time?escHtml(s.start_time)+' ':''}${titleHtml}${u?'（'+escHtml(u.name)+'）':''}</div>`;
+        const isHit = hitIds ? hitIds.has(s.id) : false;
+        return `<div onclick="event.stopPropagation();openStaffSchedM(${s.id})" style="font-size:11.5px;background:${c.bg};color:${c.text};border-radius:3px;padding:2px 4px;margin:2px 0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap${isHit?';outline:1.5px solid var(--blue);font-weight:700':hitIds?';opacity:.4':''}">${isStartDay&&s.start_time?escHtml(s.start_time)+' ':''}${titleHtml}${u?'（'+escHtml(u.name)+'）':''}</div>`;
       }).join('')}
     </div>`;
   }
@@ -277,7 +345,9 @@ function renderStaffSchedCal() {
   for (let i=endDow+1; i<7; i++) html += '<div class="cal-day other"></div>';
   html += '</div>';
   document.getElementById('staffSchedGrid').innerHTML = html;
+  renderStaffSchedResults();   // 検索結果もカレンダーと同時に描き直す
 }
+const renderStaffSchedCalDebounced = debounce(renderStaffSchedCal, 200);
 
 function openStaffSchedM(id, presetDate) {
   const sel = document.getElementById('ssUser');

@@ -189,11 +189,16 @@ const MR_CELL_STYLE = {
   reject: {label:'差', bg:'var(--amber-bg)', fg:'var(--amber-text)', name:'差戻し'},
   warn:   {label:'⚠',  bg:'var(--red-bg)',   fg:'var(--red-text)',   name:'要確認'},
 };
-// マスを押したら、その日の日報を日報タブで開く
-function openMrMatrixCell(reportId) {
-  if (!reportId) return;
-  goPage(10, document.getElementById('nt10'));
-  showDailyForm(reportId);
+/* マスを押したら、その人・その日の業務記録を印刷用の書式で出す。
+   直すときは日報管理タブの一覧から開く（ここは見る・PDFにするための入口） */
+function openMrMatrixCell(drvId, dateStr) {
+  const list = (mrMatrixReports || [])
+    .filter(r => r.date === dateStr && recDrv(r)?.id === drvId)
+    .sort((a,b) => String(a.start_time||'').localeCompare(String(b.start_time||'')));
+  if (!list.length) { showT(`${dateStr} の業務記録はありません`, 'twa'); return; }
+  const name = drvs.find(d => d.id === drvId)?.name || '';
+  openDocPreview(buildDailyReportsPrintDoc(list), `${dateStr} ${name}${list.length>1?`（${list.length}件）`:''}`);
+  addLog('業務記録印刷', `${dateStr} ${name} ${list.length}件`);
 }
 // 日付の見出しを押したときに、その日の日報を取り出せるよう控えておく
 let mrMatrixReports = [];
@@ -297,7 +302,7 @@ function renderMrMatrix(shownDrvs, allDrvs, reports, from, to) {
       const bg = c.st === 'none' ? (future ? 'var(--bg2)' : 'transparent') : st.bg;
       const label = c.list.length ? (many || st.label) : '';
       const tip = `${row.d.name} ${c.ds}：${c.list.length ? st.name + (many?`（${c.list.length}枚）`:'') : (future ? 'これから' : '提出なし')}`;
-      return `<td style="${TD};background:${bg};color:${st.fg}${weekLine(c.ds)}${rep?';cursor:pointer':''}"${rep?` onclick="openMrMatrixCell(${rep.id})"`:''} title="${escHtml(tip)}">${label}</td>`;
+      return `<td style="${TD};background:${bg};color:${st.fg}${weekLine(c.ds)}${rep?';cursor:pointer':''}"${rep?` onclick="openMrMatrixCell(${row.d.id},'${c.ds}')"`:''} title="${escHtml(tip)}">${label}</td>`;
     }).join('');
     const zeroMark = row.submitted === 0 ? ';color:var(--red-text);font-weight:700' : '';
     const sel = row.d.id === mrSelDrvId;
@@ -319,8 +324,8 @@ function renderMrMatrix(shownDrvs, allDrvs, reports, from, to) {
       <span><b style="color:var(--red-text)">⚠</b> 要確認（アルコール超過・体調不良・事故）</span>
       <span>数字 その日に複数枚</span>
       <span>空欄 その日の日報なし</span>
-      <span>マス → その日報を開く</span>
-      <span><b>日付 → その日の日報をまとめて開く（PDF保存できます）</b></span>
+      <span>マス → その人のその日の業務記録（PDF保存できます）</span>
+      <span><b>日付 → その日の全員分をまとめて開く（PDF保存できます）</b></span>
       <span><b>ドライバー名 → その人の明細と月報を出す</b></span>`;
   wrap.style.display = mrMatrixOpen ? '' : 'none';
 }
