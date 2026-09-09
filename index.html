@@ -67,7 +67,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css?v=b537edbd">
+<link rel="stylesheet" href="css/app.css?v=0cb5fbf7">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -463,7 +463,7 @@ try {
   </div>
 
   <!-- ===== 集計エリア（取引先別バッチ作成） ===== -->
-  <div id="p0area2" style="overflow-y:auto;max-height:calc(100vh - 160px);padding:10px 14px">
+  <div id="p0area2" style="overflow-y:auto;max-height:calc(100vh - 160px - env(safe-area-inset-top,0px));padding:10px 14px">
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius)">
       <span style="font-size:11px;color:var(--text2)">集計期間:</span>
       <input type="date" id="aggInvFrom" class="fin" style="padding:4px" onchange="runAggInv()">
@@ -1110,7 +1110,7 @@ try {
       <button class="btn sml" onclick="jumpToEntryTab()">📝 受注入力 ↗</button>
     </div>
   <!-- 集計エリア（ドライバー別バッチ作成）: 支払明細書作成タブはこの集計のみに専念 -->
-  <div id="p6area1" style="overflow-y:auto;max-height:calc(100vh - 160px);padding:10px 14px">
+  <div id="p6area1" style="overflow-y:auto;max-height:calc(100vh - 160px - env(safe-area-inset-top,0px));padding:10px 14px">
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius)">
       <span style="font-size:11px;color:var(--text2)">集計期間:</span>
       <input type="date" id="aggPayFrom" class="fin" style="padding:4px" onchange="runAggPay()">
@@ -1221,7 +1221,7 @@ try {
       <button class="btn sml grn" onclick="bulkMarkSchedDone()">選択を支払済にする</button>
       <button class="btn sml" onclick="bulkUnmarkSchedDone()">選択の支払済を取消</button>
     </div>
-    <div id="schedList" style="overflow-y:auto;max-height:calc(100vh - 200px)">
+    <div id="schedList" style="overflow-y:auto;max-height:calc(100vh - 200px - env(safe-area-inset-top,0px))">
       <div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">支払予定がありません</div>
     </div>
 </div>
@@ -1250,7 +1250,7 @@ try {
       <button class="btn sml grn" onclick="bulkMarkReceiptSchedDone()">選択を入金済にする</button>
       <button class="btn sml" onclick="bulkUnmarkReceiptSchedDone()">選択の入金済を取消</button>
     </div>
-    <div id="receiptSchedList" style="overflow-y:auto;max-height:calc(100vh - 200px)">
+    <div id="receiptSchedList" style="overflow-y:auto;max-height:calc(100vh - 200px - env(safe-area-inset-top,0px))">
       <div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">入金予定がありません</div>
     </div>
 </div>
@@ -1340,7 +1340,7 @@ try {
   <!-- ===== 日報入力フォーム ===== -->
   <!-- dailyFormAreaHost: ドライバーポータル(#dpg0)へ一時的に移動したdailyFormAreaを、管理画面側に戻す際の元の位置マーカー -->
   <span id="dailyFormAreaHost" style="display:none"></span>
-  <div id="dailyFormArea" style="display:none;overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 160px)">
+  <div id="dailyFormArea" style="display:none;overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 160px - env(safe-area-inset-top,0px))">
     <div class="mob-form" style="max-width:560px">
 
       <!-- ステップ表示。1日の流れ（出発前の点呼 → 走る → 帰着後の点呼）に合わせている -->
@@ -1652,7 +1652,7 @@ try {
   </div>
 
   <!-- ===== 日報一覧 ===== -->
-  <div id="dailyListArea" style="overflow-y:auto;max-height:calc(100vh - 160px)">
+  <div id="dailyListArea" style="overflow-y:auto;max-height:calc(100vh - 160px - env(safe-area-inset-top,0px))">
     <!-- 絞り込みバー -->
     <div style="padding:6px 14px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:0.5px solid var(--border)">
       <input type="date" id="drListFrom" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="loadDailyReports()">
@@ -1737,7 +1737,7 @@ try {
   <div id="mrDiffBanner" style="display:none;margin:6px 14px;padding:8px 10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11px;color:var(--amber-text)"></div>
 
   <!-- ドライバー別月報カード一覧 -->
-  <div id="mrBody" style="padding:8px 14px;overflow-y:auto;max-height:calc(100vh - 200px)"></div>
+  <div id="mrBody" style="padding:8px 14px;overflow-y:auto;max-height:calc(100vh - 200px - env(safe-area-inset-top,0px))"></div>
 </div>
 
 <!-- ===== pg14: 掲示板 ===== -->
@@ -1746,7 +1746,7 @@ try {
     <span style="font-size:13px;font-weight:500">📢 掲示板</span>
     <button class="btn pri sml" id="bBoardPost" onclick="openBoardPost()" style="display:none">＋ 投稿</button>
   </div>
-  <div id="boardList" style="overflow-y:auto;max-height:calc(100vh - 120px);padding:8px 14px">
+  <div id="boardList" style="overflow-y:auto;max-height:calc(100vh - 120px - env(safe-area-inset-top,0px));padding:8px 14px">
     <div style="text-align:center;padding:28px;color:var(--text2);font-size:12px">読み込み中...</div>
   </div>
 </div>
@@ -1760,7 +1760,7 @@ try {
       <input type="text" id="chatTabSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderChatTabDrvListDebounced()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
     </div>
   </div>
-  <div style="display:flex;height:calc(100vh - 100px)">
+  <div style="display:flex;height:calc(100vh - 100px - env(safe-area-inset-top,0px))">
     <div id="chatTabDrvList" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
     <div style="flex:1;display:flex;flex-direction:column;min-width:0">
       <div id="chatTabHeader" style="padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:13px;font-weight:500;color:var(--text2)">左の一覧からドライバーを選択してください</div>
@@ -1784,7 +1784,7 @@ try {
     <span style="font-size:13px;font-weight:500">👥 グループチャット</span>
     <button class="btn pri sml" onclick="openNewChatGroupM()">＋ 新規グループ</button>
   </div>
-  <div style="display:flex;height:calc(100vh - 100px)">
+  <div style="display:flex;height:calc(100vh - 100px - env(safe-area-inset-top,0px))">
     <div id="chatGroupList" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
     <div style="flex:1;display:flex;flex-direction:column;min-width:0">
       <div id="chatGroupHeader" style="padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:13px;font-weight:500;color:var(--text2)">左の一覧からグループを選択してください</div>
@@ -1839,7 +1839,7 @@ try {
   <!-- 未入金アラート -->
   <div id="piAlert" style="display:none;margin:6px 14px;padding:8px 10px;background:var(--red-bg);border:0.5px solid #F09595;border-radius:var(--radius);font-size:11px;color:var(--red-text)"></div>
   <!-- 一覧 -->
-  <div id="piList" style="overflow-y:auto;max-height:calc(100vh - 200px);padding:0 14px 14px"></div>
+  <div id="piList" style="overflow-y:auto;max-height:calc(100vh - 200px - env(safe-area-inset-top,0px));padding:0 14px 14px"></div>
 </div>
 
 <!-- ===== pg17: セットアップ ===== -->
@@ -1847,7 +1847,7 @@ try {
   <div style="padding:8px 14px;border-bottom:0.5px solid var(--border)">
     <span style="font-size:13px;font-weight:500">⚙ セットアップ・初期設定</span>
   </div>
-  <div style="overflow-y:auto;max-height:calc(100vh - 100px);padding:14px">
+  <div style="overflow-y:auto;max-height:calc(100vh - 100px - env(safe-area-inset-top,0px));padding:14px">
 
     <!-- 端末への通知（Webプッシュ）。ここで自分の端末を登録する -->
     <div class="close-section">

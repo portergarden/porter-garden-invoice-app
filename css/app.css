@@ -92,6 +92,13 @@ input:focus,select:focus{border-color:var(--blue)}
 .s1{background:var(--amber-bg);color:var(--amber-text)}
 .s2{background:var(--green-bg);color:var(--green-text)}
 .app{position:relative;min-height:100vh;display:flex;flex-direction:column}
+/* ===== ホーム画面から起動したとき（PWA）の上端 =====
+   viewport-fit=cover を指定しているため、画面は端末の時計・電波・電池表示の下まで広がる。
+   その高さぶん上に余白を作らないと、トップバーがそれらと重なって読めなくなる。
+   ブラウザで開いたときは env() が 0 になるので見た目は変わらない。
+   ドライバーポータル(#pgDriver)のトップバーには index.html 側で同じ指定が入っているため、
+   ここでは対象にしない（二重に余白が付いてしまう） */
+#pgMain, #pgLogin{padding-top:env(safe-area-inset-top,0px)}
 .sbar{height:3px;background:var(--bg2)}
 .sbar-p{height:100%;background:var(--blue);transition:width 1s linear}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:0.5px solid var(--border)}
@@ -274,7 +281,7 @@ td.dim{color:var(--text2)}
    - フォントは16px未満だとiOS Safariがフォーカス時に自動ズームしてしまうため16px以上に統一
    - チェックボックス・追加ボタンをタップしやすい大きさに拡大 */
 @media (max-width:600px){
-  #dailyFormArea{max-height:calc(100vh - 120px)}
+  #dailyFormArea{max-height:calc(100vh - 120px - env(safe-area-inset-top,0px))}
   .mob-form{padding:10px 12px;max-width:100%}
   .mob-form input,.mob-form select,.mob-form textarea{font-size:16px!important;padding:10px!important}
   #dailyFormArea [style*="grid-template-columns"]{grid-template-columns:1fr!important;gap:10px!important}
