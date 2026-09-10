@@ -366,7 +366,12 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- 対面以外を選んだら具体的方法を必ず残す（監査で見られるのは記録そのものなのでDB側で担保する）
   CONSTRAINT daily_reports_tenko_method_note_check
     CHECK (tenko_method = 'face' OR COALESCE(btrim(tenko_method_note), '') <> ''),
-  cli bigint, qty_takkyubin int DEFAULT 0, qty_nekopos int DEFAULT 0, qty_charter int DEFAULT 0,
+  cli bigint,
+  -- 数量は業務の種類ごとに持つ（個人宅配＝個／企業集配＝件と個／チャーター＝件と個）。
+  -- qty_other は旧「その他」。何の数か分からなくなる受け皿だったため使用をやめた（列は過去分のため残置）
+  qty_takkyubin int DEFAULT 0, qty_nekopos int DEFAULT 0,
+  qty_corp int, qty_corp_pcs int,
+  qty_charter int DEFAULT 0, qty_charter_pcs int,
   qty_other int DEFAULT 0, fare int DEFAULT 0, hw int DEFAULT 0, oth int DEFAULT 0,
   note text, status text DEFAULT 'pending', submitted_by text,
   reviewed_by text, reviewed_at timestamptz,
@@ -381,7 +386,8 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   rests jsonb DEFAULT '[]', -- 複数回の休憩を[{start,end,location}]の配列で記録
   -- 1日に複数回の運行（チャーターを午前・午後で別の取引先など）。
   -- 運行ごとに日報を分けると点呼記録まで分かれてしまうため、日報は1日1枚のままにして運行だけを配列で持つ。
-  -- [{cli_id, cli_name, start, end, start_loc, end_loc, qty_tak, qty_neko, qty_charter, qty_other, note}]
+  -- [{cli_id, cli_name, start, end, start_loc, end_loc,
+  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, note}]
   -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
   -- 月報・分析・CSV・印刷は従来どおりそちらを参照する。取引先は運行ごとに必須。
   -- [{cli_id, cli_name, start, end, start_loc, end_loc, qty_*, note,

@@ -1493,11 +1493,31 @@ try {
             <div class="fld"><label>積込・出発の場所</label><input type="text" id="drTripStartLoc" placeholder="例: 〇〇センター"></div>
             <div class="fld"><label>納品・到着の場所</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター ／ 配達エリア"></div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
-            <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
-            <div class="fld"><label>ポスト便（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
-            <div class="fld"><label>チャーター便（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
-            <div class="fld"><label>その他（個）</label><input type="number" id="drQtyOther" placeholder="0" min="0"></div>
+          <!-- 数量は業務の種類ごとに分けている。以前は「その他」が受け皿になり、
+               何の数か分からなくなっていた -->
+          <div style="font-size:10px;color:var(--text2);margin:2px 0 5px">その運行で扱った数を、<b>業務に合う欄だけ</b>入れてください（使わない欄は空のままで構いません）</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px 12px;margin-bottom:4px">
+            <div>
+              <div style="font-size:10px;font-weight:600;color:var(--blue);margin-bottom:2px">個人宅配</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <div class="fld"><label>宅配便（個）</label><input type="number" id="drQtyTak" placeholder="0" min="0"></div>
+                <div class="fld"><label>ポスト便（個）</label><input type="number" id="drQtyNeko" placeholder="0" min="0"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:600;color:var(--blue);margin-bottom:2px">企業集配</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <div class="fld"><label>件数（軒）</label><input type="number" id="drQtyCorp" placeholder="0" min="0"></div>
+                <div class="fld"><label>個数（個）</label><input type="number" id="drQtyCorpPcs" placeholder="0" min="0"></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:600;color:var(--blue);margin-bottom:2px">チャーター</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <div class="fld"><label>件数（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
+                <div class="fld"><label>個数（個）</label><input type="number" id="drQtyCharterPcs" placeholder="0" min="0"></div>
+              </div>
+            </div>
           </div>
           <div class="fld"><label>この運行のメモ（任意）</label><input type="text" id="drTripNote" placeholder="例: 積込待ち40分"></div>
 
@@ -3182,13 +3202,13 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=61dd1b18"></script>
+<script src="js/03-dashboard-daily.js?v=e312021c"></script>
 
 
-<script src="js/04-monthly.js?v=d604616a"></script>
+<script src="js/04-monthly.js?v=61b479bb"></script>
 
 
-<script src="js/05-driver-portal.js?v=fc46e35c"></script>
+<script src="js/05-driver-portal.js?v=eeafafbc"></script>
 
 
 
@@ -3203,7 +3223,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=d4af8764"></script>
+<script src="js/10-settings.js?v=db061a3c"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

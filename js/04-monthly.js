@@ -19,13 +19,16 @@ const MR_COLS = [
   {key:'dow',      label:'曜日',        def:true,  align:'center', pw:4,  screen:false, print:true},
   {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
   {key:'worktime', label:'稼働時間',    def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(r.start_time||'?')}-${escHtml(r.end_time||'?')}`:''},
+  {key:'workh',    label:'拘束時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?drWorkHours(r).toFixed(1):''},
   {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
   {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
   {key:'odo',      label:'メーター',    def:false, align:'right',  pw:11, get:r=>(r.start_odometer!=null||r.end_odometer!=null)?`${r.start_odometer??'—'}/${r.end_odometer??'—'}`:''},
   {key:'tak',      label:'宅配便',      def:true,  align:'right',  pw:8,  get:r=>String(r.qty_takkyubin||0)},
   {key:'neko',     label:'ポスト便',    def:true,  align:'right',  pw:8,  get:r=>String(r.qty_nekopos||0)},
-  {key:'charter',  label:'チャーター便',def:true,  align:'right',  pw:8,  get:r=>String(r.qty_charter||0)},
-  {key:'other',    label:'その他',      def:false, align:'right',  pw:7,  get:r=>String(r.qty_other||0)},
+  {key:'corp',     label:'企業集配(件)',def:true, align:'right',  pw:8,  get:r=>String(r.qty_corp||0)},
+  {key:'corppcs',  label:'企業集配(個)',def:false,align:'right',  pw:8,  get:r=>String(r.qty_corp_pcs||0)},
+  {key:'charter',  label:'チャーター(件)',def:true,align:'right', pw:8,  get:r=>String(r.qty_charter||0)},
+  {key:'charterpcs',label:'チャーター(個)',def:false,align:'right',pw:8, get:r=>String(r.qty_charter_pcs||0)},
   {key:'alc',      label:'Alc前/後',    def:true,  align:'center', pw:11, get:r=>`${r.alc_before??'—'}/${r.alc_after??'—'}`},
   {key:'health',   label:'体調',        def:true,  align:'center', pw:6,  get:r=>({good:'良',normal:'普',bad:'不'}[r.health_before||'good']||'')},
   {key:'rest',     label:'休憩',        def:false, align:'left',   pw:12, get:r=>escHtml(formatRests(r)||'')},
@@ -382,22 +385,38 @@ async function renderMonthlyReport() {
   renderMrMatrix(targetDrvs, allTargetDrvs, drReports, from, to);
 
   /* ──── 全体KPI ──── */
+  const sumQty = key => drReports.reduce((a,r) => a + (+r[key]||0), 0);
   const totalKm    = drReports.reduce((a,r) => a + (+r.distance_km||0), 0);
-  const totalTak   = drReports.reduce((a,r) => a + (+r.qty_takkyubin||0), 0);
-  const totalNeko  = drReports.reduce((a,r) => a + (+r.qty_nekopos||0), 0);
-  const totalChar  = drReports.reduce((a,r) => a + (+r.qty_charter||0), 0);
-  const totalOther = drReports.reduce((a,r) => a + (+r.qty_other||0), 0);
   const workDays   = new Set(drReports.map(r=>r.date)).size;
+  /* 拘束時間は業務開始・終了から出す。数量が0の日でも仕事量が分かる唯一の共通指標で、
+     過労運転の防止にも使う */
+  const totalHours = drReports.reduce((a,r) => a + drWorkHours(r), 0);
+  const maxHours   = drReports.reduce((a,r) => Math.max(a, drWorkHours(r)), 0);
+  const per = (v, unit) => workDays ? `1日平均 ${(v/workDays).toFixed(1)}${unit}` : '';
+  // 要確認はアルコール超過だけでなく、体調不良・事故・差戻しもまとめて数える
   const alcAlerts  = drReports.filter(r => +r.alc_before>=0.15 || +r.alc_after>=0.15).length;
+  const healthBad  = drReports.filter(r => r.health_before==='bad' || r.health_after==='bad').length;
+  const incidents  = drReports.filter(r => r.incident_flag).length;
+  const rejected   = drReports.filter(r => r.status==='rejected').length;
+  const needCheck  = alcAlerts + healthBad + incidents + rejected;
+  const checkDetail = [alcAlerts?`Alc${alcAlerts}`:'', healthBad?`体調${healthBad}`:'',
+                       incidents?`事故${incidents}`:'', rejected?`差戻し${rejected}`:''].filter(Boolean).join(' ') || '問題なし';
 
   kpiEl.innerHTML = `
     <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
-    <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
-    <div class="kpi-card"><div class="kpi-label">宅配便計</div><div class="kpi-val">${totalTak.toLocaleString()}個</div></div>
-    <div class="kpi-card"><div class="kpi-label">ポスト便計</div><div class="kpi-val">${totalNeko.toLocaleString()}個</div></div>
-    <div class="kpi-card"><div class="kpi-label">チャーター便計</div><div class="kpi-val">${totalChar.toLocaleString()}件</div></div>
-    <div class="kpi-card"><div class="kpi-label">その他計</div><div class="kpi-val">${totalOther.toLocaleString()}個</div></div>
-    <div class="kpi-card ${alcAlerts?'':''}"><div class="kpi-label">🍺 アルコール超過</div><div class="kpi-val" style="color:${alcAlerts?'var(--red)':'var(--green)'}">${alcAlerts}件</div></div>
+    <div class="kpi-card"><div class="kpi-label">拘束時間</div><div class="kpi-val">${fmtHours(totalHours)}</div>
+      <div class="kpi-diff kpi-eq">${per(totalHours,'h')}${maxHours?` ／ 最長 ${maxHours.toFixed(1)}h`:''}</div></div>
+    <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div>
+      <div class="kpi-diff kpi-eq">${per(totalKm,'km')}</div></div>
+    <div class="kpi-card"><div class="kpi-label">個人宅配</div><div class="kpi-val">${(sumQty('qty_takkyubin')+sumQty('qty_nekopos')).toLocaleString()}個</div>
+      <div class="kpi-diff kpi-eq">宅配便${sumQty('qty_takkyubin').toLocaleString()} ／ ポスト便${sumQty('qty_nekopos').toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="kpi-label">企業集配</div><div class="kpi-val">${sumQty('qty_corp').toLocaleString()}件</div>
+      <div class="kpi-diff kpi-eq">${sumQty('qty_corp_pcs').toLocaleString()}個</div></div>
+    <div class="kpi-card"><div class="kpi-label">チャーター</div><div class="kpi-val">${sumQty('qty_charter').toLocaleString()}件</div>
+      <div class="kpi-diff kpi-eq">${sumQty('qty_charter_pcs').toLocaleString()}個</div></div>
+    <div class="kpi-card"><div class="kpi-label">⚠ 要確認</div>
+      <div class="kpi-val" style="color:${needCheck?'var(--red)':'var(--green)'}">${needCheck}件</div>
+      <div class="kpi-diff kpi-eq">${checkDetail}</div></div>
   `;
 
   /* ──── ドライバー別集計 ──── */
@@ -462,7 +481,10 @@ function renderMrCards() {
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
       const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
       const drChar= dReports.reduce((a,r)=>a+(+r.qty_charter||0),0);
-      const drOtherQty=dReports.reduce((a,r)=>a+(+r.qty_other||0),0);
+      const drCharPcs=dReports.reduce((a,r)=>a+(+r.qty_charter_pcs||0),0);
+      const drCorp= dReports.reduce((a,r)=>a+(+r.qty_corp||0),0);
+      const drCorpPcs=dReports.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
+      const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
       const drAlcAlert = dReports.filter(r=>+r.alc_before>=0.15||+r.alc_after>=0.15);
       const drHealthBad= dReports.filter(r=>r.health_before==='bad'||r.health_after==='bad');
 
@@ -511,7 +533,7 @@ function renderMrCards() {
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
               </div>
               <div style="font-size:10px;color:var(--text2)">
-                稼働${drWorkDays}日 · ${drKm}km · 宅配便${drTak}個 · ポスト便${drNeko}個 · チャーター便${drChar}件 · その他${drOtherQty}個
+                稼働${drWorkDays}日 · 拘束${fmtHours(drHours)} · ${drKm}km${drTak||drNeko?` · 個人宅配${drTak+drNeko}個`:''}${drCorp||drCorpPcs?` · 企業集配${drCorp}件${drCorpPcs?`/${drCorpPcs}個`:''}`:''}${drChar||drCharPcs?` · チャーター${drChar}件${drCharPcs?`/${drCharPcs}個`:''}`:''}
               </div>
             </div>
           </div>
@@ -520,9 +542,9 @@ function renderMrCards() {
               <button class="btn sml" onclick="event.stopPropagation();printMonthlyReportA4(${d.id})" title="このドライバーの月報をA4縦1枚で見る（PDF保存できます）">📄 月報</button>
               <button class="btn sml" onclick="event.stopPropagation();selectMrDrv(${d.id})" title="閉じる">✕</button>
             </div>
-            <div style="font-size:13px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
-            <div style="font-size:10px;color:var(--text2);white-space:nowrap">配送個数計 <span data-pnl-mark>▼</span></div>
-            ${drChar?`<div style="font-size:10px;color:var(--text2);white-space:nowrap">チャーター${drChar}件</div>`:''}
+            <div style="font-size:13px;font-weight:600">${fmtHours(drHours)}</div>
+            <div style="font-size:10px;color:var(--text2);white-space:nowrap">拘束時間 <span data-pnl-mark>▼</span></div>
+            <div style="font-size:10px;color:var(--text2);white-space:nowrap">${(drTak+drNeko+drCorpPcs+drCharPcs).toLocaleString()}個 ／ ${(drCorp+drChar).toLocaleString()}件</div>
           </div>
         </div>
         <div class="pnl-body">
@@ -546,9 +568,9 @@ function renderMrCards() {
               <div style="font-size:14px;font-weight:600">${drKm.toLocaleString()}km</div>
             </div>
             <div class="kpi-card" style="padding:6px 8px">
-              <div class="kpi-label">配送個数計</div>
-              <div style="font-size:14px;font-weight:600">${(drTak+drNeko+drOtherQty).toLocaleString()}個</div>
-              <div class="kpi-diff kpi-eq">宅${drTak} ポスト${drNeko} 他${drOtherQty}${drChar?` ／ チャーター${drChar}件`:''}</div>
+              <div class="kpi-label">取扱量</div>
+              <div style="font-size:14px;font-weight:600">${(drTak+drNeko+drCorpPcs+drCharPcs).toLocaleString()}個 ／ ${(drCorp+drChar).toLocaleString()}件</div>
+              <div class="kpi-diff kpi-eq">個人宅配${drTak+drNeko}個 ／ 企業集配${drCorp}件${drCorpPcs?`(${drCorpPcs}個)`:''} ／ チャーター${drChar}件${drCharPcs?`(${drCharPcs}個)`:''}</div>
             </div>
           </div>
 
@@ -683,7 +705,10 @@ async function printMonthlyReportA4(onlyDrvId) {
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
       const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
       const drChar= dReports.reduce((a,r)=>a+(+r.qty_charter||0),0);
-      const drOtherQty=dReports.reduce((a,r)=>a+(+r.qty_other||0),0);
+      const drCharPcs=dReports.reduce((a,r)=>a+(+r.qty_charter_pcs||0),0);
+      const drCorp= dReports.reduce((a,r)=>a+(+r.qty_corp||0),0);
+      const drCorpPcs=dReports.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
+      const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
 
       const dayRows = [];
       const printCols = mrSelectedCols('print');
@@ -718,7 +743,7 @@ async function printMonthlyReportA4(onlyDrvId) {
             発行日: ${fmtLocalDate(new Date())}
           </div>
         </div>
-        <div class="mr-summary">稼働日数 ${drWorkDays}日　走行距離 ${drKm.toLocaleString()}km　宅配便 ${drTak.toLocaleString()}　ポスト便 ${drNeko.toLocaleString()}　チャーター便 ${drChar.toLocaleString()}　その他 ${drOtherQty.toLocaleString()}　配送個数計 ${(drTak+drNeko+drOtherQty).toLocaleString()}</div>
+        <div class="mr-summary">稼働日数 ${drWorkDays}日　拘束時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
         <table class="mr-table">
           <thead><tr>
             ${(() => {

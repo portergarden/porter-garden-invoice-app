@@ -2246,6 +2246,51 @@ async function bulkUnmarkSchedDone(){
 // deleteSchedItem → v9新実装に移行済み（async版）
 
 /* ===== ⑤ 法定業務記録 ===== */
+
+/* ===== 数量の欄 =====
+   業務によって数え方が違うため、便の種類ではなく業務の種類に合わせて持つ。
+   以前は宅配便・ポスト便・チャーター・その他の4欄で、チャーター専業の日は
+   3欄が常に0、企業集配の日はどこにも入れられず「その他」が受け皿になっていた。
+     key   … daily_reports の列名
+     trip  … 運行の記録(trips)の中のキー
+     input … 入力欄のid */
+const DR_QTY_ITEMS = [
+  {key:'qty_takkyubin',   trip:'qty_tak',         input:'drQtyTak',        group:'個人宅配',   label:'宅配便',     unit:'個'},
+  {key:'qty_nekopos',     trip:'qty_neko',        input:'drQtyNeko',       group:'個人宅配',   label:'ポスト便',   unit:'個'},
+  {key:'qty_corp',        trip:'qty_corp',        input:'drQtyCorp',       group:'企業集配',   label:'企業集配',   unit:'件'},
+  {key:'qty_corp_pcs',    trip:'qty_corp_pcs',    input:'drQtyCorpPcs',    group:'企業集配',   label:'企業集配',   unit:'個'},
+  {key:'qty_charter',     trip:'qty_charter',     input:'drQtyCharter',    group:'チャーター', label:'チャーター', unit:'件'},
+  {key:'qty_charter_pcs', trip:'qty_charter_pcs', input:'drQtyCharterPcs', group:'チャーター', label:'チャーター', unit:'個'},
+];
+/* 「宅配便40個 ／ 企業集配12件/114個」のように、入っているものだけ並べる。
+   件と個の両方がある業務は1つにまとめる（同じ名前を2回出さない） */
+const drQtyText = (obj, useTripKey) => {
+  const byLabel = new Map();
+  DR_QTY_ITEMS.forEach(q => {
+    const v = +obj[useTripKey ? q.trip : q.key] || 0;
+    if (!v) return;
+    if (!byLabel.has(q.label)) byLabel.set(q.label, []);
+    byLabel.get(q.label).push(`${v}${q.unit}`);
+  });
+  return [...byLabel].map(([label, vals]) => label + vals.join('/')).join(' ／ ');
+};
+// 古い日報（運行の記録が無い分）を1件の運行として組み立てるときの数量
+const drQtyFromReport = r => Object.fromEntries(DR_QTY_ITEMS.map(q => [q.trip, +r[q.key] || 0]));
+
+/* 拘束時間（時間）。業務開始から終了まで。
+   数量が0の日でも仕事量が分かる唯一の共通指標で、過労運転の防止にも使う。
+   日をまたいだ場合は翌日の時刻として数える */
+function drWorkHours(r) {
+  const toMin = t => { const m = String(t||'').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1]*60 + +m[2] : null; };
+  const a = toMin(r.start_time), b = toMin(r.end_time);
+  if (a == null || b == null) return 0;
+  return ((b - a + 24*60) % (24*60)) / 60;
+}
+// 「12時間30分」の形。合計や平均の表示に使う
+function fmtHours(h) {
+  const m = Math.round((+h || 0) * 60);
+  return `${Math.floor(m/60)}時間${String(m%60).padStart(2,'0')}分`;
+}
 /* 運行の配列を取り出す。trips が無い旧データは、それまでの平坦な項目から1件ぶんに見立てる。
    一覧・印刷・CSVがどちらの形式でも同じように扱えるようにするため */
 /* 印刷帳票で、運行の下に荷待ち・荷役作業の行をぶら下げる。
@@ -2281,8 +2326,7 @@ function dailyTrips(r) {
     cli_id: r.cli ?? null, cli_name: lkCliAny(r.cli)?.name || '',
     start: (r.start_time||'').slice(0,5), end: (r.end_time||'').slice(0,5),
     start_loc: r.start_location||'', end_loc: r.end_location||'',
-    qty_tak: r.qty_takkyubin||0, qty_neko: r.qty_nekopos||0,
-    qty_charter: r.qty_charter||0, qty_other: r.qty_other||0, note: '',
+    ...drQtyFromReport(r), note: '',
   }];
 }
 // 運行に出てくる取引先名を重複なく並べる
@@ -2474,8 +2518,7 @@ async function initDailyForm(reportId=null) {
             cli_id: r.cli ?? null, cli_name: cliName || '',
             start: (r.start_time||'').slice(0,5), end: (r.end_time||'').slice(0,5),
             start_loc: r.start_location||'', end_loc: r.end_location||'',
-            qty_tak: r.qty_takkyubin||0, qty_neko: r.qty_nekopos||0,
-            qty_charter: r.qty_charter||0, qty_other: r.qty_other||0, note: '',
+            ...drQtyFromReport(r), note: '',
           }] : []);
       renderDrTrips();
       document.getElementById('drNote').value = r.note || '';
@@ -2520,7 +2563,7 @@ async function initDailyForm(reportId=null) {
   } else {
     // 新規: リセット
     ['drStart','drEnd','drKm','drAlcBefore','drAlcAfter','drAlcDevice','drCli',
-     'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drNote',
+     ...DR_QTY_ITEMS.map(q => q.input), 'drNote',
      'drStartLoc','drEndLoc','drRestStart','drRestEnd','drRestLoc',
      'drWaitStart','drWaitEnd','drWaitLoc','drCargoWorkStart','drCargoWorkEnd',
      'drIncidentCause','drIncidentPrevention',
@@ -2711,7 +2754,7 @@ function drResolveClient(name) {
 
 // 運行の入力欄。追加・編集・取消で同じ並びを使う
 const DR_TRIP_INPUT_IDS = ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc',
-   'drQtyTak','drQtyNeko','drQtyCharter','drQtyOther','drTripNote',
+   ...DR_QTY_ITEMS.map(q => q.input), 'drTripNote',
    'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
    'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
    'drTripCargoDesc','drTripShipperCheck'];
@@ -2756,10 +2799,8 @@ function collectDrTrip() {
     start, end,
     start_loc: document.getElementById('drTripStartLoc').value.trim(),
     end_loc:   document.getElementById('drTripEndLoc').value.trim(),
-    qty_tak:     +document.getElementById('drQtyTak').value || 0,
-    qty_neko:    +document.getElementById('drQtyNeko').value || 0,
-    qty_charter: +document.getElementById('drQtyCharter').value || 0,
-    qty_other:   +document.getElementById('drQtyOther').value || 0,
+    ...Object.fromEntries(DR_QTY_ITEMS.map(q =>
+      [q.trip, +(document.getElementById(q.input)?.value) || 0])),
     note: document.getElementById('drTripNote').value.trim(),
     /* 荷待ち・荷役は「集貨又は配達を行った地点ごと」の記録なので運行に持たせる。
        国土交通省の業務記録の様式例（貨物軽自動車運送事業者向け）に合わせている。 */
@@ -2804,9 +2845,8 @@ function editDrTrip(i) {
   const put = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v === 0 || v) ? v : ''; };
   put('drCli', t.cli_name);      put('drTripStart', t.start);      put('drTripEnd', t.end);
   put('drTripStartLoc', t.start_loc); put('drTripEndLoc', t.end_loc);
-  // 0個は空欄として戻す（0を入れ直させない）
-  put('drQtyTak', t.qty_tak || ''); put('drQtyNeko', t.qty_neko || '');
-  put('drQtyCharter', t.qty_charter || ''); put('drQtyOther', t.qty_other || '');
+  // 0は空欄として戻す（0を入れ直させない）
+  DR_QTY_ITEMS.forEach(q => put(q.input, t[q.trip] || ''));
   put('drTripNote', t.note);
   const waitEl = document.getElementById('drTripWaitFlag');
   if (waitEl) waitEl.checked = !!t.wait;
@@ -2850,8 +2890,7 @@ function renderDrTrips() {
     el.innerHTML = '<div style="font-size:11px;color:var(--amber-text);background:var(--amber-bg);border-radius:var(--radius);padding:6px 8px">運行が1件も追加されていません。上の欄を埋めて「＋ 運行を追加」を押してください</div>';
     return;
   }
-  const qty = t => [t.qty_tak?`宅配便${t.qty_tak}`:'', t.qty_neko?`ポスト便${t.qty_neko}`:'',
-                    t.qty_charter?`チャーター${t.qty_charter}`:'', t.qty_other?`その他${t.qty_other}`:''].filter(Boolean).join('・');
+  const qty = t => drQtyText(t, true);
   // スマホの幅では1行に収まらず取引先名が切れてしまうため、
   // 「時刻＋取引先」と「区間・個数・メモ」の2段に分けて全文を出す
   el.innerHTML = pendDrTrips
@@ -2918,10 +2957,8 @@ function drTripTotals(trips) {
     cli: t[0]?.cli_id ?? null,
     start_time: formStart || starts[0] || null,
     end_time: formEnd || ends[ends.length-1] || null,
-    qty_takkyubin: t.reduce((a,x)=>a+(+x.qty_tak||0),0),
-    qty_nekopos:   t.reduce((a,x)=>a+(+x.qty_neko||0),0),
-    qty_charter:   t.reduce((a,x)=>a+(+x.qty_charter||0),0),
-    qty_other:     t.reduce((a,x)=>a+(+x.qty_other||0),0),
+    ...Object.fromEntries(DR_QTY_ITEMS.map(q =>
+      [q.key, t.reduce((a,x) => a + (+x[q.trip] || 0), 0)])),
   };
 }
 
@@ -3508,7 +3545,8 @@ function renderDailyList() {
             ${r.start_time?`<span>⏱ ${r.start_time}〜${r.end_time||'?'}</span>`:''}
             ${(r.start_location||r.end_location)?`<span>📍 ${escHtml(r.start_location)||'?'}→${escHtml(r.end_location)||'?'}</span>`:''}
             <span>🍺 前:${r.alc_before??'—'} 後:${r.alc_after??'—'} mg/L</span>
-            ${(r.qty_takkyubin||r.qty_nekopos||r.qty_charter||r.qty_other)?`<span>📦 宅配便:${r.qty_takkyubin||0} ポスト便:${r.qty_nekopos||0} チャーター便:${r.qty_charter||0}件 その他:${r.qty_other||0}</span>`:''}
+            ${drQtyText(r) ? `<span>📦 ${drQtyText(r)}</span>` : ''}
+            <span title="業務開始から終了まで">🕒 ${fmtHours(drWorkHours(r))}</span>
             ${(() => {
               const names = dailyTripClients(r);
               if (!names.length) return '';
@@ -3602,7 +3640,7 @@ function formatRests(r) {
 // 日報一覧（list）をCSVとしてダウンロードする。管理画面・ドライバーポータル両方の日報CSV出力で共有する
 function downloadDailyReportCsv(list, filenameLabel) {
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
-  const headers = ['日付','車番','運転者','出発地点','出発時刻','帰着地点','帰着時刻','走行距離(km)',
+  const headers = ['日付','車番','運転者','出発地点','出発時刻','帰着地点','帰着時刻','拘束時間(h)','走行距離(km)',
     'メーター(出発)','メーター(帰着)','種別',
     '休憩',
     '点呼執行者','点呼方法','点呼方法の詳細','点呼日時(前)','点呼日時(後)',
@@ -3613,13 +3651,13 @@ function downloadDailyReportCsv(list, filenameLabel) {
     '荷待ちあり','荷待ち開始','荷待ち終了','荷待ち地点','荷役等あり','荷役等開始','荷役等終了','荷主確認',
     '業務交替あり','交替地点','交替時刻','交替相手',
     '運行件数','取引先','運行明細','運行ごとの荷待ち','運行ごとの荷役作業等',
-    '宅配便','ポスト便','チャーター便','その他','備考',
+    ...DR_QTY_ITEMS.map(q => `${q.label}(${q.unit})`), '備考',
     '事故あり','事故原因','再発防止策','ステータス',
     '提出者','提出日時','差戻し者','差戻し日時'];
   const rows = list.map(r=>[
     r.date,r.car,r.driver_name,
     r.start_location||'',r.start_time||'',r.end_location||'',r.end_time||'',
-    r.distance_km||0, r.start_odometer??'', r.end_odometer??'', typeShort(r.type),
+    drWorkHours(r).toFixed(1), r.distance_km||0, r.start_odometer??'', r.end_odometer??'', typeShort(r.type),
     formatRests(r),
     r.tenko_executor||'', TENKO_METHOD_LABEL[r.tenko_method||'face'], r.tenko_method_note||'',
     r.tenko_before_at||'', r.tenko_after_at||'',
@@ -3647,7 +3685,7 @@ function downloadDailyReportCsv(list, filenameLabel) {
               (c.extra_start||c.extra_end)?`附帯${c.extra_start||''}-${c.extra_end||''}`:'',
               c.desc||'', chk].filter(Boolean).join(' ');
     }).join(' / '),
-    r.qty_takkyubin||0,r.qty_nekopos||0,r.qty_charter||0,r.qty_other||0,
+    ...DR_QTY_ITEMS.map(q => +r[q.key] || 0),
     (r.note||'').replace(/\n/g,' '),
     r.incident_flag?'あり':'', r.incident_cause||'', r.incident_prevention||'',
     r.status==='rejected'?'差戻し':'',
@@ -3724,6 +3762,7 @@ function buildDailyReportHtml(r) {
     <table class="drp-table">
       <tr><th>業務開始</th><td>${r.start_time||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
           <th>業務終了</th><td>${r.end_time||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
+      <tr><th>拘束時間</th><td colspan="3">${fmtHours(drWorkHours(r))}${r.start_time&&r.end_time?`（${r.start_time}〜${r.end_time}）`:''}</td></tr>
       <tr><th>走行距離</th><td>${r.distance_km??''} km${(r.start_odometer!=null||r.end_odometer!=null)
             ? `　<span style="color:#555">（メーター ${r.start_odometer??'—'} → ${r.end_odometer??'—'}）</span>` : ''}</td>
           <th>休憩</th><td>${escHtml(formatRests(r)) || '—'}</td></tr>
@@ -3764,9 +3803,9 @@ function buildDailyReportHtml(r) {
           <td>${t.start||''}〜${t.end||''}</td>
           <td>${escHtml(t.cli_name || lkCliAny(t.cli_id)?.name || '')}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
           <td>${escHtml(t.start_loc||'')}${(t.start_loc||t.end_loc)?' → ':''}${escHtml(t.end_loc||'')}</td>
-          <td>${[t.qty_tak?`宅配便${t.qty_tak}`:'', t.qty_neko?`ポスト便${t.qty_neko}`:'', t.qty_charter?`チャーター${t.qty_charter}`:'', t.qty_other?`その他${t.qty_other}`:''].filter(Boolean).join(' ／ ')||'—'}</td>
+          <td>${drQtyText(t, true) || '—'}</td>
         </tr>${tripWaitCargoRow(t)}`).join('')}
-        <tr><th>合計</th><td colspan="3">運行${trips.length}件　宅配便${r.qty_takkyubin||0} ／ ポスト便${r.qty_nekopos||0} ／ チャーター便${r.qty_charter||0} ／ その他${r.qty_other||0}</td></tr>
+        <tr><th>合計</th><td colspan="3">運行${trips.length}件　${drQtyText(r) || '—'}</td></tr>
       </table>`;
     })()}
 
