@@ -818,7 +818,9 @@ async function printMonthlyReportA4(onlyDrvId) {
     @page{size:A4 portrait;margin:10mm}
     *{box-sizing:border-box}
     body{font-family:"Hiragino Sans","Meiryo",sans-serif;color:#222;margin:0}
-    .mr-page{page-break-after:always}
+    /* 印刷したときと同じ幅で見せる。指定しないとプレビューの枠幅まで表が縮み、
+       稼働時間などが枠からはみ出す。@page の余白が10mmなので中身は190mm */
+    .mr-page{width:190mm;margin:0 auto;page-break-after:always}
     .mr-page:last-child{page-break-after:auto}
     .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
     .mr-title{font-size:16px;font-weight:700}

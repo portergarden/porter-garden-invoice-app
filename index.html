@@ -2229,9 +2229,12 @@ try {
     <div class="mh"><span id="docPreviewTitle">プレビュー</span> <button class="ibtn" onclick="closeM('mDocPreview')">✕</button></div>
     <iframe id="docPreviewFrame" title="帳票プレビュー" style="flex:1;width:100%;min-height:0;border:0.5px solid var(--border2);border-radius:var(--radius);background:#fff"></iframe>
     <div class="mfoot" style="flex-wrap:wrap;gap:6px">
+      <!-- 支払明細のように、見たら確認を押してもらう書類のときだけ出る -->
+      <span id="docPreviewNote" style="display:none;font-size:10.5px;color:var(--amber-text);margin-right:auto;max-width:100%"></span>
       <button class="btn" onclick="closeM('mDocPreview')">閉じる</button>
       <button class="btn" onclick="openDocPreviewInWindow()">別のウィンドウで開く</button>
       <button class="btn pri" onclick="printDocPreview()">🖨 印刷 / PDF保存</button>
+      <button class="btn grn" id="docPreviewAckBtn" style="display:none"></button>
     </div>
   </div>
 </div>
@@ -3154,7 +3157,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=748d9e49"></script>
+<script src="js/01-core.js?v=5470a6f1"></script>
 
 <script src="js/02-drivers-pay.js?v=97e29d39"></script>
 
@@ -3212,10 +3215,10 @@ try {
 <script src="js/03-dashboard-daily.js?v=e312021c"></script>
 
 
-<script src="js/04-monthly.js?v=1d05992c"></script>
+<script src="js/04-monthly.js?v=c6224a52"></script>
 
 
-<script src="js/05-driver-portal.js?v=eeafafbc"></script>
+<script src="js/05-driver-portal.js?v=1caf2c53"></script>
 
 
 

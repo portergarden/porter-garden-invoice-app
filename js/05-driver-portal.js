@@ -1888,11 +1888,19 @@ async function deleteStatement(id, path) {
 // 配信から2週間経過していれば「自動的に受領済み」扱いとする（催促の手間を減らすため）
 const STATEMENT_AUTO_ACK_DAYS = 14;
 function statementAckStatus(s) {
-  if (s.acknowledged_at) return { acked:true, auto:false, label:`受領確認済み ${s.acknowledged_at.slice(0,10)}` };
+  if (s.acknowledged_at) return { acked:true, auto:false, remain:0, label:`受領確認済み ${s.acknowledged_at.slice(0,10)}` };
   const days = Math.floor((Date.now() - new Date(s.created_at).getTime()) / 86400000);
-  if (days >= STATEMENT_AUTO_ACK_DAYS) return { acked:true, auto:true, label:`受領確認済み（自動・${STATEMENT_AUTO_ACK_DAYS}日経過）` };
-  return { acked:false, auto:false, label:`未確認（配信後${days}日）` };
+  if (days >= STATEMENT_AUTO_ACK_DAYS) return { acked:true, auto:true, remain:0, label:`受領確認済み（自動・${STATEMENT_AUTO_ACK_DAYS}日経過）` };
+  // 何日後に自動で受領扱いになるかを本人にも分かるようにする
+  const remain = STATEMENT_AUTO_ACK_DAYS - days;
+  return { acked:false, auto:false, remain, label:`未確認（配信後${days}日）　あと${remain}日で自動的に受領確認済みになります` };
 }
+// 「押さなければ◯日で自動」の案内文。プレビューとダウンロードで同じ文言を使う
+const statementAutoAckNote = remain =>
+  `この明細は、受領確認を押さない場合でも配信から${STATEMENT_AUTO_ACK_DAYS}日で自動的に受領確認済みになります`
+  + (remain > 0 ? `（あと${remain}日）` : '');
+// 一覧で読んだ明細の控え。開いたときに受領確認が要るかを見るために使う
+let driverStatements = [];
 // ドライバーポータル側: 自分宛の明細書一覧（既読管理付き）
 async function loadDriverStatements() {
   const el = document.getElementById('drvStmtList');
@@ -1900,6 +1908,7 @@ async function loadDriverStatements() {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('driver_statements').select('*').eq('drv_id', me.driver_id).order('created_at', {ascending:false}).order('id', {ascending:false}));
     if (error) throw error;
+    driverStatements = data || [];
     if (!data?.length) { el.innerHTML = '<span style="color:var(--text2)">配信された明細書はまだありません</span>'; return; }
     el.innerHTML = data.map(s => {
       const ack = statementAckStatus(s);
@@ -1919,14 +1928,15 @@ async function loadDriverStatements() {
 }
 // ドライバー本人が支払明細書の内容を確認したことを明示的に記録するボタン。
 // 押さなくても配信から2週間経つと自動的に受領済み扱いになるため、催促・未確認の取りこぼしを防げる
-async function acknowledgeStatement(id) {
-  if (!confirm('この支払明細書の内容を確認済みとして記録します。よろしいですか？')) return;
+async function acknowledgeStatement(id, skipConfirm) {
+  if (!skipConfirm && !confirm('この支払明細書の内容を確認済みとして記録します。よろしいですか？')) return;
   try {
     // テーブルを直接更新すると金額や添付まで書き換えられてしまうため、
     // 既読・受領だけを立てるRPCを通す（自分の明細以外は1行も動かない）
     const {error} = await sb.rpc('mark_driver_statement', {p_id: id, p_ack: true});
     if (error) throw error;
     showT('受領確認しました。ご確認ありがとうございます');
+    clearDocPreviewAck();   // プレビューから押した場合はボタンを消す
     loadDriverStatements();
   } catch(e) { showT('更新エラー: ' + e.message, 'ter'); }
 }
@@ -1941,6 +1951,14 @@ async function openDriverStatement(id, path, isRead) {
     const res = await fetch(data.signedUrl);
     if (!res.ok) throw new Error('ファイルの取得に失敗しました（' + res.status + '）');
     openDocPreview(await res.text(), '支払明細書');
+    /* 開いた時点で受領確認のボタンを出す。押さずに閉じても自動で受領扱いになるが、
+       その旨も一緒に書いて、本人が気づかないまま確定しないようにする */
+    const st = driverStatements.find(x => x.id === id);
+    if (st && !st.acknowledged_at) {
+      const ack = statementAckStatus(st);
+      setDocPreviewAck('✓ 内容を確認しました', () => acknowledgeStatement(id, true),
+                       statementAutoAckNote(ack.remain));
+    }
     if (!isRead) {
       await sb.rpc('mark_driver_statement', {p_id: id, p_ack: false});
       loadDriverStatements();
@@ -1989,8 +2007,18 @@ async function downloadDriverStatement(id, path, title, isRead) {
     await exportHtmlToPdf(html, title || '支払明細書');
     if (!isRead) {
       await sb.rpc('mark_driver_statement', {p_id: id, p_ack: false});
-      loadDriverStatements();
     }
+    // ダウンロードは画面が残らないので、その場で受領確認を尋ねる
+    const st = driverStatements.find(x => x.id === id);
+    if (st && !st.acknowledged_at) {
+      const ack = statementAckStatus(st);
+      if (confirm(`ダウンロードしました。\n\n内容を確認しましたか？「OK」で受領確認を記録します。\n\n${statementAutoAckNote(ack.remain)}`)) {
+        await acknowledgeStatement(id, true);
+        showLoad(false);
+        return;
+      }
+    }
+    loadDriverStatements();
   } catch(e) { showT('ダウンロードエラー: ' + e.message, 'ter'); }
   showLoad(false);
 }
@@ -2032,13 +2060,26 @@ async function loadDriverDailyList() {
             </div>
             ${r.note?`<div style="font-size:10px;color:var(--text2)">${escHtml(r.note)}</div>`:''}
           </div>
-          <button class="ibtn" onclick="showDailyForm(${r.id})" title="編集">✎</button>
+          <div style="display:flex;gap:2px;flex-shrink:0">
+            <button class="ibtn" onclick="openMyDailyReportPdf(${r.id})" title="この日の業務記録を開く（PDF保存できます）">📄</button>
+            <button class="ibtn" onclick="showDailyForm(${r.id})" title="編集">✎</button>
+          </div>
         </div>
       </div>`;
     }).join('');
   } catch(e) {
     document.getElementById('drvDailyList').innerHTML = `<div style="color:var(--red);padding:12px;font-size:11px">${e.message}</div>`;
   }
+}
+
+/* その日の業務記録を印刷用の書式で開く。アプリの中のプレビューに出すので、
+   ホーム画面から開いたアプリでも戻れる */
+async function openMyDailyReportPdf(id) {
+  const r = (dailyReports || []).find(x => x.id === id);
+  if (!r) { showT('この日の業務記録が見つかりません', 'twa'); return; }
+  // 取引先名の解決用（ドライバーはclientsを読めないためRPC経由の候補が必要）
+  if (me?.role === 'driver' && driverClientNames === null) await populateDriverCliList();
+  openDocPreview(buildDailyReportsPrintDoc([r]), `${r.date} の業務記録`);
 }
 
 async function renderDriverMonthly() {
@@ -2213,7 +2254,9 @@ async function printDriverMonthlyReportA4() {
     @page{size:A4 portrait;margin:10mm}
     *{box-sizing:border-box}
     body{font-family:"Hiragino Sans","Meiryo",sans-serif;color:#222;margin:0}
-    .mr-page{page-break-after:always}
+    /* 印刷したときと同じ幅で見せる。指定しないとプレビューの枠幅まで表が縮み、
+       稼働時間などが枠からはみ出す。@page の余白が10mmなので中身は190mm */
+    .mr-page{width:190mm;margin:0 auto;page-break-after:always}
     .mr-page:last-child{page-break-after:auto}
     .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
     .mr-title{font-size:16px;font-weight:700}

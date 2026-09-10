@@ -4184,7 +4184,23 @@ let docPreviewUrl = '';    // 保管庫の署名付きURL（写真・PDFなど�
 function docPreviewOpen(title){
   const t = document.getElementById('docPreviewTitle');
   if (t) t.textContent = title || 'プレビュー';
+  clearDocPreviewAck();   // 前に開いた書類の確認ボタンを持ち越さない
   document.getElementById('mDocPreview')?.classList.add('on');
+}
+/* 支払明細のように「見たら確認を押してもらう」書類のために、
+   プレビューの下にボタンと注意書きを出せるようにする。
+   別の書類を開いたときに前の確認ボタンが残らないよう、開くたびに消す */
+function clearDocPreviewAck(){
+  const b = document.getElementById('docPreviewAckBtn');
+  const n = document.getElementById('docPreviewNote');
+  if (b) { b.style.display = 'none'; b.onclick = null; }
+  if (n) { n.style.display = 'none'; n.textContent = ''; }
+}
+function setDocPreviewAck(label, handler, note){
+  const b = document.getElementById('docPreviewAckBtn');
+  const n = document.getElementById('docPreviewNote');
+  if (b) { b.textContent = label; b.style.display = ''; b.onclick = handler; }
+  if (n && note) { n.textContent = note; n.style.display = ''; }
 }
 function openDocPreview(html, title){
   docPreviewHtml = html;
