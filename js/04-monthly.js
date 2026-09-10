@@ -86,9 +86,15 @@ function renderMrColPicker() {
 }
 
 /* ===== 月報 ===== */
+// 読み込み済みの期間。同じ期間なら日報を読み直さない
+let mrFetchKey = '';
 function initMonthlyReport() {
   ensureMonthRangeDefault('mrFrom', 'mrTo');
   populateMrDrvSel();
+  mrFetchKey = '';        // タブに入り直したら最新を読む
+  mrSelDrvId = null;      // 前に見ていた1人の表示は持ち越さない
+  const sel = document.getElementById('mrDrvSel');
+  if (sel) { sel.value = ''; sel._syncSearchInput?.(); }
 }
 // 月報の「提出者のみ表示／全員表示」切替。既定は提出者のみ（未提出のドライバーはカードを出さない）
 let mrShowAll = false;
@@ -152,6 +158,7 @@ function populateMrDrvSel() {
       .map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}</option>`).join('');
   enhanceSelectSearchable('mrDrvSel');
   if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+  sel._syncSearchInput?.();   // 組み直しで見えている文字がずれないようにする
 }
 
 /* ===== 提出状況マトリクス（人 × 日） =====
@@ -329,7 +336,7 @@ function renderMrMatrix(shownDrvs, allDrvs, reports, from, to) {
       <span>空欄 その日の日報なし</span>
       <span>マス → その人のその日の業務記録（PDF保存できます）</span>
       <span><b>日付 → その日の全員分をまとめて開く（PDF保存できます）</b></span>
-      <span><b>ドライバー名 → その人の明細と月報を出す</b></span>`;
+      <span><b>ドライバー名 → その人だけの表示に切り替える</b></span>`;
   wrap.style.display = mrMatrixOpen ? '' : 'none';
 }
 
@@ -347,17 +354,28 @@ async function renderMonthlyReport() {
   bodyEl.innerHTML = '';
   diffEl.style.display = 'none';
 
-  // 日報データを取得（daily_reports テーブル）
+  /* 日報データを取得（daily_reports テーブル）。
+     ドライバーを選び直すたびに描き直すので、同じ期間なら読み直さない。
+     100人×1か月なら2,200行あり、毎回読むと押すたびに待たされるため。
+     タブに入り直したときは initMonthlyReport() が控えを捨てるので、最新が読まれる */
   let drReports = [];
-  try {
-    const {data, error} = await fetchAllRows(() => sb.from('daily_reports')
-      .select('*')
-      .gte('date', from)
-      .lte('date', to)
-      .order('date').order('id'));
-    if (!error) drReports = data || [];
-    mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
-  } catch(e) {}
+  const fetchKey = `${from}|${to}`;
+  if (fetchKey === mrFetchKey) {
+    drReports = mrReports;
+  } else {
+    try {
+      const {data, error} = await fetchAllRows(() => sb.from('daily_reports')
+        .select('*')
+        .gte('date', from)
+        .lte('date', to)
+        .order('date').order('id'));
+      if (!error) {
+        drReports = data || [];
+        mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
+        mrFetchKey = fetchKey;
+      }
+    } catch(e) {}
+  }
   if (document.getElementById('mrDrvPicker')?.style.display === 'block') renderMrDrvPicker();
 
   // 請求書データ（invoices）から当月分
@@ -384,15 +402,30 @@ async function renderMonthlyReport() {
   // 提出状況の表もこのボタンに従う。未提出の人数は表の上に出す
   renderMrMatrix(targetDrvs, allTargetDrvs, drReports, from, to);
 
+  /* 1人だけを見ているときは、そうと分かるようにして戻る手段を出す。
+     プルダウンだけだと、絞り込んでいることに気づきにくいため */
+  const focusBar = document.getElementById('mrDrvFocus');
+  if (focusBar) {
+    const one = mrDrvId ? drvs.find(d => d.id === mrDrvId) : null;
+    focusBar.style.display = one ? 'flex' : 'none';
+    if (one) {
+      document.getElementById('mrDrvFocusName').textContent =
+        `${one.name}${one.supplier_id ? `（ID:${one.supplier_id}）` : ''}`;
+    }
+  }
+
   /* ──── 全体KPI ──── */
   const sumQty = key => drReports.reduce((a,r) => a + (+r[key]||0), 0);
   const totalKm    = drReports.reduce((a,r) => a + (+r.distance_km||0), 0);
   const workDays   = new Set(drReports.map(r=>r.date)).size;
+  /* 1日平均は「のべ稼働日数（人×日）」で割る。暦の日数で割ると、
+     全員を合計したときに人数ぶん膨らんでしまう。1人を選んでいるときは同じ値になる */
+  const manDays    = new Set(drReports.map(r => `${recDrv(r)?.id}|${r.date}`)).size;
   /* 拘束時間は業務開始・終了から出す。数量が0の日でも仕事量が分かる唯一の共通指標で、
      過労運転の防止にも使う */
   const totalHours = drReports.reduce((a,r) => a + drWorkHours(r), 0);
   const maxHours   = drReports.reduce((a,r) => Math.max(a, drWorkHours(r)), 0);
-  const per = (v, unit) => workDays ? `1日平均 ${(v/workDays).toFixed(1)}${unit}` : '';
+  const per = (v, unit) => manDays ? `1日平均 ${(v/manDays).toFixed(1)}${unit}` : '';
   // 要確認はアルコール超過だけでなく、体調不良・事故・差戻しもまとめて数える
   const alcAlerts  = drReports.filter(r => +r.alc_before>=0.15 || +r.alc_after>=0.15).length;
   const healthBad  = drReports.filter(r => r.health_before==='bad' || r.health_after==='bad').length;
@@ -403,7 +436,8 @@ async function renderMonthlyReport() {
                        incidents?`事故${incidents}`:'', rejected?`差戻し${rejected}`:''].filter(Boolean).join(' ') || '問題なし';
 
   kpiEl.innerHTML = `
-    <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
+    <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div>
+      <div class="kpi-diff kpi-eq">${manDays === workDays ? '' : `のべ ${manDays}日`}</div></div>
     <div class="kpi-card"><div class="kpi-label">拘束時間</div><div class="kpi-val">${fmtHours(totalHours)}</div>
       <div class="kpi-diff kpi-eq">${per(totalHours,'h')}${maxHours?` ／ 最長 ${maxHours.toFixed(1)}h`:''}</div></div>
     <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div>
@@ -438,18 +472,31 @@ async function renderMonthlyReport() {
 let mrCardData = null;
 let mrSelDrvId = null;
 // 表のドライバー名を押したときの動き。もう一度押すと閉じる
+/* 名前を押したら、その人だけの月報に切り替える。
+   上のドライバー選択プルダウンに値を入れて描き直すだけなので、
+   KPI・提出状況の表・明細・「月報を見る」のすべてがその人だけになる。 */
 function selectMrDrv(id) {
-  mrSelDrvId = (mrSelDrvId === id) ? null : id;
-  renderMrCards();
-  highlightMrRow();
-  // 表の下に隠れてしまわないよう、明細を画面の上まで持ってくる
-  if (mrSelDrvId != null) {
-    const el = document.getElementById('mrBody');
-    /* 組み立てた直後は高さが確定しておらず、その場で動かすと戻されることがある。
-       描画が落ち着いた次のフレームで動かす。
-       behavior:'smooth' は「動きを減らす」設定の端末で無視されるため使わない */
-    if (el) requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({block:'start'})));
+  setMrDrvFocus(mrSelDrvId === id ? null : id);
+}
+// 全員の表示に戻す
+function clearMrDrvFocus() { setMrDrvFocus(null); }
+function setMrDrvFocus(id) {
+  mrSelDrvId = id;
+  const sel = document.getElementById('mrDrvSel');
+  if (sel) {
+    sel.value = id == null ? '' : String(id);
+    // 絞り込み付きプルダウンは、値を入れただけでは見えている文字が変わらない
+    sel._syncSearchInput?.();
   }
+  renderMonthlyReport();
+  // 切り替えたら先頭から見せる（前の位置に取り残されないように）
+  const top = document.getElementById('pg12');
+  if (top) requestAnimationFrame(() => top.scrollIntoView({block:'start'}));
+}
+// プルダウンを直接操作したときも、その人の明細を開いた状態にする
+function onMrDrvSelChange() {
+  mrSelDrvId = +document.getElementById('mrDrvSel')?.value || null;
+  renderMonthlyReport();
 }
 // 選んだ行が分かるように色を付ける（表全体は作り直さない）
 function highlightMrRow() {
@@ -540,7 +587,7 @@ function renderMrCards() {
           <div style="text-align:right;flex-shrink:0;padding-left:8px">
             <div style="display:flex;gap:4px;justify-content:flex-end;margin-bottom:3px">
               <button class="btn sml" onclick="event.stopPropagation();printMonthlyReportA4(${d.id})" title="このドライバーの月報をA4縦1枚で見る（PDF保存できます）">📄 月報</button>
-              <button class="btn sml" onclick="event.stopPropagation();selectMrDrv(${d.id})" title="閉じる">✕</button>
+              <button class="btn sml" onclick="event.stopPropagation();clearMrDrvFocus()" title="全員の表示に戻る">✕</button>
             </div>
             <div style="font-size:13px;font-weight:600">${fmtHours(drHours)}</div>
             <div style="font-size:10px;color:var(--text2);white-space:nowrap">拘束時間 <span data-pnl-mark>▼</span></div>
@@ -613,7 +660,8 @@ function renderMrCards() {
     });
 
   bodyEl.innerHTML = cards.join('')
-    || '<div style="color:var(--text2);font-size:11.5px;padding:14px;text-align:center">上の提出状況で<b>ドライバー名を押す</b>と、その人の明細と月報が出ます</div>';
+    || (mrSelDrvId != null ? ''
+        : '<div style="color:var(--text2);font-size:11.5px;padding:14px;text-align:center">上の提出状況で<b>ドライバー名を押す</b>と、その人だけの表示に切り替わります</div>');
 
   // 差異バナー表示
   if (diffWarnings.length) {

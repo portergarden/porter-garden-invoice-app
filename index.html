@@ -1712,7 +1712,7 @@ try {
       <input type="date" id="mrTo" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderMonthlyReport()">
       <button class="btn sml" onclick="monthRangeShift('mrFrom','mrTo',-1,renderMonthlyReport)" title="前月">◀</button>
       <button class="btn sml" onclick="monthRangeShift('mrFrom','mrTo',1,renderMonthlyReport)" title="翌月">▶</button>
-      <select id="mrDrvSel" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderMonthlyReport()">
+      <select id="mrDrvSel" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="onMrDrvSelChange()">
         <option value="">全ドライバー</option>
       </select>
       <button class="btn sml" id="mrShowAllBtn" onclick="toggleMrShowAll()" title="既定では対象期間に日報の提出があるドライバーのみ表示します">提出者のみ表示</button>
@@ -1744,6 +1744,13 @@ try {
       <span style="font-size:10px;color:var(--text2)">選んだ内容はこの端末に記憶されます</span>
     </div>
     <div id="mrColBoxes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:2px"></div>
+  </div>
+
+  <!-- 1人だけを見ているときの帯。全員の表示に戻す手段をここに置く -->
+  <div id="mrDrvFocus" style="display:none;align-items:center;gap:8px;padding:6px 14px;border-bottom:0.5px solid var(--border);background:var(--blue-bg);flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:600;color:var(--blue-text)">👤 <span id="mrDrvFocusName"></span></span>
+    <span style="font-size:11px;color:var(--blue-text)">だけを表示しています</span>
+    <button class="btn sml" style="margin-left:auto" onclick="clearMrDrvFocus()">← 全員に戻る</button>
   </div>
 
   <!-- KPIサマリー -->
@@ -3205,7 +3212,7 @@ try {
 <script src="js/03-dashboard-daily.js?v=e312021c"></script>
 
 
-<script src="js/04-monthly.js?v=61b479bb"></script>
+<script src="js/04-monthly.js?v=1d05992c"></script>
 
 
 <script src="js/05-driver-portal.js?v=eeafafbc"></script>
