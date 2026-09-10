@@ -3542,7 +3542,7 @@ function renderDailyList() {
           </div>
           <div class="dr-section">
             <span>🏃 ${r.distance_km??'—'}km</span>
-            ${r.start_time?`<span>⏱ ${r.start_time}〜${r.end_time||'?'}</span>`:''}
+            ${r.start_time?`<span>⏱ ${hhmm(r.start_time)}〜${hhmm(r.end_time)||'?'}</span>`:''}
             ${(r.start_location||r.end_location)?`<span>📍 ${escHtml(r.start_location)||'?'}→${escHtml(r.end_location)||'?'}</span>`:''}
             <span>🍺 前:${r.alc_before??'—'} 後:${r.alc_after??'—'} mg/L</span>
             ${drQtyText(r) ? `<span>📦 ${drQtyText(r)}</span>` : ''}
@@ -3723,7 +3723,9 @@ function dailyReportPrintCss() {
   .drp-sub{font-size:9px;color:#555}
   table.drp-table{width:100%;border-collapse:collapse;font-size:9.5px;margin-bottom:4px;table-layout:fixed}
   table.drp-table th,table.drp-table td{border:1px solid #999;padding:2px 4px;text-align:left;vertical-align:top;word-break:break-word;line-height:1.35}
-  table.drp-table th{background:#f0f0f0;font-weight:600;width:15%;white-space:nowrap}
+  /* 「自動車・道路及び運行の状況」のような長い項目名が nowrap だと
+     値の欄へはみ出すため、折り返す */
+  table.drp-table th{background:#f0f0f0;font-weight:600;width:15%}
   .drp-section-title{font-size:9.5px;font-weight:700;background:#e6f1fb;padding:2px 5px;margin:5px 0 3px}
   .drp-insp{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;font-size:8.5px;margin-bottom:3px}
   .drp-insp span{border:1px solid #ccc;padding:1px 3px;display:block}
@@ -3760,9 +3762,9 @@ function buildDailyReportHtml(r) {
 
     <div class="drp-section-title">① 業務の記録</div>
     <table class="drp-table">
-      <tr><th>業務開始</th><td>${r.start_time||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
-          <th>業務終了</th><td>${r.end_time||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
-      <tr><th>拘束時間</th><td colspan="3">${fmtHours(drWorkHours(r))}${r.start_time&&r.end_time?`（${r.start_time}〜${r.end_time}）`:''}</td></tr>
+      <tr><th>業務開始</th><td>${hhmm(r.start_time)||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
+          <th>業務終了</th><td>${hhmm(r.end_time)||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
+      <tr><th>拘束時間</th><td colspan="3">${fmtHours(drWorkHours(r))}${r.start_time&&r.end_time?`（${hhmm(r.start_time)}〜${hhmm(r.end_time)}）`:''}</td></tr>
       <tr><th>走行距離</th><td>${r.distance_km??''} km${(r.start_odometer!=null||r.end_odometer!=null)
             ? `　<span style="color:#555">（メーター ${r.start_odometer??'—'} → ${r.end_odometer??'—'}）</span>` : ''}</td>
           <th>休憩</th><td>${escHtml(formatRests(r)) || '—'}</td></tr>
@@ -3772,8 +3774,8 @@ function buildDailyReportHtml(r) {
     <table class="drp-table">
       <tr><th>点呼執行者</th><td>${escHtml(r.tenko_executor||'')}</td>
           <th>点呼方法</th><td>${TENKO_METHOD_LABEL[r.tenko_method||'face']}${r.tenko_method_note?`（${escHtml(r.tenko_method_note)}）`:''}</td></tr>
-      <tr><th>点呼日時（前）</th><td>${r.date} ${r.tenko_before_at||'—'}</td>
-          <th>点呼日時（後）</th><td>${r.date} ${r.tenko_after_at||'—'}</td></tr>
+      <tr><th>点呼日時（前）</th><td>${r.date} ${hhmm(r.tenko_before_at)||'—'}</td>
+          <th>点呼日時（後）</th><td>${r.date} ${hhmm(r.tenko_after_at)||'—'}</td></tr>
       <tr><th>酒気帯び（前）</th><td>${r.alc_before??''} mg/L　${(+r.alc_before||0)>0?'検出あり':'検出なし'}</td>
           <th>酒気帯び（後）</th><td>${r.alc_after??''} mg/L　${(+r.alc_after||0)>0?'検出あり':'検出なし'}</td></tr>
       <tr><th>検知器の使用</th><td>${r.alc_detector_used===false?'無':'有'}${r.alc_device?`（${escHtml(r.alc_device)}）`:''}</td>
@@ -3825,7 +3827,7 @@ function buildDailyReportHtml(r) {
 // 複数日報を日付の古い順（時系列）にまとめ、1つの印刷用ドキュメントにする
 function buildDailyReportsPrintDoc(reports) {
   const sorted = [...reports].sort((a,b)=>(a.date||'').localeCompare(b.date||'') || (a.id-b.id));
-  const pages = sorted.map(r => buildDailyReportHtml(r)).join('');
+  const pages = sorted.map(r => `<div class="doc-fit">${buildDailyReportHtml(r)}</div>`).join('');
   const label = sorted.length ? `${sorted[0].date}${sorted.length>1?`〜${sorted[sorted.length-1].date}`:''}` : '';
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -3833,6 +3835,7 @@ function buildDailyReportsPrintDoc(reports) {
   <style>${dailyReportPrintCss()}</style></head><body>
   <div class="drp-print-bar"><button onclick="window.print()">🖨 印刷 / PDF保存</button></div>
   ${pages}
+  ${docFitBlock('.drp-page')}
   </body></html>`;
 }
 // 管理画面: 現在の絞り込み条件（日付範囲・ドライバー・ステータス）に一致する日報を印刷

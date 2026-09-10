@@ -2214,7 +2214,7 @@ async function printDriverMonthlyReportA4() {
       <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${day}</td>
       <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${weekdayLabel[wd]}</td>
       <td class="car">${r?escHtml(r.car||''):''}</td>
-      <td class="center">${r&&(r.start_time||r.end_time)?`${r.start_time||'?'}-${r.end_time||'?'}`:''}</td>
+      <td class="center">${r&&(r.start_time||r.end_time)?`${hhmm(r.start_time)||'?'}-${hhmm(r.end_time)||'?'}`:''}</td>
       <td class="num">${r&&r.start_time&&r.end_time?drWorkHours(r).toFixed(1):''}</td>
       <td class="site" title="${r&&site?escHtml(site.name):''}">${r&&site?escHtml(site.short||site.name):''}</td>
       <td class="num">${r?(r.distance_km||0):''}</td>
@@ -2228,7 +2228,7 @@ async function printDriverMonthlyReportA4() {
     </tr>`);
   }
 
-  const page = `<div class="mr-page">
+  const page = `<div class="doc-fit"><div class="mr-page">
     <div class="mr-head">
       <div>
         <div class="mr-title">月報（日報自動集計）</div>
@@ -2246,7 +2246,7 @@ async function printDriverMonthlyReportA4() {
       </tr></thead>
       <tbody>${dayRows.join('')}</tbody>
     </table>
-  </div>`;
+  </div></div>`;
 
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>月報_${monthStr}</title>
@@ -2277,6 +2277,7 @@ async function printDriverMonthlyReportA4() {
     tr.alc{background:#fdeaea}
   </style></head><body>
   ${page}
+  ${docFitBlock('.mr-page')}
   </body></html>`;
 
   openDocPreview(html, `${y}年${m}月の月報`);

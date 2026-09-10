@@ -4187,6 +4187,65 @@ function docPreviewOpen(title){
   clearDocPreviewAck();   // 前に開いた書類の確認ボタンを持ち越さない
   document.getElementById('mDocPreview')?.classList.add('on');
 }
+/* ===== 印刷用の書類をスマホ画面に収める =====
+   A4の紙面は210mm(約794px)あり、スマホ画面には収まらない。
+   列幅や文字サイズを個別に変えると表が崩れるため、PDFビューアの「幅に合わせる」と
+   同じ考え方で紙面ごと縮小する。印刷時は必ず解除するので出力には影響しない。
+   支払明細書(.doc)で使っている仕組みを、業務記録・月報でも使えるようにしたもの。
+   pageSel は紙1枚にあたる要素のセレクタ（.drp-page / .mr-page）。
+   紙1枚ずつ <div class="doc-fit"> で包んで使う。 */
+const DOC_FIT_MAX_WIDTH = 600;
+function docFitBlock(pageSel) {
+  return `
+  <style>
+  /* iOSは横に広いページの文字を勝手に拡大する（読みやすくするための機能）。
+     colspanで幅の広いセルほど大きくなり、表の中身だけが罫線からはみ出す。
+     100%を指定すると拡大せず、指定どおりの大きさで出る */
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  @media screen and (max-width:${DOC_FIT_MAX_WIDTH}px){
+    body{overflow-x:hidden}
+    .doc-fit{overflow:hidden}
+  }
+  @media print{
+    ${pageSel}{transform:none!important}
+    .doc-fit{height:auto!important;overflow:visible!important}
+  }
+  </style>
+  <script>
+  (function(){
+    function fit(){
+      var narrow = window.innerWidth <= ${DOC_FIT_MAX_WIDTH};
+      document.querySelectorAll('.doc-fit').forEach(function(wrap){
+        var page = wrap.querySelector('${pageSel}');
+        if (!page) return;
+        page.style.transform = '';
+        wrap.style.height = '';
+        if (!narrow) return;
+        var w = page.offsetWidth, h = page.offsetHeight;
+        if (!w) return;
+        var scale = Math.min(1, wrap.clientWidth / w);
+        page.style.transformOrigin = 'top left';
+        page.style.transform = 'scale(' + scale + ')';
+        wrap.style.height = (h * scale) + 'px';
+      });
+    }
+    ['resize','orientationchange','load'].forEach(function(e){ window.addEventListener(e, fit); });
+    // 印刷時は縮小を解除する（CSS側の transform:none!important と二重の保険）
+    window.addEventListener('beforeprint', function(){
+      document.querySelectorAll('.doc-fit').forEach(function(wrap){
+        var page = wrap.querySelector('${pageSel}');
+        if (page) page.style.transform = 'none';
+        wrap.style.height = 'auto';
+      });
+    });
+    window.addEventListener('afterprint', fit);
+    fit();
+  })();
+  <\/script>`;
+}
+// 「07:20:00」のような秒つきの時刻を「07:20」にする。DBのtime型は秒まで返すため
+const hhmm = t => String(t || '').slice(0, 5);
+
 /* 支払明細のように「見たら確認を押してもらう」書類のために、
    プレビューの下にボタンと注意書きを出せるようにする。
    別の書類を開いたときに前の確認ボタンが残らないよう、開くたびに消す */

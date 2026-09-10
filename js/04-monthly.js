@@ -18,7 +18,7 @@ const MR_COLS = [
   {key:'day',      label:'日',          def:true,  align:'center', pw:4,  screen:false, print:true},
   {key:'dow',      label:'曜日',        def:true,  align:'center', pw:4,  screen:false, print:true},
   {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
-  {key:'worktime', label:'稼働時間',    def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(r.start_time||'?')}-${escHtml(r.end_time||'?')}`:''},
+  {key:'worktime', label:'稼働時間',    def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(hhmm(r.start_time)||'?')}-${escHtml(hhmm(r.end_time)||'?')}`:''},
   {key:'workh',    label:'拘束時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?drWorkHours(r).toFixed(1):''},
   {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
   {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
@@ -780,7 +780,7 @@ async function printMonthlyReportA4(onlyDrvId) {
         }).join('')}</tr>`);
       }
 
-      return `<div class="mr-page">
+      return `<div class="doc-fit"><div class="mr-page">
         <div class="mr-head">
           <div>
             <div class="mr-title">月報（日報自動集計）</div>
@@ -803,7 +803,7 @@ async function printMonthlyReportA4(onlyDrvId) {
           </tr></thead>
           <tbody>${dayRows.join('')}</tbody>
         </table>
-      </div>`;
+      </div></div>`;
     })
     .filter(Boolean);
 
@@ -841,6 +841,7 @@ async function printMonthlyReportA4(onlyDrvId) {
     tr.alc{background:#fdeaea}
   </style></head><body>
   ${pages.join('')}
+  ${docFitBlock('.mr-page')}
   </body></html>`;
 
   openDocPreview(html, `${y}年${m}月の月報`);
