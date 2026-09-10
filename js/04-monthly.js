@@ -18,8 +18,8 @@ const MR_COLS = [
   {key:'day',      label:'日',          def:true,  align:'center', pw:4,  screen:false, print:true},
   {key:'dow',      label:'曜日',        def:true,  align:'center', pw:4,  screen:false, print:true},
   {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
-  {key:'worktime', label:'稼働時間',    def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(hhmm(r.start_time)||'?')}-${escHtml(hhmm(r.end_time)||'?')}`:''},
-  {key:'workh',    label:'拘束時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?drWorkHours(r).toFixed(1):''},
+  {key:'worktime', label:'業務時間帯',  def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(hhmm(r.start_time)||'?')}-${escHtml(hhmm(r.end_time)||'?')}`:''},
+  {key:'workh',    label:'稼働時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?drWorkHours(r).toFixed(1):''},
   {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
   {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
   {key:'odo',      label:'メーター',    def:false, align:'right',  pw:11, get:r=>(r.start_odometer!=null||r.end_odometer!=null)?`${r.start_odometer??'—'}/${r.end_odometer??'—'}`:''},
@@ -421,7 +421,7 @@ async function renderMonthlyReport() {
   /* 1日平均は「のべ稼働日数（人×日）」で割る。暦の日数で割ると、
      全員を合計したときに人数ぶん膨らんでしまう。1人を選んでいるときは同じ値になる */
   const manDays    = new Set(drReports.map(r => `${recDrv(r)?.id}|${r.date}`)).size;
-  /* 拘束時間は業務開始・終了から出す。数量が0の日でも仕事量が分かる唯一の共通指標で、
+  /* 稼働時間は業務開始・終了から出す。数量が0の日でも仕事量が分かる唯一の共通指標で、
      過労運転の防止にも使う */
   const totalHours = drReports.reduce((a,r) => a + drWorkHours(r), 0);
   const maxHours   = drReports.reduce((a,r) => Math.max(a, drWorkHours(r)), 0);
@@ -438,7 +438,7 @@ async function renderMonthlyReport() {
   kpiEl.innerHTML = `
     <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div>
       <div class="kpi-diff kpi-eq">${manDays === workDays ? '' : `のべ ${manDays}日`}</div></div>
-    <div class="kpi-card"><div class="kpi-label">拘束時間</div><div class="kpi-val">${fmtHours(totalHours)}</div>
+    <div class="kpi-card"><div class="kpi-label">稼働時間</div><div class="kpi-val">${fmtHours(totalHours)}</div>
       <div class="kpi-diff kpi-eq">${per(totalHours,'h')}${maxHours?` ／ 最長 ${maxHours.toFixed(1)}h`:''}</div></div>
     <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div>
       <div class="kpi-diff kpi-eq">${per(totalKm,'km')}</div></div>
@@ -580,7 +580,7 @@ function renderMrCards() {
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
               </div>
               <div style="font-size:10px;color:var(--text2)">
-                稼働${drWorkDays}日 · 拘束${fmtHours(drHours)} · ${drKm}km${drTak||drNeko?` · 個人宅配${drTak+drNeko}個`:''}${drCorp||drCorpPcs?` · 企業集配${drCorp}件${drCorpPcs?`/${drCorpPcs}個`:''}`:''}${drChar||drCharPcs?` · チャーター${drChar}件${drCharPcs?`/${drCharPcs}個`:''}`:''}
+                稼働${drWorkDays}日 · 稼働時間${fmtHours(drHours)} · ${drKm}km${drTak||drNeko?` · 個人宅配${drTak+drNeko}個`:''}${drCorp||drCorpPcs?` · 企業集配${drCorp}件${drCorpPcs?`/${drCorpPcs}個`:''}`:''}${drChar||drCharPcs?` · チャーター${drChar}件${drCharPcs?`/${drCharPcs}個`:''}`:''}
               </div>
             </div>
           </div>
@@ -590,7 +590,7 @@ function renderMrCards() {
               <button class="btn sml" onclick="event.stopPropagation();clearMrDrvFocus()" title="全員の表示に戻る">✕</button>
             </div>
             <div style="font-size:13px;font-weight:600">${fmtHours(drHours)}</div>
-            <div style="font-size:10px;color:var(--text2);white-space:nowrap">拘束時間 <span data-pnl-mark>▼</span></div>
+            <div style="font-size:10px;color:var(--text2);white-space:nowrap">稼働時間 <span data-pnl-mark>▼</span></div>
             <div style="font-size:10px;color:var(--text2);white-space:nowrap">${(drTak+drNeko+drCorpPcs+drCharPcs).toLocaleString()}個 ／ ${(drCorp+drChar).toLocaleString()}件</div>
           </div>
         </div>
@@ -791,7 +791,7 @@ async function printMonthlyReportA4(onlyDrvId) {
             発行日: ${fmtLocalDate(new Date())}
           </div>
         </div>
-        <div class="mr-summary">稼働日数 ${drWorkDays}日　拘束時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
+        <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
         <table class="mr-table">
           <thead><tr>
             ${(() => {

@@ -2277,7 +2277,9 @@ const drQtyText = (obj, useTripKey) => {
 // 古い日報（運行の記録が無い分）を1件の運行として組み立てるときの数量
 const drQtyFromReport = r => Object.fromEntries(DR_QTY_ITEMS.map(q => [q.trip, +r[q.key] || 0]));
 
-/* 拘束時間（時間）。業務開始から終了まで。
+/* 稼働時間（時間）。業務開始から終了まで。
+   改善基準告示でいう「拘束時間」と同じ数字だが、業務委託の方にはその用語が
+   そのまま当てはまらないため、画面と帳票では「稼働時間」と呼んでいる。
    数量が0の日でも仕事量が分かる唯一の共通指標で、過労運転の防止にも使う。
    日をまたいだ場合は翌日の時刻として数える */
 function drWorkHours(r) {
@@ -2992,7 +2994,7 @@ function onDrTenkoMethodChange() {
 
 /* ===== 点呼時刻と業務開始・終了時刻の連動 =====
    点呼をしなければ業務は始められないので、この2つは基本的に同じ時刻になる。
-   ただし別々の帳票の項目（点呼時刻＝点呼記録簿、業務開始・終了＝業務の記録で拘束時間の起点）で、
+   ただし別々の帳票の項目（点呼時刻＝点呼記録簿、業務開始・終了＝業務の記録で稼働時間の起点）で、
    帰着してから点呼した日のように数分ずれることもあるため、欄は分けたままにしてある。
    写すのは空いているほうだけで、既に入っている値には触らない。 */
 function mirrorDrTime(fromId, toId) {
@@ -3640,7 +3642,7 @@ function formatRests(r) {
 // 日報一覧（list）をCSVとしてダウンロードする。管理画面・ドライバーポータル両方の日報CSV出力で共有する
 function downloadDailyReportCsv(list, filenameLabel) {
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
-  const headers = ['日付','車番','運転者','出発地点','出発時刻','帰着地点','帰着時刻','拘束時間(h)','走行距離(km)',
+  const headers = ['日付','車番','運転者','出発地点','出発時刻','帰着地点','帰着時刻','稼働時間(h)','走行距離(km)',
     'メーター(出発)','メーター(帰着)','種別',
     '休憩',
     '点呼執行者','点呼方法','点呼方法の詳細','点呼日時(前)','点呼日時(後)',
@@ -3764,7 +3766,7 @@ function buildDailyReportHtml(r) {
     <table class="drp-table">
       <tr><th>業務開始</th><td>${hhmm(r.start_time)||'—'}${r.start_location?`（${escHtml(r.start_location)}）`:''}</td>
           <th>業務終了</th><td>${hhmm(r.end_time)||'—'}${r.end_location?`（${escHtml(r.end_location)}）`:''}</td></tr>
-      <tr><th>拘束時間</th><td colspan="3">${fmtHours(drWorkHours(r))}${r.start_time&&r.end_time?`（${hhmm(r.start_time)}〜${hhmm(r.end_time)}）`:''}</td></tr>
+      <tr><th>稼働時間</th><td colspan="3">${fmtHours(drWorkHours(r))}${r.start_time&&r.end_time?`（${hhmm(r.start_time)}〜${hhmm(r.end_time)}）`:''}</td></tr>
       <tr><th>走行距離</th><td>${r.distance_km??''} km${(r.start_odometer!=null||r.end_odometer!=null)
             ? `　<span style="color:#555">（メーター ${r.start_odometer??'—'} → ${r.end_odometer??'—'}）</span>` : ''}</td>
           <th>休憩</th><td>${escHtml(formatRests(r)) || '—'}</td></tr>

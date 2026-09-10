@@ -2056,7 +2056,7 @@ async function loadDriverDailyList() {
               ${inspFailed?'<span style="color:var(--amber-text);font-size:10px;margin-left:4px">⚠ 点検</span>':''}
             </div>
             <div style="font-size:10px;color:var(--text2);margin-top:2px">
-              拘束${fmtHours(drWorkHours(r))} · 走行${r.distance_km||0}km${drQtyText(r)?` · ${drQtyText(r)}`:''}
+              稼働${fmtHours(drWorkHours(r))} · 走行${r.distance_km||0}km${drQtyText(r)?` · ${drQtyText(r)}`:''}
             </div>
             ${r.note?`<div style="font-size:10px;color:var(--text2)">${escHtml(r.note)}</div>`:''}
           </div>
@@ -2124,7 +2124,7 @@ async function renderDriverMonthly() {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
         <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
         <div class="kpi-card"><div class="kpi-label">走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
-        <div class="kpi-card"><div class="kpi-label">拘束時間</div><div class="kpi-val">${fmtHours(totalHours)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">稼働時間</div><div class="kpi-val">${fmtHours(totalHours)}</div></div>
       </div>
       <div class="pnl-row"><span>個人宅配</span><span>宅配便${totalTak.toLocaleString()}個 ／ ポスト便${totalNeko.toLocaleString()}個</span></div>
       <div class="pnl-row"><span>企業集配</span><span>${totalCorp.toLocaleString()}件 ／ ${totalCorpPcs.toLocaleString()}個</span></div>
@@ -2239,10 +2239,10 @@ async function printDriverMonthlyReportA4() {
         発行日: ${fmtLocalDate(new Date())}
       </div>
     </div>
-    <div class="mr-summary">稼働日数 ${drWorkDays}日　拘束時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
+    <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
     <table class="mr-table">
       <thead><tr>
-        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:10%">車番</th><th style="width:11%">稼働時間</th><th style="width:5%">拘束h</th><th style="width:12%">稼働先</th><th style="width:6%">走行km</th><th style="width:6%">宅配便</th><th style="width:6%">ポスト便</th><th style="width:6%">企業集配</th><th style="width:7%">チャーター</th><th style="width:10%">Alc前/後</th><th style="width:5%">体調</th><th style="width:8%">状態</th>
+        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:10%">車番</th><th style="width:11%">業務時間帯</th><th style="width:5%">稼働h</th><th style="width:12%">稼働先</th><th style="width:6%">走行km</th><th style="width:6%">宅配便</th><th style="width:6%">ポスト便</th><th style="width:6%">企業集配</th><th style="width:7%">チャーター</th><th style="width:10%">Alc前/後</th><th style="width:5%">体調</th><th style="width:8%">状態</th>
       </tr></thead>
       <tbody>${dayRows.join('')}</tbody>
     </table>
