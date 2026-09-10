@@ -19,7 +19,7 @@ const MR_COLS = [
   {key:'dow',      label:'曜日',        def:true,  align:'center', pw:4,  screen:false, print:true},
   {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
   {key:'worktime', label:'業務時間帯',  def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(hhmm(r.start_time)||'?')}-${escHtml(hhmm(r.end_time)||'?')}`:''},
-  {key:'workh',    label:'稼働時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?drWorkHours(r).toFixed(1):''},
+  {key:'workh',    label:'稼働時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drWorkHours(r)):''},
   {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
   {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
   {key:'odo',      label:'メーター',    def:false, align:'right',  pw:11, get:r=>(r.start_odometer!=null||r.end_odometer!=null)?`${r.start_odometer??'—'}/${r.end_odometer??'—'}`:''},
@@ -426,6 +426,8 @@ async function renderMonthlyReport() {
   const totalHours = drReports.reduce((a,r) => a + drWorkHours(r), 0);
   const maxHours   = drReports.reduce((a,r) => Math.max(a, drWorkHours(r)), 0);
   const per = (v, unit) => manDays ? `1日平均 ${(v/manDays).toFixed(1)}${unit}` : '';
+  // 時間は小数だと読み取れないので時:分で出す
+  const perHours = () => manDays ? `1日平均 ${fmtHM(totalHours/manDays)}` : '';
   // 要確認はアルコール超過だけでなく、体調不良・事故・差戻しもまとめて数える
   const alcAlerts  = drReports.filter(r => +r.alc_before>=0.15 || +r.alc_after>=0.15).length;
   const healthBad  = drReports.filter(r => r.health_before==='bad' || r.health_after==='bad').length;
@@ -439,7 +441,7 @@ async function renderMonthlyReport() {
     <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div>
       <div class="kpi-diff kpi-eq">${manDays === workDays ? '' : `のべ ${manDays}日`}</div></div>
     <div class="kpi-card"><div class="kpi-label">稼働時間</div><div class="kpi-val">${fmtHours(totalHours)}</div>
-      <div class="kpi-diff kpi-eq">${per(totalHours,'h')}${maxHours?` ／ 最長 ${maxHours.toFixed(1)}h`:''}</div></div>
+      <div class="kpi-diff kpi-eq">${perHours()}${maxHours?` ／ 最長 ${fmtHM(maxHours)}`:''}</div></div>
     <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div>
       <div class="kpi-diff kpi-eq">${per(totalKm,'km')}</div></div>
     <div class="kpi-card"><div class="kpi-label">個人宅配</div><div class="kpi-val">${(sumQty('qty_takkyubin')+sumQty('qty_nekopos')).toLocaleString()}個</div>

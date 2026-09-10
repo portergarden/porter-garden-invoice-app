@@ -2293,6 +2293,15 @@ function fmtHours(h) {
   const m = Math.round((+h || 0) * 60);
   return `${Math.floor(m/60)}時間${String(m%60).padStart(2,'0')}分`;
 }
+/* 「9:00」「13:50」の形。表の狭い列に入れる用。
+   小数の時間（13.8）だと13時間48分なのか13時間8分なのか読み取れないため、
+   数字を並べる場所では必ずこちらを使う */
+function fmtHM(h) {
+  const m = Math.round((+h || 0) * 60);
+  return `${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}`;
+}
+// 分に直した数。CSVで足し算・平均を出すときに使う
+const workMinutes = r => Math.round(drWorkHours(r) * 60);
 /* 運行の配列を取り出す。trips が無い旧データは、それまでの平坦な項目から1件ぶんに見立てる。
    一覧・印刷・CSVがどちらの形式でも同じように扱えるようにするため */
 /* 印刷帳票で、運行の下に荷待ち・荷役作業の行をぶら下げる。
@@ -3642,7 +3651,7 @@ function formatRests(r) {
 // 日報一覧（list）をCSVとしてダウンロードする。管理画面・ドライバーポータル両方の日報CSV出力で共有する
 function downloadDailyReportCsv(list, filenameLabel) {
   const healthLabel = {good:'良好',normal:'普通',bad:'不調'};
-  const headers = ['日付','車番','運転者','出発地点','出発時刻','帰着地点','帰着時刻','稼働時間(h)','走行距離(km)',
+  const headers = ['日付','車番','運転者','出発地点','出発時刻','帰着地点','帰着時刻','稼働時間','稼働時間(分)','走行距離(km)',
     'メーター(出発)','メーター(帰着)','種別',
     '休憩',
     '点呼執行者','点呼方法','点呼方法の詳細','点呼日時(前)','点呼日時(後)',
@@ -3659,7 +3668,7 @@ function downloadDailyReportCsv(list, filenameLabel) {
   const rows = list.map(r=>[
     r.date,r.car,r.driver_name,
     r.start_location||'',r.start_time||'',r.end_location||'',r.end_time||'',
-    drWorkHours(r).toFixed(1), r.distance_km||0, r.start_odometer??'', r.end_odometer??'', typeShort(r.type),
+    fmtHM(drWorkHours(r)), workMinutes(r), r.distance_km||0, r.start_odometer??'', r.end_odometer??'', typeShort(r.type),
     formatRests(r),
     r.tenko_executor||'', TENKO_METHOD_LABEL[r.tenko_method||'face'], r.tenko_method_note||'',
     r.tenko_before_at||'', r.tenko_after_at||'',

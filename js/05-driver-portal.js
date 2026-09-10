@@ -2215,7 +2215,7 @@ async function printDriverMonthlyReportA4() {
       <td class="center"${holName?` title="${escHtml(holName)}"`:''}>${weekdayLabel[wd]}</td>
       <td class="car">${r?escHtml(r.car||''):''}</td>
       <td class="center">${r&&(r.start_time||r.end_time)?`${hhmm(r.start_time)||'?'}-${hhmm(r.end_time)||'?'}`:''}</td>
-      <td class="num">${r&&r.start_time&&r.end_time?drWorkHours(r).toFixed(1):''}</td>
+      <td class="num">${r&&r.start_time&&r.end_time?fmtHM(drWorkHours(r)):''}</td>
       <td class="site" title="${r&&site?escHtml(site.name):''}">${r&&site?escHtml(site.short||site.name):''}</td>
       <td class="num">${r?(r.distance_km||0):''}</td>
       <td class="num">${r?(r.qty_takkyubin||0):''}</td>
@@ -2242,7 +2242,7 @@ async function printDriverMonthlyReportA4() {
     <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
     <table class="mr-table">
       <thead><tr>
-        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:10%">車番</th><th style="width:11%">業務時間帯</th><th style="width:5%">稼働h</th><th style="width:12%">稼働先</th><th style="width:6%">走行km</th><th style="width:6%">宅配便</th><th style="width:6%">ポスト便</th><th style="width:6%">企業集配</th><th style="width:7%">チャーター</th><th style="width:10%">Alc前/後</th><th style="width:5%">体調</th><th style="width:8%">状態</th>
+        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:10%">車番</th><th style="width:11%">業務時間帯</th><th style="width:6%">稼働時間</th><th style="width:12%">稼働先</th><th style="width:6%">走行km</th><th style="width:6%">宅配便</th><th style="width:6%">ポスト便</th><th style="width:6%">企業集配</th><th style="width:7%">チャーター</th><th style="width:10%">Alc前/後</th><th style="width:5%">体調</th><th style="width:8%">状態</th>
       </tr></thead>
       <tbody>${dayRows.join('')}</tbody>
     </table>
