@@ -2568,7 +2568,10 @@ async function initDailyForm(reportId=null) {
       toggleDrIncidentFields();
       // 点検復元
       const inspMap = {1:'tire',2:'brake',3:'light',4:'wiper',5:'engine',6:'mirror',7:'horn',8:'battery',9:'cargo',10:'fuel'};
-      Object.entries(inspMap).forEach(([n,k])=>{const el=document.getElementById('insp'+n);if(el)el.checked=r['insp_'+k]!==false;});
+      Object.entries(inspMap).forEach(([n,k]) => {
+        const v = r['insp_'+k];
+        setInspState(+n, v === true ? true : v === false ? false : null);
+      });
       const inEl=document.getElementById('inspNote');if(inEl)inEl.value=r.insp_note||'';
     }
   } else {
@@ -2603,6 +2606,7 @@ async function initDailyForm(reportId=null) {
     document.getElementById('drHealthBefore').value = 'good';
     document.getElementById('drHealthAfter').value = 'good';
     document.getElementById('drType').value = 'regular';
+    clearInsp();   // 点検は毎回本人が答える。前の日報の状態を持ち越さない
     // 点呼記録の初期値。貨物軽の一人事業者は自ら点呼して対面扱いになるため、執行者は自分を既定にする
     document.getElementById('drTenkoExecutor').value = me?.name || '';
     document.getElementById('drTenkoMethod').value = 'face';
@@ -3001,6 +3005,36 @@ function onDrTenkoMethodChange() {
   if (w) w.style.display = m === 'face' ? 'none' : 'block';
 }
 
+/* ===== 車両日常点検（良／否） =====
+   道路運送車両法 第47条の2。以前は全項目に最初からレ点が入っていて、見ずに提出できた。
+   毎回本人が1項目ずつ答える形にし、10項目すべてに答えるまで先へ進めない。
+   保存する値は今までどおり true（良）／false（否）。未回答は null で、保存前に必ず弾く */
+const DR_INSP_COUNT = 10;
+function inspState(n) {
+  if (document.getElementById(`insp${n}ok`)?.checked) return 'ok';
+  if (document.getElementById(`insp${n}ng`)?.checked) return 'ng';
+  return null;
+}
+function setInspState(n, v) {   // v: true=良 / false=否 / null=未回答
+  const ok = document.getElementById(`insp${n}ok`), ng = document.getElementById(`insp${n}ng`);
+  if (ok) ok.checked = v === true;
+  if (ng) ng.checked = v === false;
+  onInspChange();
+}
+function clearInsp() { for (let n = 1; n <= DR_INSP_COUNT; n++) setInspState(n, null); }
+const inspUnanswered = () => Array.from({length: DR_INSP_COUNT}, (_, i) => i + 1).filter(n => !inspState(n));
+const inspHasNg      = () => Array.from({length: DR_INSP_COUNT}, (_, i) => i + 1).some(n => inspState(n) === 'ng');
+// 残り件数と、「否」があるときの異常内容の必須印を出す
+function onInspChange() {
+  const left = inspUnanswered().length;
+  const p = document.getElementById('inspProgress');
+  if (p) p.textContent = left ? `あと ${left} 項目` : '✓ 10項目すべて確認済み';
+  if (p) p.style.color = left ? 'var(--amber-text)' : 'var(--green-text)';
+  for (let n = 1; n <= DR_INSP_COUNT; n++) document.getElementById(`inspRow${n}`)?.classList.toggle('done', !!inspState(n));
+  const req = document.getElementById('inspNoteReq');
+  if (req) req.style.display = inspHasNg() ? '' : 'none';
+}
+
 /* ===== 点呼時刻と業務開始・終了時刻の連動 =====
    点呼をしなければ業務は始められないので、この2つは基本的に同じ時刻になる。
    ただし別々の帳票の項目（点呼時刻＝点呼記録簿、業務開始・終了＝業務の記録で稼働時間の起点）で、
@@ -3083,6 +3117,10 @@ function validateDrStep(step) {
     if (!v('drHealthBefore')) return '業務前の体調を選択してください';
     if (!v('drStart')) return '業務開始時刻を入力してください';
     if (!v('drStartLoc')) return '出発地点（業務を始めた場所）を入力してください';
+    // 点検は10項目すべてに答える。未回答のまま保存すると「異常」として残ってしまうため
+    const left = inspUnanswered().length;
+    if (left) return `車両日常点検が ${left} 項目まだです。1項目ずつ確かめて「良」か「否」を押してください`;
+    if (inspHasNg() && !v('inspNote')) return '点検で「否」を付けた項目があります。点検異常内容を記入してください';
   }
   if (step === 2) {
     if (!pendDrTrips.length) return '運行が1件も追加されていません。取引先と時刻を入れて「＋ 運行を追加」を押してください';
@@ -3214,7 +3252,7 @@ function saveDrDraft() {
     const f = {};
     drFormFieldIds().forEach(id => {
       const el = document.getElementById(id);
-      f[id] = el.type === 'checkbox' ? el.checked : el.value;
+      f[id] = (el.type === 'checkbox' || el.type === 'radio') ? el.checked : el.value;
     });
     localStorage.setItem(DR_DRAFT_KEY(), JSON.stringify({step:drStep, f, trips:pendDrTrips, rests:pendDrRests, at:Date.now()}));
   } catch(e) { /* 保存できなくても入力は続けられるようにする */ }
@@ -3234,8 +3272,9 @@ function applyDrDraft(d) {
   Object.entries(d.f || {}).forEach(([id, val]) => {
     const el = document.getElementById(id);
     if (!el) return;
-    if (el.type === 'checkbox') el.checked = !!val; else el.value = val;
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!val; else el.value = val;
   });
+  onInspChange();   // 点検の残り件数の表示を下書きに合わせる
   // 値は下書きから戻したものなので、引き継ぎの案内が残っていると出どころを誤解させる
   const locHint = document.getElementById('drStartLocHint');
   if (locHint) locHint.textContent = '';
@@ -3393,16 +3432,16 @@ async function submitDailyReport() {
     incident_cause: document.getElementById('drIncidentFlag').checked ? document.getElementById('drIncidentCause').value.trim() : '',
     incident_prevention: document.getElementById('drIncidentFlag').checked ? document.getElementById('drIncidentPrevention').value.trim() : '',
     // 車両点検
-    insp_tire:    document.getElementById('insp1')?.checked||false,
-    insp_brake:   document.getElementById('insp2')?.checked||false,
-    insp_light:   document.getElementById('insp3')?.checked||false,
-    insp_wiper:   document.getElementById('insp4')?.checked||false,
-    insp_engine:  document.getElementById('insp5')?.checked||false,
-    insp_mirror:  document.getElementById('insp6')?.checked||false,
-    insp_horn:    document.getElementById('insp7')?.checked||false,
-    insp_battery: document.getElementById('insp8')?.checked||false,
-    insp_cargo:   document.getElementById('insp9')?.checked||false,
-    insp_fuel:    document.getElementById('insp10')?.checked||false,
+    insp_tire:    inspState(1)  === 'ok',
+    insp_brake:   inspState(2)  === 'ok',
+    insp_light:   inspState(3)  === 'ok',
+    insp_wiper:   inspState(4)  === 'ok',
+    insp_engine:  inspState(5)  === 'ok',
+    insp_mirror:  inspState(6)  === 'ok',
+    insp_horn:    inspState(7)  === 'ok',
+    insp_battery: inspState(8)  === 'ok',
+    insp_cargo:   inspState(9)  === 'ok',
+    insp_fuel:    inspState(10) === 'ok',
     insp_note:    document.getElementById('inspNote')?.value.trim()||'',
   };
 

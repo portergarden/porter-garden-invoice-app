@@ -67,7 +67,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css?v=0cb5fbf7">
+<link rel="stylesheet" href="css/app.css?v=fcf43ccd">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -1453,21 +1453,64 @@ try {
         </div>
 
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">④ 車両日常点検（道路運送車両法 第47条の2）</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px" id="inspChecks">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp1" checked> タイヤ（空気圧・亀裂・磨耗）</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp2" checked> ブレーキ（効き・液量）</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp3" checked> 灯火類（ヘッド・ウインカー・ブレーキ灯）</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp4" checked> ワイパー・ウォッシャー液</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp5" checked> エンジン（オイル・冷却水・異音）</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp6" checked> ミラー・窓ガラス（汚れ・調整）</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp7" checked> ホーン・警告灯</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp8" checked> バッテリー・電気装置</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp9" checked> 荷台・固縛装置</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer"><input type="checkbox" id="insp10" checked> 燃料残量</label>
+        <!-- 毎回本人が1項目ずつ確かめる。最初からレ点を入れておくと見ずに提出できてしまうため、
+             既定ではどちらも選ばれておらず、10項目すべてに答えないと先へ進めない -->
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px">1項目ずつ確かめて「良」か「否」を押してください。<b>すべて答えないと次へ進めません。</b></div>
+        <div id="inspChecks" style="display:flex;flex-direction:column;gap:3px;margin-bottom:6px">
+          <div class="insp-item" id="inspRow1">
+            <span class="insp-name">タイヤ（空気圧・亀裂・磨耗）</span>
+            <label class="insp-opt"><input type="radio" name="insp1" id="insp1ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp1" id="insp1ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow2">
+            <span class="insp-name">ブレーキ（効き・液量）</span>
+            <label class="insp-opt"><input type="radio" name="insp2" id="insp2ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp2" id="insp2ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow3">
+            <span class="insp-name">灯火類（ヘッド・ウインカー・ブレーキ灯）</span>
+            <label class="insp-opt"><input type="radio" name="insp3" id="insp3ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp3" id="insp3ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow4">
+            <span class="insp-name">ワイパー・ウォッシャー液</span>
+            <label class="insp-opt"><input type="radio" name="insp4" id="insp4ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp4" id="insp4ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow5">
+            <span class="insp-name">エンジン（オイル・冷却水・異音）</span>
+            <label class="insp-opt"><input type="radio" name="insp5" id="insp5ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp5" id="insp5ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow6">
+            <span class="insp-name">ミラー・窓ガラス（汚れ・調整）</span>
+            <label class="insp-opt"><input type="radio" name="insp6" id="insp6ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp6" id="insp6ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow7">
+            <span class="insp-name">ホーン・警告灯</span>
+            <label class="insp-opt"><input type="radio" name="insp7" id="insp7ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp7" id="insp7ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow8">
+            <span class="insp-name">バッテリー・電気装置</span>
+            <label class="insp-opt"><input type="radio" name="insp8" id="insp8ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp8" id="insp8ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow9">
+            <span class="insp-name">荷台・固縛装置</span>
+            <label class="insp-opt"><input type="radio" name="insp9" id="insp9ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp9" id="insp9ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
+          <div class="insp-item" id="inspRow10">
+            <span class="insp-name">燃料残量</span>
+            <label class="insp-opt"><input type="radio" name="insp10" id="insp10ok" value="ok" onchange="onInspChange()"><span>良</span></label>
+            <label class="insp-opt ng"><input type="radio" name="insp10" id="insp10ng" value="ng" onchange="onInspChange()"><span>否</span></label>
+          </div>
         </div>
-        <div style="font-size:10px;color:var(--text2);margin-bottom:8px">✅ 異常なし = チェック / 未チェックは点検要確認として記録されます</div>
+        <div id="inspProgress" style="font-size:11px;color:var(--amber-text);margin-bottom:8px"></div>
         <div class="fld">
-          <label>点検異常内容（異常がある場合のみ記入）</label>
+          <label>点検異常内容 <span id="inspNoteReq" style="color:var(--red);display:none">*</span><span style="font-weight:400;color:var(--text2)">（「否」を付けた場合は必ず記入）</span></label>
           <input type="text" id="inspNote" placeholder="例: 左前タイヤ空気圧低め" style="padding:8px 10px;font-size:14px">
         </div>
       </div>
@@ -3212,7 +3255,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=dcd0d73a"></script>
+<script src="js/03-dashboard-daily.js?v=f7497623"></script>
 
 
 <script src="js/04-monthly.js?v=078198f1"></script>

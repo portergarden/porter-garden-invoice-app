@@ -413,3 +413,16 @@ td.dim{color:var(--text2)}
   #pgMain [style*="display:flex"][style*="gap"] > span,
   #pgMain [style*="display:flex"][style*="gap"] > div{min-width:0}
 }
+
+
+/* ===== 車両日常点検の良／否 =====
+   スマホで押しやすいよう、選択肢はボタン状にする。選ぶまで色は付かない */
+.insp-item{display:flex;align-items:center;gap:6px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--bg)}
+.insp-item.done{border-color:var(--green-border,var(--border))}
+.insp-name{flex:1;min-width:0;font-size:12px}
+.insp-opt{position:relative;flex-shrink:0}
+.insp-opt input{position:absolute;opacity:0;width:0;height:0}
+.insp-opt span{display:inline-block;min-width:44px;padding:5px 10px;text-align:center;font-size:12px;font-weight:600;
+  border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2);color:var(--text2);cursor:pointer;user-select:none}
+.insp-opt input:checked + span{background:var(--green-bg);color:var(--green-text);border-color:var(--green-text)}
+.insp-opt.ng input:checked + span{background:var(--red-bg);color:var(--red-text);border-color:var(--red-text)}
