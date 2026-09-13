@@ -387,7 +387,8 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- 1日に複数回の運行（チャーターを午前・午後で別の取引先など）。
   -- 運行ごとに日報を分けると点呼記録まで分かれてしまうため、日報は1日1枚のままにして運行だけを配列で持つ。
   -- [{cli_id, cli_name, start, end, start_loc, end_loc,
-  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, note}]
+  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, km, note}]
+  --   km は運行ごとの距離（任意）。距離制の概算に使う。無ければその日の運行が1件のときだけ日報の走行距離で代用
   -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
   -- 月報・分析・CSV・印刷は従来どおりそちらを参照する。取引先は運行ごとに必須。
   -- [{cli_id, cli_name, start, end, start_loc, end_loc, qty_*, note,
@@ -485,14 +486,21 @@ CREATE TABLE IF NOT EXISTS file_mappings (
   default_type_by_month jsonb DEFAULT '{}'
 );
 
--- 取引先ごとの概算単価。日報の数量・時間から売上・支払の見込みを出すためのもの。
--- 請求書・支払明細書の金額とは別で、確定額ではない。売上・支払をそれぞれ jsonb で持つ。
---   sale = {"qty_takkyubin":170,"qty_nekopos":80,"qty_corp":1200,"qty_corp_pcs":0,
---           "qty_charter":15000,"qty_charter_pcs":0,"hour":0,"day":0}
+-- 取引先ごとの概算単価。日報の数量・時間・距離から売上・支払の見込みを出すためのもの。
+-- 請求書・支払明細書の金額とは別で、確定額ではない。
+-- 「段階＋超過」のルールの配列で持つ。時間制・距離制・個数単価・日当をすべて同じ型で書ける。
+--   rules = [
+--     {"measure":"km",
+--      "steps":[{"upto":20,"mode":"fixed","sale":5000,"pay":3500},      -- 〜20km は固定5,000
+--               {"upto":50,"mode":"per","per":5,"sale":500,"pay":350}], -- 20〜50km は5kmごと+500
+--      "over":{"per":10,"sale":1000,"pay":700}},                         -- 50km〜 は10kmごと+1,000
+--     {"measure":"qty_takkyubin","steps":[],"over":{"per":1,"sale":170,"pay":130}}  -- 1個170円
+--   ]
+--   measure: qty_takkyubin|qty_nekopos|qty_corp|qty_corp_pcs|qty_charter|qty_charter_pcs|hours|km|day
+--   fixed = ここまでの合計額（前の段階を置き換える）／ per = その区間に入った分だけ ◯ごとに上乗せ（切り上げ）
 CREATE TABLE IF NOT EXISTS client_rates (
   cli_id bigint PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
-  sale jsonb NOT NULL DEFAULT '{}'::jsonb,   -- 売上側（取引先に請求する見込み）の単価
-  pay  jsonb NOT NULL DEFAULT '{}'::jsonb,   -- 支払側（ドライバーへ支払う見込み）の単価
+  rules jsonb NOT NULL DEFAULT '[]'::jsonb,
   note text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );

@@ -2756,7 +2756,7 @@ function drResolveClient(name) {
 }
 
 // 運行の入力欄。追加・編集・取消で同じ並びを使う
-const DR_TRIP_INPUT_IDS = ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc',
+const DR_TRIP_INPUT_IDS = ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripKm',
    ...DR_QTY_ITEMS.map(q => q.input), 'drTripNote',
    'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
    'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
@@ -2804,6 +2804,8 @@ function collectDrTrip() {
     end_loc:   document.getElementById('drTripEndLoc').value.trim(),
     ...Object.fromEntries(DR_QTY_ITEMS.map(q =>
       [q.trip, +(document.getElementById(q.input)?.value) || 0])),
+    // 運行ごとの距離（任意）。距離制の概算に使う
+    km: (() => { const v = document.getElementById('drTripKm')?.value; return v === '' || v == null ? null : +v; })(),
     note: document.getElementById('drTripNote').value.trim(),
     /* 荷待ち・荷役は「集貨又は配達を行った地点ごと」の記録なので運行に持たせる。
        国土交通省の業務記録の様式例（貨物軽自動車運送事業者向け）に合わせている。 */
@@ -2850,6 +2852,7 @@ function editDrTrip(i) {
   put('drTripStartLoc', t.start_loc); put('drTripEndLoc', t.end_loc);
   // 0は空欄として戻す（0を入れ直させない）
   DR_QTY_ITEMS.forEach(q => put(q.input, t[q.trip] || ''));
+  put('drTripKm', t.km ?? '');
   put('drTripNote', t.note);
   const waitEl = document.getElementById('drTripWaitFlag');
   if (waitEl) waitEl.checked = !!t.wait;
@@ -2902,6 +2905,7 @@ function renderDrTrips() {
     .map(({t,i}) => {
       const sub = [
         (t.start_loc||t.end_loc) ? `${escHtml(t.start_loc||'?')} → ${escHtml(t.end_loc||'?')}` : '',
+        t.km != null ? `${t.km}km` : '',
         qty(t),
         t.wait  ? `⏳荷待ち ${escHtml(t.wait.arrive||'')}〜${escHtml(t.wait.depart||'')}` : '',
         t.cargo ? `📦荷役${escHtml(t.cargo.desc ? '（'+t.cargo.desc+'）' : '')}` : '',

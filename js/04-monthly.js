@@ -38,22 +38,24 @@ const MR_COLS = [
   {key:'status',   label:'状態',        def:true,  align:'center', pw:8,  get:r=>r.status==='rejected'?'差戻し':''},
   {key:'note',     label:'備考',        def:true,  align:'left',   pw:14, screen:true, print:false, get:r=>escHtml(r.note||'')},
 ];
-/* ===== 取引先ごとの概算単価 =====
-   日報の数量・時間から売上・支払の見込みを出す。請求書・支払明細書とは別で確定額ではない。
-   単価の項目は日報の数量欄(DR_QTY_ITEMS)と同じ並びに、時間制と日当を足したもの。
-   管理側の月報だけで使う。ドライバー側の月報には出さない（単価の表 client_rates も
-   社内しか読めない） */
-const CLIENT_RATE_ITEMS = [
-  {key:'qty_takkyubin',   label:'宅配便',     unit:'個'},
-  {key:'qty_nekopos',     label:'ポスト便',   unit:'個'},
-  {key:'qty_corp',        label:'企業集配',   unit:'件'},
-  {key:'qty_corp_pcs',    label:'企業集配',   unit:'個'},
-  {key:'qty_charter',     label:'チャーター', unit:'件'},
-  {key:'qty_charter_pcs', label:'チャーター', unit:'個'},
-  {key:'hour',            label:'時間制',     unit:'時間'},
-  {key:'day',             label:'日当',       unit:'日'},
+/* ===== 取引先ごとの概算単価（段階＋超過のルール） =====
+   日報の数量・時間・距離から売上・支払の見込みを出す。請求書・支払明細書とは別で確定額ではない。
+   時間制（4時間まで固定、以降30分ごと加算）も距離制（20kmまで固定、20〜50kmは5kmごと加算…）も
+   個数単価も日当も、すべて「対象 ＋ 段階[] ＋ 超過」の同じ型で書ける。
+     measure … 何に掛けるか（日報の数量欄と同じ鍵、hours=時間、km=距離、day=日）
+     steps   … {upto, mode:'fixed'|'per', per, sale, pay}
+                fixed = ここまでの合計額（前の段階を置き換える）
+                per   = その区間に入った分だけ ◯ごとに上乗せ（切り上げ）
+     over    … 最後の段階を超えた分の {per, sale, pay}
+   管理側の月報だけで使う。ドライバー側の月報には出さない（client_rates は社内しか読めない） */
+const RATE_MEASURES = [
+  ...DR_QTY_ITEMS.map(q => ({key:q.key, trip:q.trip, label:`${q.label}（${q.unit}）`, unit:q.unit})),
+  {key:'hours', label:'時間',       unit:'時間'},
+  {key:'km',    label:'距離',       unit:'km'},
+  {key:'day',   label:'日（日当）', unit:'日'},
 ];
-let clientRates = {};        // cli_id -> {sale:{}, pay:{}, note}
+const rateMeasure = key => RATE_MEASURES.find(m => m.key === key);
+let clientRates = {};        // cli_id -> {rules:[], note}
 let clientRatesLoaded = false;
 async function loadClientRates(force) {
   if (!sb || (clientRatesLoaded && !force)) return;
@@ -61,57 +63,136 @@ async function loadClientRates(force) {
     const {data, error} = await fetchAllRows(() => sb.from('client_rates').select('*'));
     if (error) { if (/does not exist|relation/.test(error.message)) { clientRates = {}; clientRatesLoaded = true; return; } throw error; }
     clientRates = {};
-    (data || []).forEach(r => { clientRates[r.cli_id] = { sale: r.sale || {}, pay: r.pay || {}, note: r.note || '' }; });
+    (data || []).forEach(r => { clientRates[r.cli_id] = { rules: Array.isArray(r.rules) ? r.rules : [], note: r.note || '' }; });
     clientRatesLoaded = true;
   } catch(e) { console.warn('loadClientRates:', e.message); }
 }
 
-// ---- 取引先の編集画面「概算単価」タブ ----
-function renderClientRatesTab() {
-  const body = document.getElementById('cRatesBody');
-  if (!body || body.dataset.built) return;
-  body.innerHTML = CLIENT_RATE_ITEMS.map(it => `
-    <tr>
-      <td style="padding:4px 6px;border-bottom:0.5px solid var(--border);white-space:nowrap">${it.label}<span style="color:var(--text2)">（円/${it.unit}）</span></td>
-      <td style="padding:3px 6px;border-bottom:0.5px solid var(--border)"><input type="number" id="cRateSale_${it.key}" min="0" placeholder="—" style="width:100%;text-align:right;padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></td>
-      <td style="padding:3px 6px;border-bottom:0.5px solid var(--border)"><input type="number" id="cRatePay_${it.key}"  min="0" placeholder="—" style="width:100%;text-align:right;padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></td>
-    </tr>`).join('');
-  body.dataset.built = '1';
+// ---- ルール1本ぶんの計算 ----
+/* value に対して、段階を順に見ていく。
+   fixed の段階は「ここまでの合計」なので金額を置き換え、per の段階は区間に入った分だけ上乗せする。
+   最後の段階を超えた分は over で上乗せする。端数は切り上げ（35分は「30分ごと」を2回分） */
+function calcRateRule(rule, value, side) {
+  if (value == null || !(value > 0)) return 0;
+  const ceilDiv = (a, b) => Math.ceil(a / b - 1e-9);
+  let amount = 0, prev = 0, done = false;
+  const steps = (rule.steps || []).filter(st => +st.upto > 0).sort((a, b) => +a.upto - +b.upto);
+  for (const st of steps) {
+    const price = +st[side] || 0;
+    if (st.mode === 'per') {
+      const per = +st.per || 0;
+      const portion = Math.min(value, +st.upto) - prev;
+      if (per > 0 && portion > 0) amount += ceilDiv(portion, per) * price;
+    } else {
+      amount = price;
+    }
+    prev = +st.upto;
+    if (value <= +st.upto) { done = true; break; }
+  }
+  const over = rule.over || {};
+  if (!done && +over.per > 0) amount += ceilDiv(value - prev, +over.per) * (+over[side] || 0);
+  return amount;
 }
-// 編集画面に単価を入れる（新規なら空）
-async function fillClientRatesTab(cliId) {
-  renderClientRatesTab();
-  if (cliId != null) await loadClientRates();
-  const r = (cliId != null && clientRates[cliId]) || { sale:{}, pay:{}, note:'' };
-  CLIENT_RATE_ITEMS.forEach(it => {
-    const s = document.getElementById(`cRateSale_${it.key}`), p = document.getElementById(`cRatePay_${it.key}`);
-    if (s) s.value = r.sale[it.key] ?? '';
-    if (p) p.value = r.pay[it.key]  ?? '';
+
+// ---- 編集画面（取引先の「概算単価」タブ）----
+let cliRulesDraft = [];   // 編集中のルール。入力欄から読み直して保存する
+function newRateRule(measure) { return { measure: measure || 'qty_takkyubin', steps: [], over: { per: 1, sale: null, pay: null } }; }
+const RATE_INP = 'style="width:70px;text-align:right;padding:3px 5px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"';
+function renderClientRatesTab() {
+  const box = document.getElementById('cRatesRules');
+  if (!box) return;
+  if (!cliRulesDraft.length) {
+    box.innerHTML = '<div style="font-size:11px;color:var(--text2);padding:8px 0">ルールはまだありません。「＋ ルールを追加」で作ってください</div>';
+    return;
+  }
+  box.innerHTML = cliRulesDraft.map((rule, ri) => {
+    const m = rateMeasure(rule.measure) || RATE_MEASURES[0];
+    const unit = m.unit;
+    const measureOpts = RATE_MEASURES.map(x => `<option value="${x.key}" ${x.key===rule.measure?'selected':''}>${x.label}</option>`).join('');
+    const stepRows = (rule.steps || []).map((st, si) => `
+      <tr>
+        <td style="padding:2px 4px;white-space:nowrap">〜 <input type="number" min="0" step="any" value="${st.upto ?? ''}" data-r="${ri}" data-s="${si}" data-f="upto" oninput="rateRuleRead()" ${RATE_INP}> ${unit}まで</td>
+        <td style="padding:2px 4px;white-space:nowrap">
+          <select data-r="${ri}" data-s="${si}" data-f="mode" onchange="rateRuleRead();renderClientRatesTab()" style="padding:3px 4px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+            <option value="fixed" ${st.mode!=='per'?'selected':''}>固定額</option>
+            <option value="per" ${st.mode==='per'?'selected':''}>◯ごと加算</option>
+          </select>
+          ${st.mode==='per' ? `<input type="number" min="0" step="any" value="${st.per ?? ''}" data-r="${ri}" data-s="${si}" data-f="per" oninput="rateRuleRead()" ${RATE_INP}> ${unit}ごと` : ''}
+        </td>
+        <td style="padding:2px 4px"><input type="number" min="0" value="${st.sale ?? ''}" data-r="${ri}" data-s="${si}" data-f="sale" oninput="rateRuleRead()" placeholder="—" ${RATE_INP}></td>
+        <td style="padding:2px 4px"><input type="number" min="0" value="${st.pay ?? ''}" data-r="${ri}" data-s="${si}" data-f="pay" oninput="rateRuleRead()" placeholder="—" ${RATE_INP}></td>
+        <td style="padding:2px 4px"><button type="button" class="ibtn" onclick="rateStepRemove(${ri},${si})" title="この段階を消す">－</button></td>
+      </tr>`).join('');
+    const ov = rule.over || {};
+    const overLabel = (rule.steps || []).length ? '超過' : '単価';
+    return `<div style="border:0.5px solid var(--border);border-radius:var(--radius);padding:8px;margin-bottom:8px;background:var(--bg2)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:600;white-space:nowrap">ルール${ri+1}</span>
+        <span style="font-size:11px;color:var(--text2)">対象</span>
+        <select data-r="${ri}" data-f="measure" onchange="rateRuleRead();renderClientRatesTab()" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">${measureOpts}</select>
+        <button type="button" class="ibtn" style="margin-left:auto;color:var(--red-text)" onclick="rateRuleRemove(${ri})" title="このルールを消す">🗑</button>
+      </div>
+      <div style="overflow-x:auto">
+      <table style="border-collapse:collapse;font-size:11.5px;width:100%">
+        <thead><tr style="color:var(--text2);font-size:10px"><th style="text-align:left;padding:2px 4px">区間</th><th style="text-align:left;padding:2px 4px">種類</th><th style="padding:2px 4px">売上（請求）</th><th style="padding:2px 4px">支払（ドライバー）</th><th></th></tr></thead>
+        <tbody>
+          ${stepRows}
+          <tr><td colspan="5" style="padding:2px 4px"><button type="button" class="btn sml" onclick="rateStepAdd(${ri})">＋ 段階を追加</button></td></tr>
+          <tr style="border-top:0.5px solid var(--border)">
+            <td style="padding:4px 4px;font-weight:600;white-space:nowrap">${overLabel}</td>
+            <td style="padding:2px 4px;white-space:nowrap"><input type="number" min="0" step="any" value="${ov.per ?? 1}" data-r="${ri}" data-s="over" data-f="per" oninput="rateRuleRead()" ${RATE_INP}> ${unit}ごと</td>
+            <td style="padding:2px 4px"><input type="number" min="0" value="${ov.sale ?? ''}" data-r="${ri}" data-s="over" data-f="sale" oninput="rateRuleRead()" placeholder="—" ${RATE_INP}></td>
+            <td style="padding:2px 4px"><input type="number" min="0" value="${ov.pay ?? ''}" data-r="${ri}" data-s="over" data-f="pay" oninput="rateRuleRead()" placeholder="—" ${RATE_INP}></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+// 入力欄の内容を cliRulesDraft に読み戻す（再描画の前に必ず呼ぶ）
+function rateRuleRead() {
+  document.querySelectorAll('#cRatesRules [data-r]').forEach(el => {
+    const rule = cliRulesDraft[+el.dataset.r]; if (!rule) return;
+    const f = el.dataset.f, s = el.dataset.s;
+    const num = v => (v === '' || v == null) ? null : +v;
+    if (s == null) { if (f === 'measure') rule.measure = el.value; return; }
+    const target = s === 'over' ? (rule.over = rule.over || {}) : rule.steps[+s];
+    if (!target) return;
+    if (f === 'mode') target.mode = el.value; else target[f] = num(el.value);
   });
+}
+function rateRuleAdd() { rateRuleRead(); cliRulesDraft.push(newRateRule()); renderClientRatesTab(); }
+function rateRuleRemove(ri) { rateRuleRead(); cliRulesDraft.splice(ri, 1); renderClientRatesTab(); }
+function rateStepAdd(ri) { rateRuleRead(); (cliRulesDraft[ri].steps = cliRulesDraft[ri].steps || []).push({ upto: null, mode: 'fixed', sale: null, pay: null }); renderClientRatesTab(); }
+function rateStepRemove(ri, si) { rateRuleRead(); cliRulesDraft[ri].steps.splice(si, 1); renderClientRatesTab(); }
+// 編集画面にルールを入れる（新規なら空）
+async function fillClientRatesTab(cliId) {
+  if (cliId != null) await loadClientRates();
+  const r = (cliId != null && clientRates[cliId]) || { rules: [], note: '' };
+  cliRulesDraft = JSON.parse(JSON.stringify(r.rules || []));
+  renderClientRatesTab();
   const n = document.getElementById('cRatesNote'); if (n) n.value = r.note || '';
 }
-// 取引先の保存に合わせて単価も保存する。全部空なら行を作らない
+// 取引先の保存に合わせてルールも保存する。空欄だけのルールは捨て、何も無ければ行を作らない
 async function saveClientRates(cliId) {
   if (!sb || cliId == null) return;
-  const pick = prefix => {
-    const o = {};
-    CLIENT_RATE_ITEMS.forEach(it => {
-      const v = document.getElementById(`${prefix}_${it.key}`)?.value;
-      if (v !== '' && v != null && !isNaN(+v)) o[it.key] = +v;
-    });
-    return o;
-  };
-  const sale = pick('cRateSale'), pay = pick('cRatePay');
+  rateRuleRead();
+  const rules = cliRulesDraft.map(rule => ({
+    measure: rule.measure,
+    steps: (rule.steps || []).filter(st => +st.upto > 0).map(st => ({ upto:+st.upto, mode: st.mode==='per'?'per':'fixed', per: st.mode==='per' ? (+st.per||0) : undefined, sale:+st.sale||0, pay:+st.pay||0 })),
+    over: (+rule.over?.per > 0 && (+rule.over?.sale || +rule.over?.pay)) ? { per:+rule.over.per, sale:+rule.over.sale||0, pay:+rule.over.pay||0 } : null,
+  })).filter(rule => rule.steps.length || rule.over);
   const note = document.getElementById('cRatesNote')?.value.trim() || null;
-  const empty = !Object.keys(sale).length && !Object.keys(pay).length && !note;
   try {
-    if (empty) {
+    if (!rules.length && !note) {
       if (clientRates[cliId]) { await sb.from('client_rates').delete().eq('cli_id', cliId); delete clientRates[cliId]; }
       return;
     }
-    const {error} = await sb.from('client_rates').upsert({ cli_id: cliId, sale, pay, note, updated_at: new Date().toISOString() });
+    const {error} = await sb.from('client_rates').upsert({ cli_id: cliId, rules, note, updated_at: new Date().toISOString() });
     if (error) throw error;
-    clientRates[cliId] = { sale, pay, note: note || '' };
+    clientRates[cliId] = { rules, note: note || '' };
   } catch(e) { showT('概算単価の保存エラー: ' + e.message, 'ter'); }
 }
 
@@ -124,31 +205,38 @@ function tripHours(t) {
   return ((b - a + 24*60) % (24*60)) / 60;
 }
 /* 日報の一覧から売上・支払の見込みを出す。
-   運行ごとに 数量×単価 と 時間×時間単価 を足し、日当は「取引先×日×ドライバー」で1回だけ足す
-   （同じ人が同じ日に同じ取引先へ2回行っても1日分。別の人なら別に数える）。
-   単価が無い取引先・取引先未登録の運行は数えず、件数だけ返す（画面で「単価未設定」と出す） */
+   運行ごとに、その取引先のルールを全部当てて足す。
+   日当は「取引先×日×ドライバー」で1回だけ（同じ人が同じ日に同じ取引先へ2回行っても1日分）。
+   距離は運行ごとの km を使い、無ければその日の運行が1件のときだけ日報の走行距離で代用する。
+   単価が無い取引先・取引先未登録の運行は数えず、件数だけ返す */
 function estimateReports(reports) {
-  const out = { sale: 0, pay: 0, unpriced: 0, byClient: {} };
-  const dayCharged = new Set();   // 日当の二重計上を防ぐ
+  const out = { sale: 0, pay: 0, unpriced: 0, noKm: 0, byClient: {} };
+  const dayCharged = new Set();
   (reports || []).forEach(r => {
     const drvKey = recDrv(r)?.id ?? r.car ?? '';
-    dailyTrips(r).forEach(t => {
+    const trips = dailyTrips(r);
+    trips.forEach(t => {
       const cliId = t.cli_id;
       const rate = cliId != null ? clientRates[cliId] : null;
-      if (!rate) { out.unpriced++; return; }
+      if (!rate || !rate.rules?.length) { out.unpriced++; return; }
+      const km = t.km != null ? +t.km : (trips.length === 1 ? (+r.distance_km || null) : null);
       const hours = tripHours(t);
-      const calc = (side) => {
-        const rt = rate[side] || {};
-        let v = 0;
-        DR_QTY_ITEMS.forEach(q => { v += (+t[q.trip] || 0) * (+rt[q.key] || 0); });
-        v += hours * (+rt.hour || 0);
-        if (+rt.day) {
-          const k = `${cliId}|${r.date}|${drvKey}|${side}`;
-          if (!dayCharged.has(k)) { dayCharged.add(k); v += +rt.day; }
+      let sale = 0, pay = 0;
+      rate.rules.forEach(rule => {
+        const m = rateMeasure(rule.measure);
+        if (!m) return;
+        let value;
+        if (rule.measure === 'hours') value = hours;
+        else if (rule.measure === 'km') { if (km == null) { out.noKm++; return; } value = km; }
+        else if (rule.measure === 'day') {
+          const k = `${cliId}|${r.date}|${drvKey}`;
+          if (dayCharged.has(k)) return;
+          dayCharged.add(k); value = 1;
         }
-        return v;
-      };
-      const sale = calc('sale'), pay = calc('pay');
+        else value = +t[m.trip] || 0;
+        sale += calcRateRule(rule, value, 'sale');
+        pay  += calcRateRule(rule, value, 'pay');
+      });
       out.sale += sale; out.pay += pay;
       const c = out.byClient[cliId] || (out.byClient[cliId] = { name: lkCliAny(cliId)?.name || t.cli_name || '', sale: 0, pay: 0 });
       c.sale += sale; c.pay += pay;
@@ -582,7 +670,7 @@ async function renderMonthlyReport() {
       return `<div class="kpi-card" title="日報の数量・時間×取引先ごとの概算単価。確定額ではありません">
         <div class="kpi-label">概算（確定ではありません）</div>
         <div class="kpi-val" style="font-size:13px">売上 ${yenR(est.sale)}<br>支払 ${yenR(est.pay)}</div>
-        <div class="kpi-diff kpi-eq">差 ${yenR(est.sale - est.pay)}${est.unpriced?` ／ <span style="color:var(--amber-text)">単価未設定 ${est.unpriced}運行</span>`:''}</div></div>`;
+        <div class="kpi-diff kpi-eq">差 ${yenR(est.sale - est.pay)}${est.unpriced?` ／ <span style="color:var(--amber-text)">単価未設定 ${est.unpriced}運行</span>`:''}${est.noKm?` ／ <span style="color:var(--amber-text)">距離未入力 ${est.noKm}運行</span>`:''}</div></div>`;
     })()}
   `;
 
@@ -767,6 +855,7 @@ function renderMrCards() {
               </div>
               ${rows}
               ${est.unpriced?`<div style="font-size:10px;color:var(--amber-text);margin-top:3px">単価未設定の運行 ${est.unpriced}件は含めていません（取引先の編集画面「概算単価」で設定できます）</div>`:''}
+              ${est.noKm?`<div style="font-size:10px;color:var(--amber-text);margin-top:3px">距離未入力の運行 ${est.noKm}件は距離の料金を含めていません（運行ごとの距離を入れると出ます）</div>`:''}
             </div>`;
           })()}
           <!-- アルコール・健康 -->
