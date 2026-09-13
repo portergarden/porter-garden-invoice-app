@@ -4195,20 +4195,24 @@ function docPreviewOpen(title){
    値は「今月からのずれ」（0=今月, -1=前月, -2=前々月, 1=翌月）。
    以前は13か所に「今月」「前月」の計算が散っていて、それぞれの決め方を変えられなかった */
 const MONTH_DEFAULT_PAGES = [
-  {key:'aggInv',     label:'請求明細書作成（集計期間）', def:-1},
-  {key:'aggPay',     label:'支払明細書作成（集計期間）', def:-1},
-  {key:'pay',        label:'支払明細書の発行',          def:-1},
-  {key:'close',      label:'月次締め',                  def:-1},
-  {key:'mr',         label:'月報',                      def:-1},
-  {key:'sched',      label:'入金スケジュール',          def:-1},
-  {key:'receipt',    label:'支払スケジュール',          def:-1},
-  {key:'bp',         label:'送付管理（タスク管理）',    def:-1},
-  {key:'tt',         label:'タスクTOP',                 def:-1},
-  {key:'dp',         label:'支払明細書の進行',          def:-1},
-  {key:'daily',      label:'日報管理',                  def:0},
-  {key:'cal',        label:'稼働カレンダー',            def:0},
-  {key:'staffSched', label:'予定管理',                  def:0},
+  // who: 'staff'=社内の画面 / 'driver'=ドライバー画面。設定画面には自分の役割ぶんだけ出す
+  {key:'aggInv',     label:'請求明細書作成（集計期間）', def:-1, who:'staff'},
+  {key:'aggPay',     label:'支払明細書作成（集計期間）', def:-1, who:'staff'},
+  {key:'pay',        label:'支払明細書の発行',          def:-1, who:'staff'},
+  {key:'close',      label:'月次締め',                  def:-1, who:'staff'},
+  {key:'mr',         label:'月報',                      def:-1, who:'staff'},
+  {key:'sched',      label:'入金スケジュール',          def:-1, who:'staff'},
+  {key:'receipt',    label:'支払スケジュール',          def:-1, who:'staff'},
+  {key:'bp',         label:'送付管理（タスク管理）',    def:-1, who:'staff'},
+  {key:'tt',         label:'タスクTOP',                 def:-1, who:'staff'},
+  {key:'dp',         label:'支払明細書の進行',          def:-1, who:'staff'},
+  {key:'daily',      label:'日報管理',                  def:0,  who:'staff'},
+  {key:'cal',        label:'稼働カレンダー',            def:0,  who:'staff'},
+  {key:'staffSched', label:'予定管理',                  def:0,  who:'staff'},
+  {key:'drvDaily',   label:'日報（ドライバー画面）',    def:0,  who:'driver'},
+  {key:'drvMr',      label:'月報（ドライバー画面）',    def:0,  who:'driver'},
 ];
+const monthDefaultPagesForMe = () => MONTH_DEFAULT_PAGES.filter(p => p.who === (me?.role === 'driver' ? 'driver' : 'staff'));
 const MONTH_OFFSET_LABEL = {'-2':'前々月', '-1':'前月', '0':'今月', '1':'翌月'};
 function monthOffsetFor(key) {
   const page = MONTH_DEFAULT_PAGES.find(x => x.key === key);
@@ -4236,7 +4240,7 @@ function applyMonthDefaultsOnLogin() {
 function openMonthDefaultsM() {
   const body = document.getElementById('mdRows');
   if (!body) return;
-  body.innerHTML = MONTH_DEFAULT_PAGES.map(p => {
+  body.innerHTML = monthDefaultPagesForMe().map(p => {
     const cur = monthOffsetFor(p.key);
     const opts = [-2,-1,0,1].map(v => `<option value="${v}" ${v===cur?'selected':''}>${MONTH_OFFSET_LABEL[String(v)]}</option>`).join('');
     return `<tr>
@@ -4250,9 +4254,11 @@ function openMonthDefaultsM() {
 }
 async function saveMonthDefaults() {
   if (!me) return;
-  // 既定と同じ値は保存しない（既定を変えたときに追随できるように）
+  // 既定と同じ値は保存しない（既定を変えたときに追随できるように）。
+  // 画面に出していない役割ぶんの設定は、そのまま持ち越す
   const obj = {};
-  MONTH_DEFAULT_PAGES.forEach(p => {
+  Object.entries(me.month_defaults || {}).forEach(([k, v]) => { if (!document.getElementById(`md_${k}`)) obj[k] = v; });
+  monthDefaultPagesForMe().forEach(p => {
     const v = +document.getElementById(`md_${p.key}`)?.value;
     if ([-2,-1,0,1].includes(v) && v !== p.def) obj[p.key] = v;
   });
@@ -4267,13 +4273,16 @@ async function saveMonthDefaults() {
     ['aggInvFrom','aggInvTo','aggPayFrom','aggPayTo','payFrom','payTo','closeFrom','closeTo','mrFrom','mrTo',
      'schedGenMonth','receiptGenMonth','bpMonth','ttMonth','dpMonth','drListFrom','drListTo']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // ドライバー画面の月はその場で入れ替える（開いたままの画面なので）
+    const dm = document.getElementById('drvDailyMonth'); if (dm) dm.value = defaultMonthRange('drvDaily').ym;
+    const mm = document.getElementById('drvMrMonth');    if (mm) mm.value = defaultMonthRange('drvMr').ym;
     closeM('mMonthDefaults');
     showT('初期表示月を保存しました。各画面を開き直すと反映されます');
   } catch(e) { showT('保存エラー: ' + e.message, 'ter'); }
   showLoad(false);
 }
 function resetMonthDefaults() {
-  MONTH_DEFAULT_PAGES.forEach(p => { const el = document.getElementById(`md_${p.key}`); if (el) el.value = String(p.def); });
+  monthDefaultPagesForMe().forEach(p => { const el = document.getElementById(`md_${p.key}`); if (el) el.value = String(p.def); });
 }
 
 /* ===== 印刷用の書類をスマホ画面に収める =====

@@ -32,13 +32,11 @@ function applyDriverPortal() {
   document.getElementById('drvPortalName').textContent = me.name || '';
   document.getElementById('drvPortalBdg').textContent = 'ドライバー';
 
-  // 初期ページ
-  const now = new Date();
-  const thisM = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  // 初期ページ。月は本人の初期表示月の設定に従う（既定は今月）
   const drvMrEl = document.getElementById('drvMrMonth');
-  if (drvMrEl) drvMrEl.value = thisM;
+  if (drvMrEl) drvMrEl.value = defaultMonthRange('drvMr').ym;
   const drvDmEl = document.getElementById('drvDailyMonth');
-  if (drvDmEl) drvDmEl.value = thisM;
+  if (drvDmEl) drvDmEl.value = defaultMonthRange('drvDaily').ym;
 
   const hideStatement = shouldHideStatement(me?.driver_data);
   const stmtTabEl = document.getElementById('dnt2');
