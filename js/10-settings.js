@@ -1434,6 +1434,28 @@ $function$;
 REVOKE EXECUTE ON FUNCTION public.set_my_schedule_color(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_my_schedule_color(text) TO authenticated;
 
+-- ページごとの初期表示月をアカウントごとに持つ。値は「今月からのずれ」（0=今月, -1=前月, -2=前々月, 1=翌月）
+--   {"mr": -1, "daily": 0}
+ALTER TABLE users ADD COLUMN IF NOT EXISTS month_defaults jsonb;
+-- 本人が自分の設定だけを書ける関数（set_my_schedule_color と同じ作り）。値は -2〜1 の整数だけ通す
+CREATE OR REPLACE FUNCTION public.set_my_month_defaults(p jsonb)
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE v_id text; v_key text; v_val jsonb;
+BEGIN
+  SELECT id INTO v_id FROM users WHERE auth_uid = auth.uid();
+  IF v_id IS NULL THEN RAISE EXCEPTION 'not_logged_in'; END IF;
+  IF p IS NOT NULL THEN
+    IF jsonb_typeof(p) <> 'object' THEN RAISE EXCEPTION 'invalid_format'; END IF;
+    FOR v_key, v_val IN SELECT * FROM jsonb_each(p) LOOP
+      IF jsonb_typeof(v_val) <> 'number' OR (v_val::text)::numeric NOT IN (-2, -1, 0, 1) THEN RAISE EXCEPTION 'invalid_value'; END IF;
+    END LOOP;
+  END IF;
+  UPDATE users SET month_defaults = p WHERE id = v_id;
+  RETURN v_id;
+END; $function$;
+REVOKE EXECUTE ON FUNCTION public.set_my_month_defaults(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_my_month_defaults(jsonb) TO authenticated;
+
 -- ============================================================
 -- 5. 最初のadminユーザー登録（1回だけ手動実行）
 --    事前にDashboard > Authenticationで管理者用アカウントを作成し、

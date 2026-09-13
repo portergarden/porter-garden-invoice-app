@@ -1002,7 +1002,7 @@ function buildPayCsvRow(r, d, payDate, idx) {
 }
 
 function renderPayCore() {
-  ensureMonthRangeDefault('payFrom', 'payTo');
+  ensureMonthRangeDefault('payFrom', 'payTo', 'pay');
   paySelectedMonth = (document.getElementById('payFrom')?.value || '').slice(0,7);
 
   const pd = document.getElementById('payDateInput');

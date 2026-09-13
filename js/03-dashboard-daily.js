@@ -589,8 +589,7 @@ let bpLoadedMonth = null;
 function bpCurrentMonth() {
   const el = document.getElementById('bpMonth');
   if (el?.value) return el.value;
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+  return defaultMonthRange('bp').ym;
 }
 function bpShiftMonth(delta) {
   const [y,m] = bpCurrentMonth().split('-').map(Number);
@@ -606,12 +605,8 @@ function onBpMonthChange(){ loadBillingProgress().then(()=>renderBillingProgress
 
 async function initBillingProgress() {
   const el = document.getElementById('bpMonth');
-  if (el && !el.value) {
-    // 請求業務は前月分を当月に処理することが多いため、既定は前月にしておく
-    const n = new Date();
-    const d = new Date(n.getFullYear(), n.getMonth()-1, 1);
-    el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  }
+  // 請求業務は前月分を当月に処理することが多いため既定は前月。ユーザー設定で変えられる
+  if (el && !el.value) el.value = defaultMonthRange('bp').ym;
 }
 async function loadBillingProgress() {
   if (!sb) return;
@@ -1496,9 +1491,7 @@ async function deletePersonalTask() {
 function ttCurrentMonth() {
   const el = document.getElementById('ttMonth');
   if (el?.value) return el.value;
-  const n = new Date();
-  const d = new Date(n.getFullYear(), n.getMonth()-1, 1);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  return defaultMonthRange('tt').ym;
 }
 function taskTopShiftMonth(delta) {
   const el = document.getElementById('ttMonth');
@@ -1647,8 +1640,7 @@ const dpRow = cliId => driverProgress.find(d => String(d.cli_id) === String(cliI
 function dpCurrentMonth() {
   const el = document.getElementById('dpMonth');
   if (el?.value) return el.value;
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+  return defaultMonthRange('dp').ym;
 }
 function dpShiftMonth(delta) {
   const el = document.getElementById('dpMonth');
@@ -1660,12 +1652,8 @@ function dpShiftMonth(delta) {
 function onDpMonthChange() { loadDriverProgress().then(() => renderDriverProgress()); }
 function initDriverProgress() {
   const el = document.getElementById('dpMonth');
-  if (el && !el.value) {
-    // 支払業務も前月分を当月に処理することが多いため、既定は前月にする
-    const n = new Date();
-    const d = new Date(n.getFullYear(), n.getMonth()-1, 1);
-    el.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  }
+  // 支払業務も前月分を当月に処理することが多いため既定は前月。ユーザー設定で変えられる
+  if (el && !el.value) el.value = defaultMonthRange('dp').ym;
   const btn = document.getElementById('dpAddBtn');
   if (btn) btn.classList.toggle('hide', !(me && me.role !== 'viewer'));
 }
@@ -3916,15 +3904,15 @@ function _setDailyListMonth() {
   const fromEl = document.getElementById('drListFrom');
   const toEl = document.getElementById('drListTo');
   if (fromEl && toEl && !fromEl.value) {
-    const now = new Date();
-    fromEl.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
-    toEl.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth()+1, 0));
+    const r = defaultMonthRange('daily');
+    fromEl.value = fmtLocalDate(r.first);
+    toEl.value = fmtLocalDate(r.last);
   }
 }
 
 /* ===== ⑥ 月次締め処理 ===== */
 function initClose() {
-  ensureMonthRangeDefault('closeFrom', 'closeTo');
+  ensureMonthRangeDefault('closeFrom', 'closeTo', 'close');
 }
 
 function runClosePreview() {

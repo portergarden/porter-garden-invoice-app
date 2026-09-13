@@ -158,6 +158,7 @@ try {
       <span id="tbName"></span><span id="tbBdg"></span>
       <button class="ibtn" onclick="reloadApp()" title="最新の状態に更新">🔄</button>
       <button class="ibtn" onclick="openChangePwM()" title="パスワードを変更">🔑</button>
+      <button class="ibtn" onclick="openMonthDefaultsM()" title="初期表示月（各画面を開いたときに出る月）を自分用に設定">🗓</button>
       <button class="ibtn" id="themeToggleBtn" onclick="toggleTheme()" title="ダーク/ライトモード切替"></button>
       <button class="btn sml" onclick="logout()">ログアウト</button>
     </div>
@@ -3128,6 +3129,31 @@ try {
   </div>
 </div>
 
+<!-- モーダル: 初期表示月（各画面を開いたときに出る月を、アカウントごとに設定） -->
+<div class="overlay" id="mMonthDefaults">
+  <div class="modal" style="width:460px;max-width:95vw">
+    <div class="mh">🗓 初期表示月の設定 <button class="ibtn" onclick="closeM('mMonthDefaults')">✕</button></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px;line-height:1.5">
+      各画面を開いたときに最初に出る月です。<b>このアカウントだけ</b>に効きます。<br>
+      請求まわりは前月、日々の業務は今月、が既定です。
+    </div>
+    <div style="max-height:52vh;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--bg2)">
+          <th style="padding:5px 8px;text-align:left;border-bottom:0.5px solid var(--border)">画面</th>
+          <th style="padding:5px 8px;text-align:right;border-bottom:0.5px solid var(--border);width:110px">初期表示月</th>
+        </tr></thead>
+        <tbody id="mdRows"></tbody>
+      </table>
+    </div>
+    <div class="mfoot">
+      <button class="btn" style="margin-right:auto" onclick="resetMonthDefaults()">既定に戻す</button>
+      <button class="btn" onclick="closeM('mMonthDefaults')">キャンセル</button>
+      <button class="btn pri" onclick="saveMonthDefaults()">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: パスワード変更（本人が任意のタイミングで変更する場合。強制変更(mForcePw)とは別で、閉じるボタンあり） -->
 <div class="overlay" id="mChangePw">
   <div class="modal" style="width:360px">
@@ -3217,9 +3243,9 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=3fc35b4d"></script>
+<script src="js/01-core.js?v=22dc33d9"></script>
 
-<script src="js/02-drivers-pay.js?v=97e29d39"></script>
+<script src="js/02-drivers-pay.js?v=6444a9ad"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
@@ -3272,10 +3298,10 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=f7497623"></script>
+<script src="js/03-dashboard-daily.js?v=33d6f043"></script>
 
 
-<script src="js/04-monthly.js?v=d7c4c67a"></script>
+<script src="js/04-monthly.js?v=e3e75195"></script>
 
 
 <script src="js/05-driver-portal.js?v=b0f31d31"></script>
@@ -3285,7 +3311,7 @@ try {
 <script src="js/06-schedules.js?v=11a82047"></script>
 
 
-<script src="js/07-order-entry.js?v=b6ab5510"></script>
+<script src="js/07-order-entry.js?v=bcc81431"></script>
 
 
 <script src="js/08-templates.js?v=40a7203e"></script>
@@ -3293,7 +3319,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=560e735a"></script>
+<script src="js/10-settings.js?v=29ad1418"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

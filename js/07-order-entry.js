@@ -591,14 +591,15 @@ function singleMonthShift(id, dir, cb) {
 }
 
 // ===== 集計期間ピッカー共通ヘルパー（請求明細書作成の集計期間と同じ方式をシステム全体で採用） =====
-// 値が未設定の場合のみ前月1日〜末日を既定値としてセット（受注入力タブ以外は前月分を扱うことが多いため）
-function ensureMonthRangeDefault(fromId, toId) {
+// 値が未設定の場合のみ、その画面の初期表示月（ユーザー設定。既定は前月）の1日〜末日をセットことが多いため）
+function ensureMonthRangeDefault(fromId, toId, pageKey) {
   const fromEl = document.getElementById(fromId);
   const toEl = document.getElementById(toId);
   if (fromEl && toEl && !fromEl.value) {
-    const now = new Date();
-    fromEl.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth()-1, 1));
-    toEl.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 0));
+    // pageKey が無い呼び出しは従来どおり前月
+    const r = pageKey ? defaultMonthRange(pageKey) : (() => { const n = new Date(); return { first: new Date(n.getFullYear(), n.getMonth()-1, 1), last: new Date(n.getFullYear(), n.getMonth(), 0) }; })();
+    fromEl.value = fmtLocalDate(r.first);
+    toEl.value = fmtLocalDate(r.last);
   }
 }
 // 日付範囲ピッカーを月単位で前後にシフトし、任意でコールバックを実行
@@ -623,15 +624,13 @@ function monthToRange(ym) {
 function initAggInv() {
   // 取引先複数選択ドロップダウンを埋める
   initMSelClients('aggInvCli');
-  // 常に前月1日〜末日を自動セット（タブを開くたびに前月にリセット）
+  // 開くたびに初期表示月（ユーザー設定。既定は前月）の1日〜末日へ戻す
   const fromEl = document.getElementById('aggInvFrom');
   const toEl = document.getElementById('aggInvTo');
   if (fromEl && toEl) {
-    const now = new Date();
-    const first = new Date(now.getFullYear(), now.getMonth()-1, 1);
-    const last = new Date(now.getFullYear(), now.getMonth(), 0);
-    fromEl.value = fmtLocalDate(first);
-    toEl.value = fmtLocalDate(last);
+    const r = defaultMonthRange('aggInv');
+    fromEl.value = fmtLocalDate(r.first);
+    toEl.value = fmtLocalDate(r.last);
   }
   runAggInv();
 }
@@ -656,11 +655,9 @@ function initAggPay() {
   const fromEl = document.getElementById('aggPayFrom');
   const toEl = document.getElementById('aggPayTo');
   if (fromEl && toEl) {
-    const now = new Date();
-    const first = new Date(now.getFullYear(), now.getMonth()-1, 1);
-    const last = new Date(now.getFullYear(), now.getMonth(), 0);
-    fromEl.value = fmtLocalDate(first);
-    toEl.value = fmtLocalDate(last);
+    const r = defaultMonthRange('aggPay');
+    fromEl.value = fmtLocalDate(r.first);
+    toEl.value = fmtLocalDate(r.last);
   }
 }
 function aggPayMonthShift(dir) {

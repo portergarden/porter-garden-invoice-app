@@ -209,7 +209,7 @@ function renderMrColPicker() {
 // 読み込み済みの期間。同じ期間なら日報を読み直さない
 let mrFetchKey = '';
 function initMonthlyReport() {
-  ensureMonthRangeDefault('mrFrom', 'mrTo');
+  ensureMonthRangeDefault('mrFrom', 'mrTo', 'mr');
   populateMrDrvSel();
   mrFetchKey = '';        // タブに入り直したら最新を読む
   mrSelDrvId = null;      // 前に見ていた1人の表示は持ち越さない

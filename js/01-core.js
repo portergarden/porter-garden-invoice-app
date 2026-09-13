@@ -111,6 +111,7 @@ function proceedAfterLogin() {
   // 未読件数をタブとアプリのアイコンに出す
   reloadUnreadCounts().catch(()=>{});
   startAppUpdateWatch();
+  applyMonthDefaultsOnLogin();   // 稼働カレンダー・予定管理の月を、この人の設定に合わせる
   /* スマホでは一覧のリスト表示（PC幅の固定列）が収まらず列が重なるため、
      カード表示から始める。切り替えボタンでリストにも戻せる。 */
   if (window.innerWidth < 768) {
@@ -1857,8 +1858,8 @@ function goPage(n,el){
   if(n===31){initTaskTop();}
   if(n===32){initDriverProgress();loadDriverProgress().then(()=>renderDriverProgress());}
   if(n===33){initPersonalTasks();loadPersonalTasks().then(()=>renderPersonalTasks());}
-  if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
-  if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=prevMonthStr();loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
+  if(n===9){const el=document.getElementById('schedGenMonth');if(el&&!el.value)el.value=defaultMonthRange('sched').ym;loadSched().then(()=>renderSched()).then(()=>syncPaySchedule(el?.value));}
+  if(n===22){const el=document.getElementById('receiptGenMonth');if(el&&!el.value)el.value=defaultMonthRange('receipt').ym;loadReceiptSched().then(()=>renderReceiptSched()).then(()=>syncReceiptSchedule(el?.value));}
   if(n===10){_setDailyListMonth();initMob();}
   if(n===11){initClose();}
   if(n===12){initMonthlyReport();renderMonthlyReport();}
@@ -4188,6 +4189,93 @@ function docPreviewOpen(title){
   clearDocPreviewAck();   // 前に開いた書類の確認ボタンを持ち越さない
   document.getElementById('mDocPreview')?.classList.add('on');
 }
+/* ===== ページごとの初期表示月 =====
+   請求まわりは前月、日々の業務は今月、が既定。人によって見たい月が違うため、
+   自分の設定（users.month_defaults）で上書きできる。
+   値は「今月からのずれ」（0=今月, -1=前月, -2=前々月, 1=翌月）。
+   以前は13か所に「今月」「前月」の計算が散っていて、それぞれの決め方を変えられなかった */
+const MONTH_DEFAULT_PAGES = [
+  {key:'aggInv',     label:'請求明細書作成（集計期間）', def:-1},
+  {key:'aggPay',     label:'支払明細書作成（集計期間）', def:-1},
+  {key:'pay',        label:'支払明細書の発行',          def:-1},
+  {key:'close',      label:'月次締め',                  def:-1},
+  {key:'mr',         label:'月報',                      def:-1},
+  {key:'sched',      label:'入金スケジュール',          def:-1},
+  {key:'receipt',    label:'支払スケジュール',          def:-1},
+  {key:'bp',         label:'送付管理（タスク管理）',    def:-1},
+  {key:'tt',         label:'タスクTOP',                 def:-1},
+  {key:'dp',         label:'支払明細書の進行',          def:-1},
+  {key:'daily',      label:'日報管理',                  def:0},
+  {key:'cal',        label:'稼働カレンダー',            def:0},
+  {key:'staffSched', label:'予定管理',                  def:0},
+];
+const MONTH_OFFSET_LABEL = {'-2':'前々月', '-1':'前月', '0':'今月', '1':'翌月'};
+function monthOffsetFor(key) {
+  const page = MONTH_DEFAULT_PAGES.find(x => x.key === key);
+  const v = me?.month_defaults?.[key];
+  return [-2,-1,0,1].includes(v) ? v : (page ? page.def : 0);
+}
+// その設定の月の1日・末日・'YYYY-MM'
+function defaultMonthRange(key) {
+  const now = new Date(), off = monthOffsetFor(key);
+  const first = new Date(now.getFullYear(), now.getMonth() + off, 1);
+  const last  = new Date(now.getFullYear(), now.getMonth() + off + 1, 0);
+  return { first, last, ym: `${first.getFullYear()}-${String(first.getMonth()+1).padStart(2,'0')}` };
+}
+/* カレンダー系は月の状態を変数で持っていて、読み込み時点では誰がログインするか分からない。
+   ログイン直後に設定の月へ合わせる */
+function applyMonthDefaultsOnLogin() {
+  try {
+    const c = defaultMonthRange('cal').first;
+    calYear = c.getFullYear(); calMonth = c.getMonth();
+    const ss = defaultMonthRange('staffSched').first;
+    staffSchedYear = ss.getFullYear(); staffSchedMonth = ss.getMonth();
+  } catch(e) {}
+}
+// ---- 設定画面 ----
+function openMonthDefaultsM() {
+  const body = document.getElementById('mdRows');
+  if (!body) return;
+  body.innerHTML = MONTH_DEFAULT_PAGES.map(p => {
+    const cur = monthOffsetFor(p.key);
+    const opts = [-2,-1,0,1].map(v => `<option value="${v}" ${v===cur?'selected':''}>${MONTH_OFFSET_LABEL[String(v)]}</option>`).join('');
+    return `<tr>
+      <td style="padding:5px 8px;border-bottom:0.5px solid var(--border)">${escHtml(p.label)}
+        <span style="font-size:10px;color:var(--text3)">（既定: ${MONTH_OFFSET_LABEL[String(p.def)]}）</span></td>
+      <td style="padding:3px 8px;border-bottom:0.5px solid var(--border);text-align:right">
+        <select id="md_${p.key}" style="padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">${opts}</select></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('mMonthDefaults')?.classList.add('on');
+}
+async function saveMonthDefaults() {
+  if (!me) return;
+  // 既定と同じ値は保存しない（既定を変えたときに追随できるように）
+  const obj = {};
+  MONTH_DEFAULT_PAGES.forEach(p => {
+    const v = +document.getElementById(`md_${p.key}`)?.value;
+    if ([-2,-1,0,1].includes(v) && v !== p.def) obj[p.key] = v;
+  });
+  showLoad(true);
+  try {
+    const payload = Object.keys(obj).length ? obj : null;
+    const { error } = await sb.rpc('set_my_month_defaults', { p: payload });
+    if (error) throw error;
+    me.month_defaults = payload;
+    applyMonthDefaultsOnLogin();
+    // 既に開いている画面の期間欄は、空にして次に開いたとき設定の月で埋まるようにする
+    ['aggInvFrom','aggInvTo','aggPayFrom','aggPayTo','payFrom','payTo','closeFrom','closeTo','mrFrom','mrTo',
+     'schedGenMonth','receiptGenMonth','bpMonth','ttMonth','dpMonth','drListFrom','drListTo']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    closeM('mMonthDefaults');
+    showT('初期表示月を保存しました。各画面を開き直すと反映されます');
+  } catch(e) { showT('保存エラー: ' + e.message, 'ter'); }
+  showLoad(false);
+}
+function resetMonthDefaults() {
+  MONTH_DEFAULT_PAGES.forEach(p => { const el = document.getElementById(`md_${p.key}`); if (el) el.value = String(p.def); });
+}
+
 /* ===== 印刷用の書類をスマホ画面に収める =====
    A4の紙面は210mm(約794px)あり、スマホ画面には収まらない。
    列幅や文字サイズを個別に変えると表が崩れるため、PDFビューアの「幅に合わせる」と
