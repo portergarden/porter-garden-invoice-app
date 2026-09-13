@@ -3147,7 +3147,7 @@ async function saveCli(){
     pay_out_month_offset:+document.getElementById('cPayOutMonthOffset').value||0,
     pay_out_day:parseDayInput(document.getElementById('cPayOutDay').value),
     pay_out_fee_rate:(()=>{const v=document.getElementById('cPayOutFeeRate').value;return v===''?0:parseFloat(v);})(),
-    courses:parseCourses(document.getElementById('cCourses')?.value)};   // 「概算単価」タブのコース一覧
+    sites:(()=>{cliSitesRead();return cliSitesClean();})()};   // 「概算単価」タブの営業所・コース
   showLoad(true);
   try{
     let data,error,msg='取引先を保存しました';

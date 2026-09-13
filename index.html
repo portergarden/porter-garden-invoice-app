@@ -1529,9 +1529,14 @@ try {
             </div>
             <div style="font-size:10px;color:var(--text2);margin-top:2px">登録にない名前もそのまま入力できます（確認が出ます）</div>
           </div>
-          <!-- コース。取引先にコースが登録されているときだけ出る（同じ取引先で単価の違うコースがある場合） -->
-          <div class="fld" id="drTripCourseFld" style="display:none"><label>コース</label>
-            <select id="drTripCourse" style="width:100%"></select>
+          <!-- 営業所・コース。取引先に登録されているときだけ出る（同じ取引先で営業所やコースごとに単価が違う場合） -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="fld" id="drTripSiteFld" style="display:none"><label>営業所（配属先）</label>
+              <select id="drTripSite" style="width:100%" onchange="updateDrTripSiteFields()"></select>
+            </div>
+            <div class="fld" id="drTripCourseFld" style="display:none"><label>コース</label>
+              <select id="drTripCourse" style="width:100%"></select>
+            </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="fld"><label>開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripStart"></div>
@@ -2737,8 +2742,13 @@ try {
         <b>固定額</b>＝ここまでの合計額 ／ <b>◯ごと加算</b>＝その区間に入った分だけ上乗せ（端数は切り上げ）。
         段階を置かなければ「◯ごと」がそのまま単価になります。
       </div>
-      <div class="fld"><label>コース（同じ取引先で単価が違うコースがあるとき。「、」区切りで）</label>
-        <input type="text" id="cCourses" placeholder="例: 朝便、夜便" oninput="onCliCoursesInput()" title="ここに書くと、ドライバーの運行入力でこの取引先を選んだときにコースの欄が出ます。ルールごとに「どのコースに効くか」を選べます"></div>
+      <div class="fld"><label>営業所・コース（同じ取引先で、営業所やコースごとに単価が違うとき）</label>
+        <div id="cSites"></div>
+        <button type="button" class="btn sml" onclick="cliSiteAdd()">＋ 営業所・コースを追加</button>
+        <div style="font-size:10px;color:var(--text2);margin-top:3px;line-height:1.5">
+          ここに書くと、ドライバーの運行入力でこの取引先を選んだときに営業所・コースの欄が出ます。
+          営業所名を空欄にするとコースだけの区別になります。下のルールごとに「どの営業所・コースに効くか」を選べます</div>
+      </div>
       <div id="cRatesRules"></div>
       <button type="button" class="btn sml" onclick="rateRuleAdd()">＋ ルールを追加</button>
       <div class="fld" style="margin-top:8px"><label>メモ（任意）</label><input type="text" id="cRatesNote" placeholder="例: 2026年4月改定の単価"></div>
@@ -3250,7 +3260,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=a3d920bc"></script>
+<script src="js/01-core.js?v=863d60a6"></script>
 
 <script src="js/02-drivers-pay.js?v=6444a9ad"></script>
 
@@ -3305,10 +3315,10 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=72dead55"></script>
+<script src="js/03-dashboard-daily.js?v=5380d9f4"></script>
 
 
-<script src="js/04-monthly.js?v=e35a7a3b"></script>
+<script src="js/04-monthly.js?v=4a5a6ba3"></script>
 
 
 <script src="js/05-driver-portal.js?v=d8c607e1"></script>
@@ -3326,7 +3336,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=0caeaf8f"></script>
+<script src="js/10-settings.js?v=4e1d2101"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>
