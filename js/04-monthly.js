@@ -38,6 +38,126 @@ const MR_COLS = [
   {key:'status',   label:'状態',        def:true,  align:'center', pw:8,  get:r=>r.status==='rejected'?'差戻し':''},
   {key:'note',     label:'備考',        def:true,  align:'left',   pw:14, screen:true, print:false, get:r=>escHtml(r.note||'')},
 ];
+/* ===== 取引先ごとの概算単価 =====
+   日報の数量・時間から売上・支払の見込みを出す。請求書・支払明細書とは別で確定額ではない。
+   単価の項目は日報の数量欄(DR_QTY_ITEMS)と同じ並びに、時間制と日当を足したもの。
+   管理側の月報だけで使う。ドライバー側の月報には出さない（単価の表 client_rates も
+   社内しか読めない） */
+const CLIENT_RATE_ITEMS = [
+  {key:'qty_takkyubin',   label:'宅配便',     unit:'個'},
+  {key:'qty_nekopos',     label:'ポスト便',   unit:'個'},
+  {key:'qty_corp',        label:'企業集配',   unit:'件'},
+  {key:'qty_corp_pcs',    label:'企業集配',   unit:'個'},
+  {key:'qty_charter',     label:'チャーター', unit:'件'},
+  {key:'qty_charter_pcs', label:'チャーター', unit:'個'},
+  {key:'hour',            label:'時間制',     unit:'時間'},
+  {key:'day',             label:'日当',       unit:'日'},
+];
+let clientRates = {};        // cli_id -> {sale:{}, pay:{}, note}
+let clientRatesLoaded = false;
+async function loadClientRates(force) {
+  if (!sb || (clientRatesLoaded && !force)) return;
+  try {
+    const {data, error} = await fetchAllRows(() => sb.from('client_rates').select('*'));
+    if (error) { if (/does not exist|relation/.test(error.message)) { clientRates = {}; clientRatesLoaded = true; return; } throw error; }
+    clientRates = {};
+    (data || []).forEach(r => { clientRates[r.cli_id] = { sale: r.sale || {}, pay: r.pay || {}, note: r.note || '' }; });
+    clientRatesLoaded = true;
+  } catch(e) { console.warn('loadClientRates:', e.message); }
+}
+
+// ---- 取引先の編集画面「概算単価」タブ ----
+function renderClientRatesTab() {
+  const body = document.getElementById('cRatesBody');
+  if (!body || body.dataset.built) return;
+  body.innerHTML = CLIENT_RATE_ITEMS.map(it => `
+    <tr>
+      <td style="padding:4px 6px;border-bottom:0.5px solid var(--border);white-space:nowrap">${it.label}<span style="color:var(--text2)">（円/${it.unit}）</span></td>
+      <td style="padding:3px 6px;border-bottom:0.5px solid var(--border)"><input type="number" id="cRateSale_${it.key}" min="0" placeholder="—" style="width:100%;text-align:right;padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></td>
+      <td style="padding:3px 6px;border-bottom:0.5px solid var(--border)"><input type="number" id="cRatePay_${it.key}"  min="0" placeholder="—" style="width:100%;text-align:right;padding:4px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"></td>
+    </tr>`).join('');
+  body.dataset.built = '1';
+}
+// 編集画面に単価を入れる（新規なら空）
+async function fillClientRatesTab(cliId) {
+  renderClientRatesTab();
+  if (cliId != null) await loadClientRates();
+  const r = (cliId != null && clientRates[cliId]) || { sale:{}, pay:{}, note:'' };
+  CLIENT_RATE_ITEMS.forEach(it => {
+    const s = document.getElementById(`cRateSale_${it.key}`), p = document.getElementById(`cRatePay_${it.key}`);
+    if (s) s.value = r.sale[it.key] ?? '';
+    if (p) p.value = r.pay[it.key]  ?? '';
+  });
+  const n = document.getElementById('cRatesNote'); if (n) n.value = r.note || '';
+}
+// 取引先の保存に合わせて単価も保存する。全部空なら行を作らない
+async function saveClientRates(cliId) {
+  if (!sb || cliId == null) return;
+  const pick = prefix => {
+    const o = {};
+    CLIENT_RATE_ITEMS.forEach(it => {
+      const v = document.getElementById(`${prefix}_${it.key}`)?.value;
+      if (v !== '' && v != null && !isNaN(+v)) o[it.key] = +v;
+    });
+    return o;
+  };
+  const sale = pick('cRateSale'), pay = pick('cRatePay');
+  const note = document.getElementById('cRatesNote')?.value.trim() || null;
+  const empty = !Object.keys(sale).length && !Object.keys(pay).length && !note;
+  try {
+    if (empty) {
+      if (clientRates[cliId]) { await sb.from('client_rates').delete().eq('cli_id', cliId); delete clientRates[cliId]; }
+      return;
+    }
+    const {error} = await sb.from('client_rates').upsert({ cli_id: cliId, sale, pay, note, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    clientRates[cliId] = { sale, pay, note: note || '' };
+  } catch(e) { showT('概算単価の保存エラー: ' + e.message, 'ter'); }
+}
+
+// ---- 概算の計算 ----
+// 運行1件の時間。日をまたぐ場合は翌日として数える
+function tripHours(t) {
+  const toMin = x => { const m = String(x||'').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1]*60 + +m[2] : null; };
+  const a = toMin(t.start), b = toMin(t.end);
+  if (a == null || b == null) return 0;
+  return ((b - a + 24*60) % (24*60)) / 60;
+}
+/* 日報の一覧から売上・支払の見込みを出す。
+   運行ごとに 数量×単価 と 時間×時間単価 を足し、日当は「取引先×日×ドライバー」で1回だけ足す
+   （同じ人が同じ日に同じ取引先へ2回行っても1日分。別の人なら別に数える）。
+   単価が無い取引先・取引先未登録の運行は数えず、件数だけ返す（画面で「単価未設定」と出す） */
+function estimateReports(reports) {
+  const out = { sale: 0, pay: 0, unpriced: 0, byClient: {} };
+  const dayCharged = new Set();   // 日当の二重計上を防ぐ
+  (reports || []).forEach(r => {
+    const drvKey = recDrv(r)?.id ?? r.car ?? '';
+    dailyTrips(r).forEach(t => {
+      const cliId = t.cli_id;
+      const rate = cliId != null ? clientRates[cliId] : null;
+      if (!rate) { out.unpriced++; return; }
+      const hours = tripHours(t);
+      const calc = (side) => {
+        const rt = rate[side] || {};
+        let v = 0;
+        DR_QTY_ITEMS.forEach(q => { v += (+t[q.trip] || 0) * (+rt[q.key] || 0); });
+        v += hours * (+rt.hour || 0);
+        if (+rt.day) {
+          const k = `${cliId}|${r.date}|${drvKey}|${side}`;
+          if (!dayCharged.has(k)) { dayCharged.add(k); v += +rt.day; }
+        }
+        return v;
+      };
+      const sale = calc('sale'), pay = calc('pay');
+      out.sale += sale; out.pay += pay;
+      const c = out.byClient[cliId] || (out.byClient[cliId] = { name: lkCliAny(cliId)?.name || t.cli_name || '', sale: 0, pay: 0 });
+      c.sale += sale; c.pay += pay;
+    });
+  });
+  return out;
+}
+const yenR = v => '¥' + Math.round(+v || 0).toLocaleString();
+
 /* 月報タブが読み込んだ日報。CSV出力も同じものを使う。
    以前は日報タブ用の共有配列(dailyReports)を見ており、日報タブを一度も開いていないと
    CSVが空になり、開いていても別の期間の内容が出ることがあった */
@@ -399,6 +519,8 @@ async function renderMonthlyReport() {
     const submittedIds = new Set(drReports.map(r => recDrv(r)?.id).filter(id => id != null));
     targetDrvs = targetDrvs.filter(d => submittedIds.has(d.id));
   }
+  await loadClientRates();   // 概算に使う単価（社内だけが読める）
+
   // 提出状況の表もこのボタンに従う。未提出の人数は表の上に出す
   renderMrMatrix(targetDrvs, allTargetDrvs, drReports, from, to);
 
@@ -453,6 +575,15 @@ async function renderMonthlyReport() {
     <div class="kpi-card"><div class="kpi-label">⚠ 要確認</div>
       <div class="kpi-val" style="color:${needCheck?'var(--red)':'var(--green)'}">${needCheck}件</div>
       <div class="kpi-diff kpi-eq">${checkDetail}</div></div>
+    ${(() => {
+      // 概算。単価が1件も無いときは出さない（数字がゼロで並ぶだけになるため）
+      if (!Object.keys(clientRates).length) return '';
+      const est = estimateReports(drReports);
+      return `<div class="kpi-card" title="日報の数量・時間×取引先ごとの概算単価。確定額ではありません">
+        <div class="kpi-label">概算（確定ではありません）</div>
+        <div class="kpi-val" style="font-size:13px">売上 ${yenR(est.sale)}<br>支払 ${yenR(est.pay)}</div>
+        <div class="kpi-diff kpi-eq">差 ${yenR(est.sale - est.pay)}${est.unpriced?` ／ <span style="color:var(--amber-text)">単価未設定 ${est.unpriced}運行</span>`:''}</div></div>`;
+    })()}
   `;
 
   /* ──── ドライバー別集計 ──── */
@@ -623,6 +754,21 @@ function renderMrCards() {
             </div>
           </div>
 
+          ${(() => {
+            // 概算。単価が1件も無ければ出さない
+            if (!Object.keys(clientRates).length) return '';
+            const est = estimateReports(dReports);
+            const rows = Object.values(est.byClient).sort((a,b)=>b.sale-a.sale)
+              .map(c => `<div class="pnl-row sub"><span>${escHtml(c.name||'（取引先なし）')}</span><span>売上 ${yenR(c.sale)} ／ 支払 ${yenR(c.pay)}</span></div>`).join('');
+            return `<div style="margin-bottom:8px;padding:6px 8px;background:var(--bg2);border-radius:var(--radius)">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11px">
+                <span style="font-weight:600">概算 <span style="font-weight:400;color:var(--text2)">（数量×単価。確定額ではありません）</span></span>
+                <span style="font-weight:600">売上 ${yenR(est.sale)} ／ 支払 ${yenR(est.pay)} ／ 差 ${yenR(est.sale-est.pay)}</span>
+              </div>
+              ${rows}
+              ${est.unpriced?`<div style="font-size:10px;color:var(--amber-text);margin-top:3px">単価未設定の運行 ${est.unpriced}件は含めていません（取引先の編集画面「概算単価」で設定できます）</div>`:''}
+            </div>`;
+          })()}
           <!-- アルコール・健康 -->
           ${drAlcAlert.length ? `<div class="pnl-row neg"><span>🍺 アルコール超過記録</span><span>${drAlcAlert.length}件</span></div>` : ''}
           ${drHealthBad.length ? `<div class="pnl-row" style="color:var(--amber-text)"><span>⚠ 体調不良申告</span><span>${drHealthBad.length}日</span></div>` : ''}

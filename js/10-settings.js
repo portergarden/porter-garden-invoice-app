@@ -485,6 +485,24 @@ CREATE TABLE IF NOT EXISTS file_mappings (
   default_type_by_month jsonb DEFAULT '{}'
 );
 
+-- 取引先ごとの概算単価。日報の数量・時間から売上・支払の見込みを出すためのもの。
+-- 請求書・支払明細書の金額とは別で、確定額ではない。売上・支払をそれぞれ jsonb で持つ。
+--   sale = {"qty_takkyubin":170,"qty_nekopos":80,"qty_corp":1200,"qty_corp_pcs":0,
+--           "qty_charter":15000,"qty_charter_pcs":0,"hour":0,"day":0}
+CREATE TABLE IF NOT EXISTS client_rates (
+  cli_id bigint PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
+  sale jsonb NOT NULL DEFAULT '{}'::jsonb,   -- 売上側（取引先に請求する見込み）の単価
+  pay  jsonb NOT NULL DEFAULT '{}'::jsonb,   -- 支払側（ドライバーへ支払う見込み）の単価
+  note text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+-- 単価は社内だけが見られる。ドライバーには売上も支払の見込みも見せない
+ALTER TABLE client_rates ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "client_rates_select" ON client_rates FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+CREATE POLICY "client_rates_insert" ON client_rates FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "client_rates_update" ON client_rates FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+CREATE POLICY "client_rates_delete" ON client_rates FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+
 -- 単価マスタ
 CREATE TABLE IF NOT EXISTS price_master (
   id bigserial PRIMARY KEY, cli_id bigint NOT NULL,

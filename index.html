@@ -2717,6 +2717,23 @@ try {
       <button type="button" class="mtab-btn" data-tab="pay" onclick="switchModalTab('mCli','pay')">請求・入金設定</button>
       <button type="button" class="mtab-btn" data-tab="payout" onclick="switchModalTab('mCli','payout')">支払設定</button>
       <button type="button" class="mtab-btn" data-tab="note" onclick="switchModalTab('mCli','note')">備考</button>
+      <button type="button" class="mtab-btn" data-tab="rates" onclick="switchModalTab('mCli','rates')">概算単価</button>
+    </div>
+    <!-- 概算単価: 日報の数量・時間から売上・支払の見込みを出すための単価。確定額ではない -->
+    <div class="mtab-panel" data-tab="rates">
+      <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px;line-height:1.5">
+        日報の数量・時間に掛けて、月報に売上・支払の<b>見込み</b>を出すための単価です。<br>
+        請求書・支払明細書の金額とは別で、確定額ではありません。空欄の項目は算出しません。
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">
+        <thead><tr style="background:var(--bg2)">
+          <th style="padding:4px 6px;text-align:left;border-bottom:0.5px solid var(--border)">項目</th>
+          <th style="padding:4px 6px;text-align:right;border-bottom:0.5px solid var(--border);width:110px">売上（請求）</th>
+          <th style="padding:4px 6px;text-align:right;border-bottom:0.5px solid var(--border);width:110px">支払（ドライバー）</th>
+        </tr></thead>
+        <tbody id="cRatesBody"></tbody>
+      </table>
+      <div class="fld"><label>メモ（任意）</label><input type="text" id="cRatesNote" placeholder="例: 2026年4月改定の単価"></div>
     </div>
     <div class="mtab-panel on" data-tab="basic">
       <div class="fld"><label>会社ID</label><input type="text" id="cCode" placeholder="自動採番"></div>
@@ -3200,7 +3217,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=8fb1791a"></script>
+<script src="js/01-core.js?v=3fc35b4d"></script>
 
 <script src="js/02-drivers-pay.js?v=97e29d39"></script>
 
@@ -3258,7 +3275,7 @@ try {
 <script src="js/03-dashboard-daily.js?v=f7497623"></script>
 
 
-<script src="js/04-monthly.js?v=078198f1"></script>
+<script src="js/04-monthly.js?v=d7c4c67a"></script>
 
 
 <script src="js/05-driver-portal.js?v=b0f31d31"></script>
@@ -3276,7 +3293,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=db061a3c"></script>
+<script src="js/10-settings.js?v=560e735a"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>
