@@ -294,7 +294,8 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS submit_rule_day integer
   CHECK (submit_rule_day IS NULL OR (submit_rule_day BETWEEN 1 AND 31));
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS send_memo text;
 -- 親会社（本社）。支店・営業所ごとに1件ずつ登録した取引先を、請求はそのままに一覧上でまとめるために使う
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS parent_id bigint REFERENCES clients(id) ON DELETE SET NULL;  -- 送付時の注意書き（タスク管理の一覧に表示）
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS parent_id bigint REFERENCES clients(id) ON DELETE SET NULL;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS courses text[] NOT NULL DEFAULT '{}';  -- コース名の一覧（朝便・夜便など。同じ取引先でコースごとに単価が違うとき）  -- 送付時の注意書き（タスク管理の一覧に表示）
 CREATE INDEX IF NOT EXISTS billing_progress_month_idx ON billing_progress(month);
 ALTER TABLE billing_progress ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "billing_progress_select" ON billing_progress FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
@@ -387,8 +388,9 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- 1日に複数回の運行（チャーターを午前・午後で別の取引先など）。
   -- 運行ごとに日報を分けると点呼記録まで分かれてしまうため、日報は1日1枚のままにして運行だけを配列で持つ。
   -- [{cli_id, cli_name, start, end, start_loc, end_loc,
-  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, km, note}]
+  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, km, course, note}]
   --   km は運行ごとの距離（任意）。距離制の概算に使う。無ければその日の運行が1件のときだけ日報の走行距離で代用
+  --   course は取引先のコース名（clients.courses から選ぶ。任意）。コース別の概算単価に使う
   -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
   -- 月報・分析・CSV・印刷は従来どおりそちらを参照する。取引先は運行ごとに必須。
   -- [{cli_id, cli_name, start, end, start_loc, end_loc, qty_*, note,
@@ -497,6 +499,7 @@ CREATE TABLE IF NOT EXISTS file_mappings (
 --     {"measure":"qty_takkyubin","steps":[],"over":{"per":1,"sale":170,"pay":130}}  -- 1個170円
 --   ]
 --   measure: qty_takkyubin|qty_nekopos|qty_corp|qty_corp_pcs|qty_charter|qty_charter_pcs|hours|km|day
+--   course（任意）: コース名。付けると、そのコース（trips[].course）の運行にだけ効く。無ければ全部の運行に効く
 --   fixed = ここまでの合計額（前の段階を置き換える）／ per = その区間に入った分だけ ◯ごとに上乗せ（切り上げ）
 CREATE TABLE IF NOT EXISTS client_rates (
   cli_id bigint PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
@@ -582,9 +585,11 @@ $function$;
 
 -- ドライバーが取引先名だけを参照できるようにする窓口（clients本体はadmin/editor/viewer限定のため）。
 -- ログイン済み専用（anonに開けると取引先名一覧が誰でも取得できてしまう）
-CREATE OR REPLACE FUNCTION public.list_client_names()
-RETURNS TABLE(id bigint, name text) LANGUAGE sql SECURITY DEFINER SET search_path TO 'public' AS $function$
-  SELECT id, name FROM clients ORDER BY name;
+-- コース一覧も返す（運行入力でコースを選ぶため）。戻り値を変えるときは DROP してから作り直す
+DROP FUNCTION IF EXISTS public.list_client_names();
+CREATE FUNCTION public.list_client_names()
+RETURNS TABLE(id bigint, name text, courses text[]) LANGUAGE sql SECURITY DEFINER SET search_path TO 'public' AS $function$
+  SELECT id, name, COALESCE(courses, '{}') FROM clients ORDER BY name;
 $function$;
 REVOKE EXECUTE ON FUNCTION public.list_client_names() FROM anon;
 REVOKE EXECUTE ON FUNCTION public.list_client_names() FROM public;

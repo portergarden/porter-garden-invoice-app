@@ -2732,6 +2732,7 @@ function onDrCliInput() {
   const inp = document.getElementById('drCli');
   if (!box || !inp) return;
   const q = nm(inp.value || '');
+  updateDrTripCourseField();
   if (q.length < DR_CLI_MIN_CHARS) { hideDrCliSuggest(); return; }
   const hits = drCliCandidates().filter(c => nm(c.name).includes(q)).slice(0, 8);
   if (!hits.length) {
@@ -2748,6 +2749,24 @@ function selectDrCli(name) {
   const inp = document.getElementById('drCli');
   if (inp) inp.value = name;
   hideDrCliSuggest();
+  updateDrTripCourseField();
+}
+/* 取引先にコース（朝便・夜便など）が登録されていればコース欄を出す。
+   コースごとに単価が違う取引先で、どのコースを走ったかを運行に残すため。
+   選択肢は取引先のコース一覧。編集中の運行に一覧にないコースが付いていれば、それも選べる状態で残す */
+function updateDrTripCourseField(keep) {
+  const fld = document.getElementById('drTripCourseFld');
+  const sel = document.getElementById('drTripCourse');
+  if (!fld || !sel) return;
+  const cli = drResolveClient(document.getElementById('drCli')?.value.trim());
+  const courses = (cli?.courses || []).filter(Boolean);
+  const cur = keep != null ? keep : sel.value;
+  const list = (cur && !courses.includes(cur)) ? [...courses, cur] : courses;
+  if (!list.length) { fld.style.display = 'none'; sel.innerHTML = ''; sel.value = ''; return; }
+  sel.innerHTML = '<option value="">（選んでください）</option>' +
+    list.map(c => `<option value="${escHtml(c)}" ${c===cur?'selected':''}>${escHtml(c)}</option>`).join('');
+  sel.value = list.includes(cur) ? cur : '';
+  fld.style.display = '';
 }
 
 function drResolveClient(name) {
@@ -2756,7 +2775,7 @@ function drResolveClient(name) {
 }
 
 // 運行の入力欄。追加・編集・取消で同じ並びを使う
-const DR_TRIP_INPUT_IDS = ['drCli','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripKm',
+const DR_TRIP_INPUT_IDS = ['drCli','drTripCourse','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripKm',
    ...DR_QTY_ITEMS.map(q => q.input), 'drTripNote',
    'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
    'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
@@ -2767,6 +2786,7 @@ function clearDrTripInputs() {
   ['drTripWaitFlag','drTripCargoFlag'].forEach(id => {
     const el = document.getElementById(id); if (el) el.checked = false;
   });
+  updateDrTripCourseField();
   toggleDrTripSubFields();
 }
 // 新規追加中か編集中かで、ボタンの文言と「取消」の出し方を変える
@@ -2797,8 +2817,14 @@ function collectDrTrip() {
   if (waitOn && !document.getElementById('drTripWaitArrive').value) {
     showT('荷待ちの到着日時を入力してください', 'twa'); return null;
   }
+  // コース。取引先にコースがあるのに選んでいなければ確認する（未選択でも記録はできるが、概算は共通ルールだけになる）
+  const courseFld = document.getElementById('drTripCourseFld');
+  const course = (courseFld && courseFld.style.display !== 'none') ? (document.getElementById('drTripCourse')?.value || '') : '';
+  if (courseFld && courseFld.style.display !== 'none' && !course &&
+      !confirm('コースが選ばれていません。\n\nこのまま記録しますか？')) return null;
   return {
     cli_id: cli ? cli.id : null, cli_name: cli ? cli.name : cliInput,
+    course: course || null,
     start, end,
     start_loc: document.getElementById('drTripStartLoc').value.trim(),
     end_loc:   document.getElementById('drTripEndLoc').value.trim(),
@@ -2849,6 +2875,7 @@ function editDrTrip(i) {
   editDrTripIdx = i;
   const put = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v === 0 || v) ? v : ''; };
   put('drCli', t.cli_name);      put('drTripStart', t.start);      put('drTripEnd', t.end);
+  updateDrTripCourseField(t.course || '');
   put('drTripStartLoc', t.start_loc); put('drTripEndLoc', t.end_loc);
   // 0は空欄として戻す（0を入れ直させない）
   DR_QTY_ITEMS.forEach(q => put(q.input, t[q.trip] || ''));
@@ -2916,7 +2943,7 @@ function renderDrTrips() {
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">
             <span style="font-weight:600;white-space:nowrap">${t.start||''}〜${t.end||''}</span>
-            <span style="font-weight:600;overflow-wrap:break-word;word-break:break-word">${escHtml(t.cli_name||'')}</span>
+            <span style="font-weight:600;overflow-wrap:break-word;word-break:break-word">${escHtml(t.cli_name||'')}${t.course?`<span style="font-weight:400;color:var(--text2)">（${escHtml(t.course)}）</span>`:''}</span>
           </div>
           ${sub?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow-wrap:break-word;word-break:break-word">${sub}</div>`:''}
         </div>
@@ -3593,7 +3620,7 @@ function renderDailyList() {
               const names = dailyTripClients(r);
               if (!names.length) return '';
               const trips = dailyTrips(r);
-              const tip = trips.map(t=>`${t.start||''}〜${t.end||''} ${t.cli_name||''}`).join('\n');
+              const tip = trips.map(t=>`${t.start||''}〜${t.end||''} ${t.cli_name||''}${t.course?`（${t.course}）`:''}`).join('\n');
               return `<span title="${escHtml(tip)}">🏢 ${escHtml(names.join('、'))}${trips.length>1?`（運行${trips.length}件）`:''}</span>`;
             })()}
           </div>
@@ -3716,7 +3743,7 @@ function downloadDailyReportCsv(list, filenameLabel) {
     r.shipper_confirmed?'確認済':'',
     r.handover_flag?'あり':'', r.handover_location||'', r.handover_time||'', r.handover_driver||'',
     dailyTrips(r).length, dailyTripClients(r).join('、'),
-    dailyTrips(r).map(t=>`${t.start||''}-${t.end||''} ${t.cli_name||''}`).join(' / '),
+    dailyTrips(r).map(t=>`${t.start||''}-${t.end||''} ${t.cli_name||''}${t.course?`（${t.course}）`:''}`).join(' / '),
     // 荷待ち・荷役は運行ごとの記録なので、地点つきで並べて出す
     dailyTrips(r).filter(t=>t.wait).map(t=>
       `${t.wait.loc||''} 到着${t.wait.arrive||''} 出発${t.wait.depart||''}${t.wait.appointed?` 指定${t.wait.appointed}`:''}`).join(' / '),
@@ -3845,7 +3872,7 @@ function buildDailyReportHtml(r) {
         <tr><th style="width:100px">時刻</th><th>取引先</th><th style="width:150px">区間</th><th style="width:150px">個数</th></tr>
         ${trips.map(t => `<tr>
           <td>${t.start||''}〜${t.end||''}</td>
-          <td>${escHtml(t.cli_name || lkCliAny(t.cli_id)?.name || '')}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
+          <td>${escHtml(t.cli_name || lkCliAny(t.cli_id)?.name || '')}${t.course?`（${escHtml(t.course)}）`:''}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
           <td>${escHtml(t.start_loc||'')}${(t.start_loc||t.end_loc)?' → ':''}${escHtml(t.end_loc||'')}</td>
           <td>${drQtyText(t, true) || '—'}</td>
         </tr>${tripWaitCargoRow(t)}`).join('')}

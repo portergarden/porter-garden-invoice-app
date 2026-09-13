@@ -47,6 +47,7 @@ const MR_COLS = [
                 fixed = ここまでの合計額（前の段階を置き換える）
                 per   = その区間に入った分だけ ◯ごとに上乗せ（切り上げ）
      over    … 最後の段階を超えた分の {per, sale, pay}
+     course  … コース名（任意）。付けると、そのコースの運行にだけ効く。無ければ全部の運行に効く
    管理側の月報だけで使う。ドライバー側の月報には出さない（client_rates は社内しか読めない） */
 const RATE_MEASURES = [
   ...DR_QTY_ITEMS.map(q => ({key:q.key, trip:q.trip, label:`${q.label}（${q.unit}）`, unit:q.unit})),
@@ -96,7 +97,16 @@ function calcRateRule(rule, value, side) {
 
 // ---- 編集画面（取引先の「概算単価」タブ）----
 let cliRulesDraft = [];   // 編集中のルール。入力欄から読み直して保存する
-function newRateRule(measure) { return { measure: measure || 'qty_takkyubin', steps: [], over: { per: 1, sale: null, pay: null } }; }
+function newRateRule(measure) { return { measure: measure || 'qty_takkyubin', course: '', steps: [], over: { per: 1, sale: null, pay: null } }; }
+/* 取引先のコース一覧。編集画面の「コース」欄（読点・カンマ・改行区切り）から読む。
+   同じ取引先で朝便・夜便のように単価が違うときに使う。空なら運行入力にコース欄は出ない */
+function parseCourses(text) {
+  const seen = new Set();
+  return String(text || '').split(/[,、，\n\r]/).map(x => x.trim()).filter(x => x && !seen.has(x) && seen.add(x));
+}
+function cliCoursesDraft() { return parseCourses(document.getElementById('cCourses')?.value); }
+// コース欄を直したら、ルールのコース選択肢も入れ替える
+function onCliCoursesInput() { rateRuleRead(); renderClientRatesTab(); }
 const RATE_INP = 'style="width:70px;text-align:right;padding:3px 5px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)"';
 function renderClientRatesTab() {
   const box = document.getElementById('cRatesRules');
@@ -105,10 +115,18 @@ function renderClientRatesTab() {
     box.innerHTML = '<div style="font-size:11px;color:var(--text2);padding:8px 0">ルールはまだありません。「＋ ルールを追加」で作ってください</div>';
     return;
   }
+  const courses = cliCoursesDraft();
   box.innerHTML = cliRulesDraft.map((rule, ri) => {
     const m = rateMeasure(rule.measure) || RATE_MEASURES[0];
     const unit = m.unit;
     const measureOpts = RATE_MEASURES.map(x => `<option value="${x.key}" ${x.key===rule.measure?'selected':''}>${x.label}</option>`).join('');
+    // コースの選択肢。ルールに付いているコース名が一覧から消えていても、選べる状態で残す（黙って共通に変えない）
+    const courseList = (rule.course && !courses.includes(rule.course)) ? [...courses, rule.course] : courses;
+    const courseSel = courseList.length ? `<span style="font-size:11px;color:var(--text2)">コース</span>
+        <select data-r="${ri}" data-f="course" onchange="rateRuleRead()" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">
+          <option value="">共通（全コース）</option>
+          ${courseList.map(c => `<option value="${escHtml(c)}" ${c===rule.course?'selected':''}>${escHtml(c)}${courses.includes(c)?'':'（一覧にありません）'}</option>`).join('')}
+        </select>` : '';
     const stepRows = (rule.steps || []).map((st, si) => `
       <tr>
         <td style="padding:2px 4px;white-space:nowrap">〜 <input type="number" min="0" step="any" value="${st.upto ?? ''}" data-r="${ri}" data-s="${si}" data-f="upto" oninput="rateRuleRead()" ${RATE_INP}> ${unit}まで</td>
@@ -130,6 +148,7 @@ function renderClientRatesTab() {
         <span style="font-size:11px;font-weight:600;white-space:nowrap">ルール${ri+1}</span>
         <span style="font-size:11px;color:var(--text2)">対象</span>
         <select data-r="${ri}" data-f="measure" onchange="rateRuleRead();renderClientRatesTab()" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">${measureOpts}</select>
+        ${courseSel}
         <button type="button" class="ibtn" style="margin-left:auto;color:var(--red-text)" onclick="rateRuleRemove(${ri})" title="このルールを消す">🗑</button>
       </div>
       <div style="overflow-x:auto">
@@ -157,7 +176,7 @@ function rateRuleRead() {
     const rule = cliRulesDraft[+el.dataset.r]; if (!rule) return;
     const f = el.dataset.f, s = el.dataset.s;
     const num = v => (v === '' || v == null) ? null : +v;
-    if (s == null) { if (f === 'measure') rule.measure = el.value; return; }
+    if (s == null) { if (f === 'measure') rule.measure = el.value; else if (f === 'course') rule.course = el.value; return; }
     const target = s === 'over' ? (rule.over = rule.over || {}) : rule.steps[+s];
     if (!target) return;
     if (f === 'mode') target.mode = el.value; else target[f] = num(el.value);
@@ -172,6 +191,9 @@ async function fillClientRatesTab(cliId) {
   if (cliId != null) await loadClientRates();
   const r = (cliId != null && clientRates[cliId]) || { rules: [], note: '' };
   cliRulesDraft = JSON.parse(JSON.stringify(r.rules || []));
+  // コース一覧は取引先本体（clients.courses）に持っている。ルールより先に入れておく（選択肢になるため）
+  const cEl = document.getElementById('cCourses');
+  if (cEl) cEl.value = (cliId != null ? (lkC(cliId)?.courses || []) : []).join('、');
   renderClientRatesTab();
   const n = document.getElementById('cRatesNote'); if (n) n.value = r.note || '';
 }
@@ -181,6 +203,7 @@ async function saveClientRates(cliId) {
   rateRuleRead();
   const rules = cliRulesDraft.map(rule => ({
     measure: rule.measure,
+    course: rule.course || undefined,   // 空なら付けない（全部の運行に効く）
     steps: (rule.steps || []).filter(st => +st.upto > 0).map(st => ({ upto:+st.upto, mode: st.mode==='per'?'per':'fixed', per: st.mode==='per' ? (+st.per||0) : undefined, sale:+st.sale||0, pay:+st.pay||0 })),
     over: (+rule.over?.per > 0 && (+rule.over?.sale || +rule.over?.pay)) ? { per:+rule.over.per, sale:+rule.over.sale||0, pay:+rule.over.pay||0 } : null,
   })).filter(rule => rule.steps.length || rule.over);
@@ -208,9 +231,11 @@ function tripHours(t) {
    運行ごとに、その取引先のルールを全部当てて足す。
    日当は「取引先×日×ドライバー」で1回だけ（同じ人が同じ日に同じ取引先へ2回行っても1日分）。
    距離は運行ごとの km を使い、無ければその日の運行が1件のときだけ日報の走行距離で代用する。
+   コース名の付いたルールは、そのコースの運行にだけ当てる（コース名の無いルールは全部の運行に効く）。
+   取引先にコースがあるのに運行でコースを選んでいなければ、共通ルールだけを当てて noCourse に数える。
    単価が無い取引先・取引先未登録の運行は数えず、件数だけ返す */
 function estimateReports(reports) {
-  const out = { sale: 0, pay: 0, unpriced: 0, noKm: 0, byClient: {} };
+  const out = { sale: 0, pay: 0, unpriced: 0, noKm: 0, noCourse: 0, byClient: {} };
   const dayCharged = new Set();
   (reports || []).forEach(r => {
     const drvKey = recDrv(r)?.id ?? r.car ?? '';
@@ -221,10 +246,13 @@ function estimateReports(reports) {
       if (!rate || !rate.rules?.length) { out.unpriced++; return; }
       const km = t.km != null ? +t.km : (trips.length === 1 ? (+r.distance_km || null) : null);
       const hours = tripHours(t);
+      const course = t.course || '';
+      if (!course && (lkCliAny(cliId)?.courses || []).length) out.noCourse++;
       let sale = 0, pay = 0;
       rate.rules.forEach(rule => {
         const m = rateMeasure(rule.measure);
         if (!m) return;
+        if (rule.course && rule.course !== course) return;
         let value;
         if (rule.measure === 'hours') value = hours;
         else if (rule.measure === 'km') { if (km == null) { out.noKm++; return; } value = km; }
@@ -238,7 +266,8 @@ function estimateReports(reports) {
         pay  += calcRateRule(rule, value, 'pay');
       });
       out.sale += sale; out.pay += pay;
-      const c = out.byClient[cliId] || (out.byClient[cliId] = { name: lkCliAny(cliId)?.name || t.cli_name || '', sale: 0, pay: 0 });
+      const bk = `${cliId}|${course}`;
+      const c = out.byClient[bk] || (out.byClient[bk] = { name: (lkCliAny(cliId)?.name || t.cli_name || '') + (course ? `（${course}）` : ''), sale: 0, pay: 0 });
       c.sale += sale; c.pay += pay;
     });
   });
@@ -670,7 +699,7 @@ async function renderMonthlyReport() {
       return `<div class="kpi-card" title="日報の数量・時間×取引先ごとの概算単価。確定額ではありません">
         <div class="kpi-label">概算（確定ではありません）</div>
         <div class="kpi-val" style="font-size:13px">売上 ${yenR(est.sale)}<br>支払 ${yenR(est.pay)}</div>
-        <div class="kpi-diff kpi-eq">差 ${yenR(est.sale - est.pay)}${est.unpriced?` ／ <span style="color:var(--amber-text)">単価未設定 ${est.unpriced}運行</span>`:''}${est.noKm?` ／ <span style="color:var(--amber-text)">距離未入力 ${est.noKm}運行</span>`:''}</div></div>`;
+        <div class="kpi-diff kpi-eq">差 ${yenR(est.sale - est.pay)}${est.unpriced?` ／ <span style="color:var(--amber-text)">単価未設定 ${est.unpriced}運行</span>`:''}${est.noKm?` ／ <span style="color:var(--amber-text)">距離未入力 ${est.noKm}運行</span>`:''}${est.noCourse?` ／ <span style="color:var(--amber-text)">コース未選択 ${est.noCourse}運行</span>`:''}</div></div>`;
     })()}
   `;
 
@@ -856,6 +885,7 @@ function renderMrCards() {
               ${rows}
               ${est.unpriced?`<div style="font-size:10px;color:var(--amber-text);margin-top:3px">単価未設定の運行 ${est.unpriced}件は含めていません（取引先の編集画面「概算単価」で設定できます）</div>`:''}
               ${est.noKm?`<div style="font-size:10px;color:var(--amber-text);margin-top:3px">距離未入力の運行 ${est.noKm}件は距離の料金を含めていません（運行ごとの距離を入れると出ます）</div>`:''}
+              ${est.noCourse?`<div style="font-size:10px;color:var(--amber-text);margin-top:3px">コース未選択の運行 ${est.noCourse}件は、共通のルールだけで計算しています（運行を直してコースを選ぶと出ます）</div>`:''}
             </div>`;
           })()}
           <!-- アルコール・健康 -->
