@@ -502,7 +502,8 @@ CREATE TABLE IF NOT EXISTS file_mappings (
 --   ]
 --   measure: qty_takkyubin|qty_nekopos|qty_corp|qty_corp_pcs|qty_charter|qty_charter_pcs|hours|km|day
 --   site / course（任意）: 営業所名・コース名。付けると、その営業所・コース（trips[].site / .course）の運行にだけ効く。無ければ全部の運行に効く
---   fixed = ここまでの合計額（前の段階を置き換える）／ per = その区間に入った分だけ ◯ごとに上乗せ（切り上げ）
+--   fixed = ここまでの合計額（前の段階を置き換える）／ per = その区間に入った分だけ ◯ごとに上乗せ
+--   round（任意）: 'down' なら ◯ごとの端数を切り捨て。無ければ切り上げ
 CREATE TABLE IF NOT EXISTS client_rates (
   cli_id bigint PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
   rules jsonb NOT NULL DEFAULT '[]'::jsonb,

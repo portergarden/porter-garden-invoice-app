@@ -49,6 +49,7 @@ const MR_COLS = [
      over    … 最後の段階を超えた分の {per, sale, pay}
      site    … 営業所名（任意）。付けると、その営業所の運行にだけ効く
      course  … コース名（任意）。付けると、そのコースの運行にだけ効く。どちらも無ければ全部の運行に効く
+     round   … 「◯ごと」の端数。'up'=切り上げ（既定）／'down'=切り捨て
    管理側の月報だけで使う。ドライバー側の月報には出さない（client_rates は社内しか読めない） */
 const RATE_MEASURES = [
   ...DR_QTY_ITEMS.map(q => ({key:q.key, trip:q.trip, label:`${q.label}（${q.unit}）`, unit:q.unit})),
@@ -73,10 +74,13 @@ async function loadClientRates(force) {
 // ---- ルール1本ぶんの計算 ----
 /* value に対して、段階を順に見ていく。
    fixed の段階は「ここまでの合計」なので金額を置き換え、per の段階は区間に入った分だけ上乗せする。
-   最後の段階を超えた分は over で上乗せする。端数は切り上げ（35分は「30分ごと」を2回分） */
+   最後の段階を超えた分は over で上乗せする。
+   端数はルールの round に従う。切り上げなら35分は「30分ごと」を2回分、切り捨てなら1回分 */
 function calcRateRule(rule, value, side) {
   if (value == null || !(value > 0)) return 0;
-  const ceilDiv = (a, b) => Math.ceil(a / b - 1e-9);
+  const ceilDiv = rule.round === 'down'
+    ? (a, b) => Math.floor(a / b + 1e-9)
+    : (a, b) => Math.ceil(a / b - 1e-9);
   let amount = 0, prev = 0, done = false;
   const steps = (rule.steps || []).filter(st => +st.upto > 0).sort((a, b) => +a.upto - +b.upto);
   for (const st of steps) {
@@ -98,7 +102,7 @@ function calcRateRule(rule, value, side) {
 
 // ---- 編集画面（取引先の「概算単価」タブ）----
 let cliRulesDraft = [];   // 編集中のルール。入力欄から読み直して保存する
-function newRateRule(measure) { return { measure: measure || 'qty_takkyubin', site: '', course: '', steps: [], over: { per: 1, sale: null, pay: null } }; }
+function newRateRule(measure) { return { measure: measure || 'qty_takkyubin', site: '', course: '', round: 'up', steps: [], over: { per: 1, sale: null, pay: null } }; }
 
 /* ---- 営業所・コースの編集（「概算単価」タブの上段）----
    1行 = 営業所名 + その営業所のコース（読点区切り）。営業所名が空ならコースだけの区別。
@@ -171,10 +175,15 @@ function renderClientRatesTab() {
     const ov = rule.over || {};
     const overLabel = (rule.steps || []).length ? '超過' : '単価';
     return `<div style="border:0.5px solid var(--border);border-radius:var(--radius);padding:8px;margin-bottom:8px;background:var(--bg2)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
         <span style="font-size:11px;font-weight:600;white-space:nowrap">ルール${ri+1}</span>
         <span style="font-size:11px;color:var(--text2)">対象</span>
         <select data-r="${ri}" data-f="measure" onchange="rateRuleRead();renderClientRatesTab()" style="padding:3px 6px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)">${measureOpts}</select>
+        <span style="font-size:11px;color:var(--text2)" title="「◯ごと加算」で端数が出たときの扱い。切り上げなら35分は30分ごと×2回、切り捨てなら×1回">端数</span>
+        <select data-r="${ri}" data-f="round" onchange="rateRuleRead()" ${SEL}>
+          <option value="up" ${rule.round!=='down'?'selected':''}>切り上げ</option>
+          <option value="down" ${rule.round==='down'?'selected':''}>切り捨て</option>
+        </select>
         <button type="button" class="ibtn" style="margin-left:auto;color:var(--red-text)" onclick="rateRuleRemove(${ri})" title="このルールを消す">🗑</button>
       </div>
       ${(siteSel || courseSel) ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">${siteSel}${courseSel}</div>` : ''}
@@ -203,7 +212,7 @@ function rateRuleRead() {
     const rule = cliRulesDraft[+el.dataset.r]; if (!rule) return;
     const f = el.dataset.f, s = el.dataset.s;
     const num = v => (v === '' || v == null) ? null : +v;
-    if (s == null) { if (f === 'measure') rule.measure = el.value; else if (f === 'site') rule.site = el.value; else if (f === 'course') rule.course = el.value; return; }
+    if (s == null) { if (f === 'measure') rule.measure = el.value; else if (f === 'site') rule.site = el.value; else if (f === 'course') rule.course = el.value; else if (f === 'round') rule.round = el.value; return; }
     const target = s === 'over' ? (rule.over = rule.over || {}) : rule.steps[+s];
     if (!target) return;
     if (f === 'mode') target.mode = el.value; else target[f] = num(el.value);
@@ -232,6 +241,7 @@ async function saveClientRates(cliId) {
     measure: rule.measure,
     site: rule.site || undefined,       // 空なら付けない（全部の運行に効く）
     course: rule.course || undefined,
+    round: rule.round === 'down' ? 'down' : undefined,   // 既定（切り上げ）は付けない
     steps: (rule.steps || []).filter(st => +st.upto > 0).map(st => ({ upto:+st.upto, mode: st.mode==='per'?'per':'fixed', per: st.mode==='per' ? (+st.per||0) : undefined, sale:+st.sale||0, pay:+st.pay||0 })),
     over: (+rule.over?.per > 0 && (+rule.over?.sale || +rule.over?.pay)) ? { per:+rule.over.per, sale:+rule.over.sale||0, pay:+rule.over.pay||0 } : null,
   })).filter(rule => rule.steps.length || rule.over);
