@@ -1565,10 +1565,11 @@ try {
               </div>
             </div>
             <div>
-              <!-- チャーターは距離で料金が決まるので、件数と距離を並べる（個は持たない） -->
+              <!-- チャーターは距離で料金が決まるので、件数・個数と一緒に距離も並べる -->
               <div style="font-size:10px;font-weight:600;color:var(--blue);margin-bottom:2px">チャーター</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
                 <div class="fld"><label>件数（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
+                <div class="fld"><label>個数（個）</label><input type="number" id="drQtyCharterPcs" placeholder="0" min="0"></div>
                 <div class="fld"><label>距離（km）</label><input type="number" id="drTripKm" placeholder="例: 37" min="0" step="0.1" title="距離で料金が決まる運行のときに入れてください。その日の運行が1件だけなら、帰着時の走行距離をそのまま使います"></div>
               </div>
             </div>
@@ -3313,13 +3314,13 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=8c8b4b7a"></script>
+<script src="js/03-dashboard-daily.js?v=9ccbd58d"></script>
 
 
-<script src="js/04-monthly.js?v=6a0a0b1f"></script>
+<script src="js/04-monthly.js?v=69c72de0"></script>
 
 
-<script src="js/05-driver-portal.js?v=eb9d28ad"></script>
+<script src="js/05-driver-portal.js?v=9357370e"></script>
 
 
 
@@ -3334,7 +3335,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=286caaf2"></script>
+<script src="js/10-settings.js?v=ec49b257"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

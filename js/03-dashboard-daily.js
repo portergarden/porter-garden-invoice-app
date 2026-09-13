@@ -2247,13 +2247,12 @@ const DR_QTY_ITEMS = [
   {key:'qty_nekopos',     trip:'qty_neko',        input:'drQtyNeko',       group:'個人宅配',   label:'ポスト便',   unit:'個'},
   {key:'qty_corp',        trip:'qty_corp',        input:'drQtyCorp',       group:'企業集配',   label:'企業集配',   unit:'件'},
   {key:'qty_corp_pcs',    trip:'qty_corp_pcs',    input:'drQtyCorpPcs',    group:'企業集配',   label:'企業集配',   unit:'個'},
-  // チャーターは距離で決まる仕事なので「個」は持たない（件数と運行ごとの距離 km を並べる）。
-  // 以前あった qty_charter_pcs は件に寄せて使用をやめた
   {key:'qty_charter',     trip:'qty_charter',     input:'drQtyCharter',    group:'チャーター', label:'チャーター', unit:'件'},
+  {key:'qty_charter_pcs', trip:'qty_charter_pcs', input:'drQtyCharterPcs', group:'チャーター', label:'チャーター', unit:'個'},
 ];
 /* 「宅配便40個 ／ 企業集配12件/114個」のように、入っているものだけ並べる。
    件と個の両方がある業務は1つにまとめる（同じ名前を2回出さない） */
-// 運行（useTripKey）のときは距離も添える。チャーターは距離で決まるので「チャーター1件・37km」のように並べる
+// 運行（useTripKey）のときは距離も添える。チャーターは距離で料金が決まるので「チャーター1件/3個・37km」のように並べる
 const drQtyText = (obj, useTripKey) => {
   const byLabel = new Map();
   DR_QTY_ITEMS.forEach(q => {

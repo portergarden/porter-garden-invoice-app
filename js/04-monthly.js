@@ -28,6 +28,7 @@ const MR_COLS = [
   {key:'corp',     label:'企業集配(件)',def:true, align:'right',  pw:8,  get:r=>String(r.qty_corp||0)},
   {key:'corppcs',  label:'企業集配(個)',def:false,align:'right',  pw:8,  get:r=>String(r.qty_corp_pcs||0)},
   {key:'charter',  label:'チャーター(件)',def:true,align:'right', pw:8,  get:r=>String(r.qty_charter||0)},
+  {key:'charterpcs',label:'チャーター(個)',def:false,align:'right',pw:8, get:r=>String(r.qty_charter_pcs||0)},
   {key:'alc',      label:'Alc前/後',    def:true,  align:'center', pw:11, get:r=>`${r.alc_before??'—'}/${r.alc_after??'—'}`},
   {key:'health',   label:'体調',        def:true,  align:'center', pw:6,  get:r=>({good:'良',normal:'普',bad:'不'}[r.health_before||'good']||'')},
   {key:'rest',     label:'休憩',        def:false, align:'left',   pw:12, get:r=>escHtml(formatRests(r)||'')},
@@ -717,7 +718,7 @@ async function renderMonthlyReport() {
     <div class="kpi-card"><div class="kpi-label">企業集配</div><div class="kpi-val">${sumQty('qty_corp').toLocaleString()}件</div>
       <div class="kpi-diff kpi-eq">${sumQty('qty_corp_pcs').toLocaleString()}個</div></div>
     <div class="kpi-card"><div class="kpi-label">チャーター</div><div class="kpi-val">${sumQty('qty_charter').toLocaleString()}件</div>
-      <div class="kpi-diff kpi-eq">距離は走行距離に含む</div></div>
+      <div class="kpi-diff kpi-eq">${sumQty('qty_charter_pcs').toLocaleString()}個</div></div>
     <div class="kpi-card"><div class="kpi-label">⚠ 要確認</div>
       <div class="kpi-val" style="color:${needCheck?'var(--red)':'var(--green)'}">${needCheck}件</div>
       <div class="kpi-diff kpi-eq">${checkDetail}</div></div>
@@ -807,6 +808,7 @@ function renderMrCards() {
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
       const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
       const drChar= dReports.reduce((a,r)=>a+(+r.qty_charter||0),0);
+      const drCharPcs=dReports.reduce((a,r)=>a+(+r.qty_charter_pcs||0),0);
       const drCorp= dReports.reduce((a,r)=>a+(+r.qty_corp||0),0);
       const drCorpPcs=dReports.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
       const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
@@ -858,7 +860,7 @@ function renderMrCards() {
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
               </div>
               <div style="font-size:10px;color:var(--text2)">
-                稼働${drWorkDays}日 · 稼働時間${fmtHours(drHours)} · ${drKm}km${drTak||drNeko?` · 個人宅配${drTak+drNeko}個`:''}${drCorp||drCorpPcs?` · 企業集配${drCorp}件${drCorpPcs?`/${drCorpPcs}個`:''}`:''}${drChar?` · チャーター${drChar}件`:''}
+                稼働${drWorkDays}日 · 稼働時間${fmtHours(drHours)} · ${drKm}km${drTak||drNeko?` · 個人宅配${drTak+drNeko}個`:''}${drCorp||drCorpPcs?` · 企業集配${drCorp}件${drCorpPcs?`/${drCorpPcs}個`:''}`:''}${drChar||drCharPcs?` · チャーター${drChar}件${drCharPcs?`/${drCharPcs}個`:''}`:''}
               </div>
             </div>
           </div>
@@ -869,7 +871,7 @@ function renderMrCards() {
             </div>
             <div style="font-size:13px;font-weight:600">${fmtHours(drHours)}</div>
             <div style="font-size:10px;color:var(--text2);white-space:nowrap">稼働時間 <span data-pnl-mark>▼</span></div>
-            <div style="font-size:10px;color:var(--text2);white-space:nowrap">${(drTak+drNeko+drCorpPcs).toLocaleString()}個 ／ ${(drCorp+drChar).toLocaleString()}件</div>
+            <div style="font-size:10px;color:var(--text2);white-space:nowrap">${(drTak+drNeko+drCorpPcs+drCharPcs).toLocaleString()}個 ／ ${(drCorp+drChar).toLocaleString()}件</div>
           </div>
         </div>
         <div class="pnl-body">
@@ -894,8 +896,8 @@ function renderMrCards() {
             </div>
             <div class="kpi-card" style="padding:6px 8px">
               <div class="kpi-label">取扱量</div>
-              <div style="font-size:14px;font-weight:600">${(drTak+drNeko+drCorpPcs).toLocaleString()}個 ／ ${(drCorp+drChar).toLocaleString()}件</div>
-              <div class="kpi-diff kpi-eq">個人宅配${drTak+drNeko}個 ／ 企業集配${drCorp}件${drCorpPcs?`(${drCorpPcs}個)`:''} ／ チャーター${drChar}件</div>
+              <div style="font-size:14px;font-weight:600">${(drTak+drNeko+drCorpPcs+drCharPcs).toLocaleString()}個 ／ ${(drCorp+drChar).toLocaleString()}件</div>
+              <div class="kpi-diff kpi-eq">個人宅配${drTak+drNeko}個 ／ 企業集配${drCorp}件${drCorpPcs?`(${drCorpPcs}個)`:''} ／ チャーター${drChar}件${drCharPcs?`(${drCharPcs}個)`:''}</div>
             </div>
           </div>
 
@@ -1048,6 +1050,7 @@ async function printMonthlyReportA4(onlyDrvId) {
       const drTak = dReports.reduce((a,r)=>a+(+r.qty_takkyubin||0),0);
       const drNeko= dReports.reduce((a,r)=>a+(+r.qty_nekopos||0),0);
       const drChar= dReports.reduce((a,r)=>a+(+r.qty_charter||0),0);
+      const drCharPcs=dReports.reduce((a,r)=>a+(+r.qty_charter_pcs||0),0);
       const drCorp= dReports.reduce((a,r)=>a+(+r.qty_corp||0),0);
       const drCorpPcs=dReports.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
       const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
@@ -1085,7 +1088,7 @@ async function printMonthlyReportA4(onlyDrvId) {
             発行日: ${fmtLocalDate(new Date())}
           </div>
         </div>
-        <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件</div>
+        <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
         <table class="mr-table">
           <thead><tr>
             ${(() => {
