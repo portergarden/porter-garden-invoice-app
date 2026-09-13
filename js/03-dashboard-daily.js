@@ -2247,11 +2247,13 @@ const DR_QTY_ITEMS = [
   {key:'qty_nekopos',     trip:'qty_neko',        input:'drQtyNeko',       group:'個人宅配',   label:'ポスト便',   unit:'個'},
   {key:'qty_corp',        trip:'qty_corp',        input:'drQtyCorp',       group:'企業集配',   label:'企業集配',   unit:'件'},
   {key:'qty_corp_pcs',    trip:'qty_corp_pcs',    input:'drQtyCorpPcs',    group:'企業集配',   label:'企業集配',   unit:'個'},
+  // チャーターは距離で決まる仕事なので「個」は持たない（件数と運行ごとの距離 km を並べる）。
+  // 以前あった qty_charter_pcs は件に寄せて使用をやめた
   {key:'qty_charter',     trip:'qty_charter',     input:'drQtyCharter',    group:'チャーター', label:'チャーター', unit:'件'},
-  {key:'qty_charter_pcs', trip:'qty_charter_pcs', input:'drQtyCharterPcs', group:'チャーター', label:'チャーター', unit:'個'},
 ];
 /* 「宅配便40個 ／ 企業集配12件/114個」のように、入っているものだけ並べる。
    件と個の両方がある業務は1つにまとめる（同じ名前を2回出さない） */
+// 運行（useTripKey）のときは距離も添える。チャーターは距離で決まるので「チャーター1件・37km」のように並べる
 const drQtyText = (obj, useTripKey) => {
   const byLabel = new Map();
   DR_QTY_ITEMS.forEach(q => {
@@ -2260,7 +2262,12 @@ const drQtyText = (obj, useTripKey) => {
     if (!byLabel.has(q.label)) byLabel.set(q.label, []);
     byLabel.get(q.label).push(`${v}${q.unit}`);
   });
-  return [...byLabel].map(([label, vals]) => label + vals.join('/')).join(' ／ ');
+  const parts = [...byLabel].map(([label, vals]) => label + vals.join('/'));
+  if (useTripKey && obj.km != null && obj.km !== '') {
+    const i = parts.findIndex(x => x.startsWith('チャーター'));
+    if (i >= 0) parts[i] += `・${obj.km}km`; else parts.push(`${obj.km}km`);
+  }
+  return parts.join(' ／ ');
 };
 // 古い日報（運行の記録が無い分）を1件の運行として組み立てるときの数量
 const drQtyFromReport = r => Object.fromEntries(DR_QTY_ITEMS.map(q => [q.trip, +r[q.key] || 0]));
@@ -2974,7 +2981,6 @@ function renderDrTrips() {
     .map(({t,i}) => {
       const sub = [
         (t.start_loc||t.end_loc) ? `${escHtml(t.start_loc||'?')} → ${escHtml(t.end_loc||'?')}` : '',
-        t.km != null ? `${t.km}km` : '',
         qty(t),
         t.wait  ? `⏳荷待ち ${escHtml(t.wait.arrive||'')}〜${escHtml(t.wait.depart||'')}` : '',
         t.cargo ? `📦荷役${escHtml(t.cargo.desc ? '（'+t.cargo.desc+'）' : '')}` : '',

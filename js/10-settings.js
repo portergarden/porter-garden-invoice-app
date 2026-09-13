@@ -370,8 +370,9 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   CONSTRAINT daily_reports_tenko_method_note_check
     CHECK (tenko_method = 'face' OR COALESCE(btrim(tenko_method_note), '') <> ''),
   cli bigint,
-  -- 数量は業務の種類ごとに持つ（個人宅配＝個／企業集配＝件と個／チャーター＝件と個）。
+  -- 数量は業務の種類ごとに持つ（個人宅配＝個／企業集配＝件と個／チャーター＝件。距離は trips[].km）。
   -- qty_other は旧「その他」。何の数か分からなくなる受け皿だったため使用をやめた（列は過去分のため残置）
+  -- qty_charter_pcs は旧「チャーター（個）」。チャーターは距離で決まるため件に寄せて使用をやめた（列は残置）
   qty_takkyubin int DEFAULT 0, qty_nekopos int DEFAULT 0,
   qty_corp int, qty_corp_pcs int,
   qty_charter int DEFAULT 0, qty_charter_pcs int,
@@ -390,7 +391,7 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- 1日に複数回の運行（チャーターを午前・午後で別の取引先など）。
   -- 運行ごとに日報を分けると点呼記録まで分かれてしまうため、日報は1日1枚のままにして運行だけを配列で持つ。
   -- [{cli_id, cli_name, start, end, start_loc, end_loc,
-  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, km, site, course, note}]
+  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, km, site, course, note}]
   --   km は運行ごとの距離（任意）。距離制の概算に使う。無ければその日の運行が1件のときだけ日報の走行距離で代用
   --   site / course は取引先の営業所名・コース名（clients.sites から選ぶ。任意）。営業所・コース別の概算単価に使う
   -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
@@ -500,7 +501,7 @@ CREATE TABLE IF NOT EXISTS file_mappings (
 --      "over":{"per":10,"sale":1000,"pay":700}},                         -- 50km〜 は10kmごと+1,000
 --     {"measure":"qty_takkyubin","steps":[],"over":{"per":1,"sale":170,"pay":130}}  -- 1個170円
 --   ]
---   measure: qty_takkyubin|qty_nekopos|qty_corp|qty_corp_pcs|qty_charter|qty_charter_pcs|hours|km|day
+--   measure: qty_takkyubin|qty_nekopos|qty_corp|qty_corp_pcs|qty_charter|hours|km|day
 --   site / course（任意）: 営業所名・コース名。付けると、その営業所・コース（trips[].site / .course）の運行にだけ効く。無ければ全部の運行に効く
 --   fixed = ここまでの合計額（前の段階を置き換える）／ per = その区間に入った分だけ ◯ごとに上乗せ（切り上げ）
 CREATE TABLE IF NOT EXISTS client_rates (
