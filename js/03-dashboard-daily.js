@@ -2417,8 +2417,10 @@ async function populateDriverCliList() {
 }
 
 async function initDailyForm(reportId=null) {
-  // 別の日報を開いたときに、前の運行を編集中のままにしない
+  // 別の日報を開いたときに、前の運行・休憩を編集中のままにしない
   editDrTripIdx = null;
+  editDrRestIdx = null;
+  installDrDraftAutosave();
   // 日付
   const dEl = document.getElementById('drD');
   if (!dEl.value) dEl.value = fmtLocalDate(new Date());
@@ -2716,28 +2718,70 @@ function updateDrRestWarning() {
   el.style.display = m ? '' : 'none';
 }
 
-// 休憩・睡眠は12時間稼働などで複数回に分かれることがあるため、追加式のリストで管理する
+// 休憩・睡眠は12時間稼働などで複数回に分かれることがあるため、追加式のリストで管理する。
+// 運行と同じく ✎ で入力欄に戻して直せる（以前は削除して入れ直すしかなかった）
 let pendDrRests = [];
+let editDrRestIdx = null;
+function updateDrRestFormMode() {
+  const editing = editDrRestIdx !== null;
+  const btn = document.getElementById('drRestAddBtn');
+  const cancel = document.getElementById('drRestCancelBtn');
+  if (btn) btn.textContent = editing ? '✓ 更新' : '＋ 追加';
+  if (cancel) cancel.style.display = editing ? '' : 'none';
+}
 function addDrRest() {
   const startEl = document.getElementById('drRestStart');
   const endEl = document.getElementById('drRestEnd');
   const locEl = document.getElementById('drRestLoc');
   const start = startEl.value, end = endEl.value, location = locEl.value.trim();
   if (!start || !end) { alert('休憩の開始・終了時刻を入力してください'); return; }
-  pendDrRests.push({start, end, location});
+  if (editDrRestIdx !== null && pendDrRests[editDrRestIdx]) {
+    pendDrRests[editDrRestIdx] = {start, end, location};
+    editDrRestIdx = null;
+    showT('休憩を更新しました');
+  } else {
+    pendDrRests.push({start, end, location});
+  }
   startEl.value = ''; endEl.value = ''; locEl.value = '';
   renderDrRests();
+  saveDrDraft();
 }
-function rmDrRest(i) { pendDrRests.splice(i,1); renderDrRests(); }
+function editDrRest(i) {
+  const r = pendDrRests[i];
+  if (!r) return;
+  editDrRestIdx = i;
+  document.getElementById('drRestStart').value = r.start || '';
+  document.getElementById('drRestEnd').value = r.end || '';
+  document.getElementById('drRestLoc').value = r.location || '';
+  renderDrRests();
+  document.getElementById('drRestStart')?.scrollIntoView({block:'center'});
+}
+function cancelDrRestEdit() {
+  editDrRestIdx = null;
+  ['drRestStart','drRestEnd','drRestLoc'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  renderDrRests();
+}
+/* 削除。編集中の休憩を消したら編集も終わりにし、それより前を消したときは編集中の位置がひとつ前へずれる */
+function rmDrRest(i) {
+  if (editDrRestIdx === i) cancelDrRestEdit();
+  else if (editDrRestIdx !== null && editDrRestIdx > i) editDrRestIdx--;
+  pendDrRests.splice(i,1);
+  renderDrRests();
+  saveDrDraft();
+}
 function renderDrRests() {
   updateDrRestWarning();
+  updateDrRestFormMode();
   const el = document.getElementById('drRestList');
   if (!el) return;
   if (!pendDrRests.length) { el.innerHTML = '<div style="font-size:10px;color:var(--text3)">休憩の記録はありません</div>'; return; }
-  el.innerHTML = pendDrRests.map((r,i) => `<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 6px;background:var(--bg2);border-radius:var(--radius);margin-bottom:3px">
+  el.innerHTML = pendDrRests.map((r,i) => {
+    const editing = editDrRestIdx === i;
+    return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 6px;background:${editing?'var(--blue-bg)':'var(--bg2)'};border-radius:var(--radius);margin-bottom:3px${editing?';outline:1.5px solid var(--blue)':''}">
     <span style="flex:1">${r.start}〜${r.end}${r.location?`（${escHtml(r.location)}）`:''}</span>
+    <button class="ibtn" onclick="editDrRest(${i})" title="この休憩を直す">✎</button>
     <button class="ibtn" onclick="rmDrRest(${i})" title="削除">🗑</button>
-  </div>`).join('');
+  </div>`; }).join('');
 }
 
 /* ===== 運行（1日に複数回） =====
@@ -2973,6 +3017,7 @@ function addDrTrip() {
   updateDrTripFormMode();
   renderDrTrips();
   applyDrTripRollup();
+  saveDrDraft();
 }
 // 追加済みの運行を入力欄へ戻して、そのまま直せるようにする
 function editDrTrip(i) {
@@ -3021,6 +3066,7 @@ function rmDrTrip(i) {
   updateDrTripFormMode();
   renderDrTrips();
   applyDrTripRollup();
+  saveDrDraft();
 }
 
 function renderDrTrips() {
@@ -3375,14 +3421,37 @@ function renderDrSummary() {
 }
 
 /* 下書きの保存。DBには入れず端末のlocalStorageに置くだけなので、
-   途中の中途半端な記録がサーバーに残らない */
+   途中の中途半端な記録がサーバーに残らない。
+   以前はステップを移るときにしか保存しておらず、運行を追加したあとにアプリを閉じる／
+   スマホがページを捨てると、そのステップで入れた分（運行・休憩・入力欄）が消えていた。
+   今は入力欄の変更・運行や休憩の増減のたびに保存し、画面を離れるときにも保存する */
 const DR_DRAFT_KEY = () => `drDraft:${me?.id||''}`;
+const DR_DRAFT_MAX_AGE = 48 * 60 * 60 * 1000;   // これより古い下書きは捨てる（前日分の遅れ入力は残す）
+let drDraftTimer = null;
+function saveDrDraftSoon() {
+  clearTimeout(drDraftTimer);
+  drDraftTimer = setTimeout(saveDrDraft, 400);
+}
+let drDraftAutosaveInstalled = false;
+function installDrDraftAutosave() {
+  if (drDraftAutosaveInstalled) return;
+  const area = document.getElementById('dailyFormArea');
+  if (!area) return;
+  drDraftAutosaveInstalled = true;
+  area.addEventListener('input',  saveDrDraftSoon);
+  area.addEventListener('change', saveDrDraftSoon);
+  // アプリを閉じる・別アプリに切り替えるとき（iOSはこのあとページを捨てることがある）
+  const flush = () => { if (area.style.display !== 'none') { clearTimeout(drDraftTimer); saveDrDraft(); } };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  window.addEventListener('pagehide', flush);
+}
 function drFormFieldIds() {
   return [...document.querySelectorAll('#dailyFormArea input, #dailyFormArea select, #dailyFormArea textarea')]
     .map(el => el.id).filter(Boolean);
 }
 function saveDrDraft() {
   if (editDailyId) return;   // 既存の日報を編集中は下書きを作らない
+  if (document.getElementById('dailyFormArea')?.style.display === 'none') return;   // 閉じたあとの遅延保存で空の下書きを作らない
   try {
     const f = {};
     drFormFieldIds().forEach(id => {
@@ -3397,8 +3466,9 @@ function loadDrDraft() {
     const raw = localStorage.getItem(DR_DRAFT_KEY());
     if (!raw) return null;
     const d = JSON.parse(raw);
-    // 日付が変わった下書きは古いものとみなす
-    if (d?.f?.drD && d.f.drD !== fmtLocalDate(new Date())) return null;
+    // 古い下書きは捨てる。以前は「日付欄が今日でなければ捨てる」だったため、
+    // 前日分を翌日に入れている途中の下書きまで消えていた
+    if (!d?.at || Date.now() - d.at > DR_DRAFT_MAX_AGE) return null;
     return d;
   } catch(e) { return null; }
 }
@@ -3418,6 +3488,7 @@ function applyDrDraft(d) {
   pendDrTrips = Array.isArray(d.trips) ? d.trips : [];
   editDrTripIdx = null;   // 下書きから戻したときも編集状態は持ち越さない
   pendDrRests = Array.isArray(d.rests) ? d.rests : [];
+  editDrRestIdx = null;
   renderDrTrips(); renderDrRests();
   onDrTenkoMethodChange(); toggleDrWaitFields(); toggleDrIncidentFields(); onDrOdoChange();
   drStep = d.step || 1;

@@ -1637,7 +1637,10 @@ try {
             <div><label style="font-size:10px;color:var(--text2)">開始</label><input type="time" id="drRestStart"></div>
             <div><label style="font-size:10px;color:var(--text2)">終了</label><input type="time" id="drRestEnd"></div>
             <div><label style="font-size:10px;color:var(--text2)">休憩地点</label><input type="text" id="drRestLoc" placeholder="例: 〇〇パーキングエリア"></div>
-            <button class="btn sml" type="button" onclick="addDrRest()">＋ 追加</button>
+            <div style="display:flex;gap:4px">
+              <button class="btn sml" type="button" id="drRestCancelBtn" style="display:none" onclick="cancelDrRestEdit()">取消</button>
+              <button class="btn sml" type="button" id="drRestAddBtn" onclick="addDrRest()">＋ 追加</button>
+            </div>
           </div>
           <div id="drRestList" style="margin-top:6px"></div>
           <!-- 業務開始から順に見て、休憩なしで4時間に達する時点があればここに出す -->
@@ -3322,7 +3325,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=1578da53"></script>
+<script src="js/03-dashboard-daily.js?v=19494a14"></script>
 
 
 <script src="js/04-monthly.js?v=5726ca6e"></script>
