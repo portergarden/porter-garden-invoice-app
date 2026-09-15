@@ -2663,29 +2663,57 @@ function checkAlc(input, warnId) {
   }
 }
 
-// 改善基準告示の「430ルール」チェック：連続運転4時間ごとに合計30分以上の休憩が必要。
-// リアルタイム計測ではなく、提出内容（業務開始〜終了・休憩時刻）から事後的に判定する
+/* 改善基準告示の「430ルール」チェック：連続運転4時間ごとに合計30分以上の休憩（1回10分以上）が必要。
+   以前は「稼働時間÷4時間×30分 ≦ 休憩の合計」で見ていたため、10時間稼働で最後に1時間まとめて休んでも
+   通ってしまった。業務開始から順に追いかけ、休憩なし（合計30分に届かないまま）で4時間に達する時点が
+   あればその時刻を返す。合計30分に達した休憩でカウントを区切り直す。
+   業務終了がまだ無ければ、最後の運行の終了時刻まで見る（入力途中でも気づけるように） */
 function checkContinuousDrivingWarning() {
-  const start = document.getElementById('drStart').value;
-  const end = document.getElementById('drEnd').value;
+  const start = document.getElementById('drStart')?.value;
+  const end = document.getElementById('drEnd')?.value
+    || pendDrTrips.map(t => t.end).filter(Boolean).sort().pop() || '';
   if (!start || !end) return null;
-  const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
-  let totalMin = toMin(end) - toMin(start);
-  if (totalMin < 0) totalMin += 24*60; // 日をまたぐ場合
-  // 全休憩の合計時間（複数回に分かれていてもよい）
-  const restMin = pendDrRests.reduce((a,r) => {
-    if (!r.start || !r.end) return a;
-    let d = toMin(r.end) - toMin(r.start);
-    if (d < 0) d += 24*60;
-    return a + d;
-  }, 0);
-  // 連続運転4時間ごとに合計30分以上の休憩が必要（12時間稼働なら90分以上、など長時間ほど要件が増える）
-  const requiredMin = Math.floor(totalMin / 240) * 30;
-  if (requiredMin > 0 && restMin < requiredMin) {
-    const h = Math.floor(totalMin/60), m = totalMin%60;
-    return `⚠️ 業務開始から終了まで${h}時間${m}分のうち、休憩の合計が${restMin}分しか記録されていません。連続運転4時間ごとに合計30分以上の休憩が必要です（改善基準告示）。目安: 合計${requiredMin}分以上。`;
+  const toMin = t => { const [h,m] = String(t).split(':').map(Number); return h*60+m; };
+  // 業務開始からの経過分に直す（日をまたいでも順番が崩れないように）
+  const rel = t => ((toMin(t) - toMin(start)) % 1440 + 1440) % 1440;
+  const total = rel(end);
+  if (total <= 0) return null;
+  const fmt = m => { const x = (toMin(start) + m) % 1440; return `${String(Math.floor(x/60)).padStart(2,'0')}:${String(x%60).padStart(2,'0')}`; };
+  const rests = pendDrRests.filter(r => r.start && r.end)
+    .map(r => { const a = rel(r.start); let b = rel(r.end); if (b < a) b += 1440; return { s: a, e: Math.min(b, total) }; })
+    .filter(r => r.s < total && r.e > r.s)
+    .sort((a,b) => a.s - b.s);
+  let cursor = 0, cont = 0, acc = 0;
+  // cursor から upto までを運転として積む。4時間を超える時点があればそこを返す
+  const run = upto => {
+    const work = Math.max(0, upto - cursor);
+    if (cont + work > 240) return cursor + (240 - cont);
+    cont += work; cursor = Math.max(cursor, upto);
+    return null;
+  };
+  for (const r of rests) {
+    const at = run(r.s);
+    if (at != null) return msg(at);
+    const d = r.e - r.s;
+    if (d >= 10) acc += d;                 // 10分未満の中断は休憩に数えない
+    if (acc >= 30) { cont = 0; acc = 0; }  // 合計30分に達したら4時間のカウントを区切り直す
+    cursor = Math.max(cursor, r.e);
   }
-  return null;
+  const at = run(total);
+  return at != null ? msg(at) : null;
+  function msg(at) {
+    const before = rests.filter(r => r.e <= at);
+    const taken = before.length ? `（それまでの休憩: ${before.map(r => `${fmt(r.s)}〜${fmt(r.e)}`).join('、')}）` : '（それまでの休憩なし）';
+    return `⚠️ 業務開始 ${start} から数えて、${fmt(at)} の時点で休憩が合計30分に届かないまま連続4時間になります${taken}。改善基準告示では連続運転4時間ごとに合計30分以上（1回10分以上）の休憩が必要です。${fmt(at)} より前に休憩を入れて記録してください。`;
+  }
+}
+// 休憩欄の下にその場で出す。休憩・業務時刻・運行を直すたびに呼ぶ
+function updateDrRestWarning() {
+  const el = document.getElementById('drRestWarn');
+  if (!el) return;
+  const m = checkContinuousDrivingWarning();
+  el.textContent = m || '';
+  el.style.display = m ? '' : 'none';
 }
 
 // 休憩・睡眠は12時間稼働などで複数回に分かれることがあるため、追加式のリストで管理する
@@ -2702,6 +2730,7 @@ function addDrRest() {
 }
 function rmDrRest(i) { pendDrRests.splice(i,1); renderDrRests(); }
 function renderDrRests() {
+  updateDrRestWarning();
   const el = document.getElementById('drRestList');
   if (!el) return;
   if (!pendDrRests.length) { el.innerHTML = '<div style="font-size:10px;color:var(--text3)">休憩の記録はありません</div>'; return; }
@@ -2998,6 +3027,7 @@ function renderDrTrips() {
   const el = document.getElementById('drTripList');
   if (!el) return;
   updateDrTripFormMode();
+  updateDrRestWarning();
   if (!pendDrTrips.length) {
     el.innerHTML = '<div style="font-size:11px;color:var(--amber-text);background:var(--amber-bg);border-radius:var(--radius);padding:6px 8px">運行が1件も追加されていません。上の欄を埋めて「＋ 運行を追加」を押してください</div>';
     return;
@@ -3154,6 +3184,7 @@ function syncDrTenkoTimes() {
   mirrorDrTime('drStart', 'drTenkoBeforeAt');
   mirrorDrTime('drTenkoAfterAt', 'drEnd');
   mirrorDrTime('drEnd', 'drTenkoAfterAt');
+  updateDrRestWarning();
 }
 
 /* ===== 日報の3ステップ =====

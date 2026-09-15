@@ -1542,6 +1542,12 @@ try {
             <div class="fld"><label>開始時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripStart"></div>
             <div class="fld"><label>終了時刻 <span style="color:var(--red)">*</span></label><input type="time" id="drTripEnd"></div>
           </div>
+          <!-- 運行ごとのメーター（任意）。両方入れると下のチャーター欄の距離（km）を自動で計算する。次の運行の開始には前の運行の終了を入れておく -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="fld"><label>開始時のメーター（km・任意）</label><input type="number" id="drTripOdoStart" placeholder="例: 45230" min="0" step="1" oninput="onDrTripOdoChange()"></div>
+            <div class="fld"><label>終了時のメーター（km・任意）</label><input type="number" id="drTripOdoEnd" placeholder="例: 45267" min="0" step="1" oninput="onDrTripOdoChange()"></div>
+          </div>
+          <div id="drTripOdoHint" style="font-size:10px;color:var(--text2);margin:-4px 0 6px">メーターを両方入れると、この運行の距離（km）が自動で入ります</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="fld"><label>積込・出発の場所</label><input type="text" id="drTripStartLoc" placeholder="例: 〇〇センター"></div>
             <div class="fld"><label>納品・到着の場所</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター ／ 配達エリア"></div>
@@ -1574,12 +1580,6 @@ try {
               </div>
             </div>
           </div>
-          <!-- 運行ごとのメーター（任意）。両方入れると上の距離（km）を自動で計算する。次の運行の開始には前の運行の終了を入れておく -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="fld"><label>開始時のメーター（km・任意）</label><input type="number" id="drTripOdoStart" placeholder="例: 45230" min="0" step="1" oninput="onDrTripOdoChange()"></div>
-            <div class="fld"><label>終了時のメーター（km・任意）</label><input type="number" id="drTripOdoEnd" placeholder="例: 45267" min="0" step="1" oninput="onDrTripOdoChange()"></div>
-          </div>
-          <div id="drTripOdoHint" style="font-size:10px;color:var(--text2);margin:-4px 0 6px">メーターを両方入れると、この運行の距離（km）が自動で入ります</div>
           <div class="fld"><label>この運行のメモ（任意）</label><input type="text" id="drTripNote" placeholder="例: 積込待ち40分"></div>
 
           <!-- 荷待ち・荷役は「集貨又は配達を行った地点」ごとの記録なので、運行にぶら下げる -->
@@ -1640,6 +1640,8 @@ try {
             <button class="btn sml" type="button" onclick="addDrRest()">＋ 追加</button>
           </div>
           <div id="drRestList" style="margin-top:6px"></div>
+          <!-- 業務開始から順に見て、休憩なしで4時間に達する時点があればここに出す -->
+          <div id="drRestWarn" style="display:none;font-size:11px;color:var(--red-text);background:var(--red-bg);border:0.5px solid var(--red);border-radius:var(--radius);padding:6px 8px;margin-top:6px;line-height:1.5"></div>
         </div>
 
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑦ 荷待ち・荷役作業</div>
@@ -3320,7 +3322,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=3ecd4d7f"></script>
+<script src="js/03-dashboard-daily.js?v=1578da53"></script>
 
 
 <script src="js/04-monthly.js?v=5726ca6e"></script>
