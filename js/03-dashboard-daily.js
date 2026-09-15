@@ -2824,6 +2824,7 @@ function drResolveClient(name) {
 
 // 運行の入力欄。追加・編集・取消で同じ並びを使う
 const DR_TRIP_INPUT_IDS = ['drCli','drTripSite','drTripCourse','drTripStart','drTripEnd','drTripStartLoc','drTripEndLoc','drTripKm',
+   'drTripOdoStart','drTripOdoEnd',
    ...DR_QTY_ITEMS.map(q => q.input), 'drTripNote',
    'drTripWaitLoc','drTripWaitArrive','drTripWaitDepart','drTripWaitAppointed',
    'drTripCargoLoc','drTripCargoStart','drTripCargoEnd','drTripExtraStart','drTripExtraEnd',
@@ -2831,11 +2832,35 @@ const DR_TRIP_INPUT_IDS = ['drCli','drTripSite','drTripCourse','drTripStart','dr
 
 function clearDrTripInputs() {
   DR_TRIP_INPUT_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  prefillTripOdoStart();
+  onDrTripOdoChange();
   ['drTripWaitFlag','drTripCargoFlag'].forEach(id => {
     const el = document.getElementById(id); if (el) el.checked = false;
   });
   updateDrTripSiteFields('', '');
   toggleDrTripSubFields();
+}
+/* 運行のメーター。両方入っていれば距離（km）を自動で入れる（日報の1日分と同じ仕組み）。
+   終了が開始より小さければ注意だけ出して距離は触らない */
+function onDrTripOdoChange() {
+  const a = document.getElementById('drTripOdoStart')?.value ?? '';
+  const b = document.getElementById('drTripOdoEnd')?.value ?? '';
+  const hint = document.getElementById('drTripOdoHint');
+  const setHint = (t, warn) => { if (hint) { hint.textContent = t; hint.style.color = warn ? 'var(--red)' : 'var(--text2)'; } };
+  if (a === '' || b === '') { setHint('メーターを両方入れると、この運行の距離（km）が自動で入ります'); return; }
+  const d = +b - +a;
+  if (d < 0) { setHint('⚠ 終了時のメーターが開始時より小さくなっています', true); return; }
+  const km = document.getElementById('drTripKm'); if (km) km.value = d;
+  setHint(`距離はメーターの差から入れました（${b} − ${a} ＝ ${d}km）`);
+}
+/* 次の運行の開始メーターを入れておく。最後に追加した運行の終了メーターがあればそれ、
+   まだ運行が無ければ1日の出発時のメーター。入力欄が空のときだけ */
+function prefillTripOdoStart() {
+  const el = document.getElementById('drTripOdoStart');
+  if (!el || el.value !== '') return;
+  const last = [...pendDrTrips].reverse().find(t => t.odo_end != null);
+  const v = last ? last.odo_end : (document.getElementById('drOdoStart')?.value || '');
+  if (v !== '' && v != null) el.value = v;
 }
 // 新規追加中か編集中かで、ボタンの文言と「取消」の出し方を変える
 function updateDrTripFormMode() {
@@ -2865,6 +2890,9 @@ function collectDrTrip() {
   if (waitOn && !document.getElementById('drTripWaitArrive').value) {
     showT('荷待ちの到着日時を入力してください', 'twa'); return null;
   }
+  const numOrNull = id => { const v = document.getElementById(id)?.value; return v === '' || v == null ? null : +v; };
+  const odoStart = numOrNull('drTripOdoStart'), odoEnd = numOrNull('drTripOdoEnd');
+  if (odoStart != null && odoEnd != null && odoEnd < odoStart) { showT('終了時のメーターが開始時より小さくなっています', 'twa'); return null; }
   // 営業所・コース。欄が出ているのに選んでいなければ確認する（未選択でも記録はできるが、概算は共通ルールだけになる）
   const pick = (fldId, selId) => { const f = document.getElementById(fldId); return (f && f.style.display !== 'none') ? (document.getElementById(selId)?.value || '') : null; };
   const site = pick('drTripSiteFld', 'drTripSite'), course = pick('drTripCourseFld', 'drTripCourse');
@@ -2878,8 +2906,9 @@ function collectDrTrip() {
     end_loc:   document.getElementById('drTripEndLoc').value.trim(),
     ...Object.fromEntries(DR_QTY_ITEMS.map(q =>
       [q.trip, +(document.getElementById(q.input)?.value) || 0])),
-    // 運行ごとの距離（任意）。距離制の概算に使う
-    km: (() => { const v = document.getElementById('drTripKm')?.value; return v === '' || v == null ? null : +v; })(),
+    // 運行ごとの距離（任意）。距離制の概算に使う。メーターを両方入れれば差が入っている
+    km: numOrNull('drTripKm'),
+    odo_start: odoStart, odo_end: odoEnd,
     note: document.getElementById('drTripNote').value.trim(),
     /* 荷待ち・荷役は「集貨又は配達を行った地点ごと」の記録なので運行に持たせる。
        国土交通省の業務記録の様式例（貨物軽自動車運送事業者向け）に合わせている。 */
@@ -2928,6 +2957,8 @@ function editDrTrip(i) {
   // 0は空欄として戻す（0を入れ直させない）
   DR_QTY_ITEMS.forEach(q => put(q.input, t[q.trip] || ''));
   put('drTripKm', t.km ?? '');
+  put('drTripOdoStart', t.odo_start ?? ''); put('drTripOdoEnd', t.odo_end ?? '');
+  onDrTripOdoChange();
   put('drTripNote', t.note);
   const waitEl = document.getElementById('drTripWaitFlag');
   if (waitEl) waitEl.checked = !!t.wait;
@@ -2981,6 +3012,7 @@ function renderDrTrips() {
       const sub = [
         (t.start_loc||t.end_loc) ? `${escHtml(t.start_loc||'?')} → ${escHtml(t.end_loc||'?')}` : '',
         qty(t),
+        (t.odo_start!=null||t.odo_end!=null) ? `メーター ${t.odo_start??'—'}→${t.odo_end??'—'}` : '',
         t.wait  ? `⏳荷待ち ${escHtml(t.wait.arrive||'')}〜${escHtml(t.wait.depart||'')}` : '',
         t.cargo ? `📦荷役${escHtml(t.cargo.desc ? '（'+t.cargo.desc+'）' : '')}` : '',
         t.note ? escHtml(t.note) : '',
@@ -3011,6 +3043,9 @@ function applyDrTripRollup() {
   const starts = pendDrTrips.map(t=>t.start).filter(Boolean).sort();
   const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
   fillIfEmpty('drStart', starts[0]);
+  // 出発時のメーターが空なら、いちばん早い運行の開始メーターを入れる
+  const firstOdo = [...pendDrTrips].sort((a,b)=>String(a.start||'').localeCompare(String(b.start||''))).find(t => t.odo_start != null);
+  if (firstOdo) { fillIfEmpty('drOdoStart', String(firstOdo.odo_start)); onDrOdoChange(); }
   syncDrTenkoTimes();
 }
 /* ステップ3に入った時点で、業務終了時刻を最後の運行から補う。
@@ -3022,6 +3057,9 @@ function applyDrTripEndRollup() {
   const fillIfEmpty = (id,v) => { const el=document.getElementById(id); if (el && v && !el.value) el.value = v; };
   fillIfEmpty('drEnd', ends[ends.length-1]);
   fillIfEmpty('drEndLoc', document.getElementById('drStartLoc')?.value || '');
+  // 帰着時のメーターが空なら、いちばん遅い運行の終了メーターを入れる
+  const lastOdo = [...pendDrTrips].sort((a,b)=>String(b.end||'').localeCompare(String(a.end||''))).find(t => t.odo_end != null);
+  if (lastOdo) { fillIfEmpty('drOdoEnd', String(lastOdo.odo_end)); onDrOdoChange(); }
   syncDrTenkoTimes();
 }
 
@@ -3920,7 +3958,7 @@ function buildDailyReportHtml(r) {
         ${trips.map(t => `<tr>
           <td>${t.start||''}〜${t.end||''}</td>
           <td>${escHtml(t.cli_name || lkCliAny(t.cli_id)?.name || '')}${escHtml(tripSubParen(t))}${t.note?`<div style="font-size:10px">${escHtml(t.note)}</div>`:''}</td>
-          <td>${escHtml(t.start_loc||'')}${(t.start_loc||t.end_loc)?' → ':''}${escHtml(t.end_loc||'')}</td>
+          <td>${escHtml(t.start_loc||'')}${(t.start_loc||t.end_loc)?' → ':''}${escHtml(t.end_loc||'')}${(t.odo_start!=null||t.odo_end!=null)?`<div style="font-size:10px">メーター ${t.odo_start??'—'} → ${t.odo_end??'—'}</div>`:''}</td>
           <td>${drQtyText(t, true) || '—'}</td>
         </tr>${tripWaitCargoRow(t)}`).join('')}
         <tr><th>合計</th><td colspan="3">運行${trips.length}件　${drQtyText(r) || '—'}</td></tr>

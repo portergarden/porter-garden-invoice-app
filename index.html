@@ -1574,6 +1574,12 @@ try {
               </div>
             </div>
           </div>
+          <!-- 運行ごとのメーター（任意）。両方入れると上の距離（km）を自動で計算する。次の運行の開始には前の運行の終了を入れておく -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="fld"><label>開始時のメーター（km・任意）</label><input type="number" id="drTripOdoStart" placeholder="例: 45230" min="0" step="1" oninput="onDrTripOdoChange()"></div>
+            <div class="fld"><label>終了時のメーター（km・任意）</label><input type="number" id="drTripOdoEnd" placeholder="例: 45267" min="0" step="1" oninput="onDrTripOdoChange()"></div>
+          </div>
+          <div id="drTripOdoHint" style="font-size:10px;color:var(--text2);margin:-4px 0 6px">メーターを両方入れると、この運行の距離（km）が自動で入ります</div>
           <div class="fld"><label>この運行のメモ（任意）</label><input type="text" id="drTripNote" placeholder="例: 積込待ち40分"></div>
 
           <!-- 荷待ち・荷役は「集貨又は配達を行った地点」ごとの記録なので、運行にぶら下げる -->
@@ -3314,7 +3320,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=9ccbd58d"></script>
+<script src="js/03-dashboard-daily.js?v=3ecd4d7f"></script>
 
 
 <script src="js/04-monthly.js?v=5726ca6e"></script>
@@ -3335,7 +3341,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=eab3a2f0"></script>
+<script src="js/10-settings.js?v=88e43106"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

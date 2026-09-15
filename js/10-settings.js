@@ -390,8 +390,9 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   -- 1日に複数回の運行（チャーターを午前・午後で別の取引先など）。
   -- 運行ごとに日報を分けると点呼記録まで分かれてしまうため、日報は1日1枚のままにして運行だけを配列で持つ。
   -- [{cli_id, cli_name, start, end, start_loc, end_loc,
-  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, km, site, course, note}]
+  --   qty_tak, qty_neko, qty_corp, qty_corp_pcs, qty_charter, qty_charter_pcs, km, odo_start, odo_end, site, course, note}]
   --   km は運行ごとの距離（任意）。距離制の概算に使う。無ければその日の運行が1件のときだけ日報の走行距離で代用
+  --   odo_start / odo_end は運行ごとのメーター（任意）。両方あれば km はその差
   --   site / course は取引先の営業所名・コース名（clients.sites から選ぶ。任意）。営業所・コース別の概算単価に使う
   -- 上の start_time / end_time / cli / qty_* にはこの配列から積み上げた値を入れており、
   -- 月報・分析・CSV・印刷は従来どおりそちらを参照する。取引先は運行ごとに必須。
