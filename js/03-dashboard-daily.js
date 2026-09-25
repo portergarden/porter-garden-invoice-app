@@ -3970,6 +3970,7 @@ function dailyReportPrintCss() {
      高さは固定せず min-height にとどめている。 */
   return `
   *{box-sizing:border-box}
+  .drp-table td.drp-num{text-align:right;white-space:nowrap}
   @page{size:A4 portrait;margin:0}
   body{font-family:"Noto Sans JP","Hiragino Sans",sans-serif;margin:0;padding:0;color:#1a1a1a;font-size:10px}
   .drp-page{width:210mm;min-height:297mm;padding:10mm 10mm;page-break-after:always}
@@ -4067,11 +4068,35 @@ function buildDailyReportHtml(r) {
       </table>`;
     })()}
 
-    <div class="drp-section-title">⑤ 車両日常点検</div>
+    ${(() => {
+      /* 概算。単価を登録している取引先の運行があるときだけ出す。
+         ドライバーには出さない（estimateOneReport が role で弾く）。確定額ではない */
+      const est = typeof estimateOneReport === 'function' ? estimateOneReport(r) : null;
+      if (!est) return '';
+      const rows = est.rows.filter(x => !x.e.unpriced).map(({t, e}) => `<tr>
+        <td>${escHtml(t.cli_name || e.cliRec?.name || '')}${escHtml(tripSubParen(t))}</td>
+        <td>${e.lines.length ? e.lines.map(l => `${escHtml(l.label)} ${escHtml(l.shown)}　${yenR(l.sale)}`).join('<br>') : '—'}</td>
+        <td class="drp-num">${yenR(e.sale)}</td>
+        <td class="drp-num">${yenR(e.pay)}</td>
+      </tr>`).join('');
+      const notes = [
+        est.unpriced ? `単価未設定の運行 ${est.unpriced}件は含めていません` : '',
+        est.noKm     ? `距離未入力の運行 ${est.noKm}件は距離の料金を含めていません` : '',
+        est.noPick   ? `営業所・コース未選択の運行 ${est.noPick}件は共通のルールだけで計算しています` : '',
+      ].filter(Boolean).join(' ／ ');
+      return `<div class="drp-section-title">⑤ 概算（社内用・確定額ではありません）</div>
+      <table class="drp-table">
+        <tr><th style="width:26%">取引先</th><th style="width:auto">内訳</th><th style="width:15%">売上</th><th style="width:15%">支払</th></tr>
+        ${rows}
+        <tr><th>合計</th><td>${escHtml(notes) || '—'}</td><td class="drp-num">${yenR(est.sale)}</td><td class="drp-num">${yenR(est.pay)}</td></tr>
+      </table>` ;
+    })()}
+
+    <div class="drp-section-title">⑥ 車両日常点検</div>
     <div class="drp-insp">${inspHtml}</div>
     ${r.insp_note?`<div style="font-size:11px;margin-bottom:8px">点検異常内容: ${escHtml(r.insp_note)}</div>`:''}
 
-    <div class="drp-section-title">⑥ 特記事項</div>
+    <div class="drp-section-title">⑦ 特記事項</div>
     <table class="drp-table"><tr><td>${escHtml(r.note).replace(/\n/g,'<br>')||'—'}</td></tr></table>
     ${r.incident_flag?`<table class="drp-table"><tr><th>事故原因</th><td>${escHtml(r.incident_cause)||'—'}</td></tr><tr><th>再発防止策</th><td>${escHtml(r.incident_prevention)||'—'}</td></tr></table>`:''}
 
@@ -4095,13 +4120,14 @@ function buildDailyReportsPrintDoc(reports) {
   </body></html>`;
 }
 // 管理画面: 現在の絞り込み条件（日付範囲・ドライバー・ステータス）に一致する日報を印刷
-function printDailyReports() {
+async function printDailyReports() {
   const list = filteredDailyReportsForExport();
   if (!list.length) { alert('対象の日報がありません'); return; }
-  const win = window.open('','_blank');
+  const win = window.open('','_blank');   // 先に開く（awaitのあとだとポップアップ扱いで塞がれる）
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
   // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
   try { win.opener = null; } catch(_) {}
+  await loadClientRates();   // 概算に使う単価（月報タブを開いていなくても出せるように）
   win.document.open(); win.document.write(buildDailyReportsPrintDoc(list)); win.document.close();
   addLog('日報印刷', `${list.length}件`);
 }

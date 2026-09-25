@@ -290,46 +290,76 @@ function tripHours(t) {
    営業所名・コース名の付いたルールは、その営業所・コースの運行にだけ当てる（無いルールは全部の運行に効く）。
    取引先に営業所やコースがあるのに運行で選んでいなければ、共通ルールだけを当てて noPick に数える。
    単価が無い取引先・取引先未登録の運行は数えず、件数だけ返す */
+/* 運行1件ぶんの計算。日報の1件表示でも同じ結果になるよう、ここだけで計算する。
+   dayCharged は日当の重複を防ぐための控え（取引先×日×ドライバーで1回だけ）。
+   lines には「何に、いくつ、いくら」を積む（日報の個別表示で内訳として出す） */
+function estimateTrip(r, t, trips, dayCharged) {
+  const cliId = t.cli_id;
+  const rate = cliId != null ? clientRates[cliId] : null;
+  const cliRec = lkCliAny(cliId);
+  const site = t.site || '', course = t.course || '';
+  const res = { sale: 0, pay: 0, unpriced: 0, noKm: 0, noPick: 0, lines: [], cliId, cliRec, site, course };
+  if (!rate || !rate.rules?.length) { res.unpriced = 1; return res; }
+  const km = t.km != null ? +t.km : (trips.length === 1 ? (+r.distance_km || null) : null);
+  const hours = tripHours(t);
+  if ((!site && cliSiteNames(cliRec).length) || (!course && cliCourseNames(cliRec, site).length)) res.noPick = 1;
+  const drvKey = recDrv(r)?.id ?? r.car ?? '';
+  rate.rules.forEach(rule => {
+    const m = rateMeasure(rule.measure);
+    if (!m) return;
+    if (rule.site && rule.site !== site) return;
+    if (rule.course && rule.course !== course) return;
+    let value, shown;
+    if (rule.measure === 'hours') { value = hours; shown = fmtHM(hours); }
+    else if (rule.measure === 'km') { if (km == null) { res.noKm++; return; } value = km; shown = `${km}km`; }
+    else if (rule.measure === 'day') {
+      const k = `${cliId}|${r.date}|${drvKey}`;
+      if (dayCharged.has(k)) return;
+      dayCharged.add(k); value = 1; shown = '1日';
+    }
+    else { value = +t[m.trip] || 0; shown = `${value}${m.unit}`; }
+    const sale = calcRateRule(rule, value, 'sale'), pay = calcRateRule(rule, value, 'pay');
+    res.sale += sale; res.pay += pay;
+    if (value > 0) res.lines.push({ label: m.label, shown, sale, pay });   // 0個の欄は内訳に出さない
+  });
+  return res;
+}
+/* 日報の一覧から売上・支払の見込みを出す。
+   日当は「取引先×日×ドライバー」で1回だけ（同じ人が同じ日に同じ取引先へ2回行っても1日分） */
 function estimateReports(reports) {
   const out = { sale: 0, pay: 0, unpriced: 0, noKm: 0, noPick: 0, byClient: {} };
   const dayCharged = new Set();
   (reports || []).forEach(r => {
-    const drvKey = recDrv(r)?.id ?? r.car ?? '';
     const trips = dailyTrips(r);
     trips.forEach(t => {
-      const cliId = t.cli_id;
-      const rate = cliId != null ? clientRates[cliId] : null;
-      if (!rate || !rate.rules?.length) { out.unpriced++; return; }
-      const km = t.km != null ? +t.km : (trips.length === 1 ? (+r.distance_km || null) : null);
-      const hours = tripHours(t);
-      const site = t.site || '', course = t.course || '';
-      const cliRec = lkCliAny(cliId);
-      if ((!site && cliSiteNames(cliRec).length) || (!course && cliCourseNames(cliRec, site).length)) out.noPick++;
-      let sale = 0, pay = 0;
-      rate.rules.forEach(rule => {
-        const m = rateMeasure(rule.measure);
-        if (!m) return;
-        if (rule.site && rule.site !== site) return;
-        if (rule.course && rule.course !== course) return;
-        let value;
-        if (rule.measure === 'hours') value = hours;
-        else if (rule.measure === 'km') { if (km == null) { out.noKm++; return; } value = km; }
-        else if (rule.measure === 'day') {
-          const k = `${cliId}|${r.date}|${drvKey}`;
-          if (dayCharged.has(k)) return;
-          dayCharged.add(k); value = 1;
-        }
-        else value = +t[m.trip] || 0;
-        sale += calcRateRule(rule, value, 'sale');
-        pay  += calcRateRule(rule, value, 'pay');
-      });
-      out.sale += sale; out.pay += pay;
-      const bk = `${cliId}|${site}|${course}`;
-      const c = out.byClient[bk] || (out.byClient[bk] = { name: (cliRec?.name || t.cli_name || '') + tripSubParen(t), sale: 0, pay: 0 });
-      c.sale += sale; c.pay += pay;
+      const e = estimateTrip(r, t, trips, dayCharged);
+      out.unpriced += e.unpriced; out.noKm += e.noKm; out.noPick += e.noPick;
+      if (e.unpriced) return;
+      out.sale += e.sale; out.pay += e.pay;
+      const bk = `${e.cliId}|${e.site}|${e.course}`;
+      const c = out.byClient[bk] || (out.byClient[bk] = { name: (e.cliRec?.name || t.cli_name || '') + tripSubParen(t), sale: 0, pay: 0 });
+      c.sale += e.sale; c.pay += e.pay;
     });
   });
   return out;
+}
+/* 日報1件ぶんの概算。運行ごとの内訳と合計を返す。単価の登録が無ければ null。
+   日報の個別表示（業務記録の書式）で使う。ドライバーには出さない */
+function estimateOneReport(r) {
+  if (!r || me?.role === 'driver' || !Object.keys(clientRates || {}).length) return null;
+  const trips = dailyTrips(r);
+  if (!trips.length) return null;
+  const dayCharged = new Set();
+  const rows = trips.map(t => ({ t, e: estimateTrip(r, t, trips, dayCharged) }));
+  if (rows.every(x => x.e.unpriced)) return null;
+  return {
+    rows,
+    sale: rows.reduce((a,x) => a + x.e.sale, 0),
+    pay:  rows.reduce((a,x) => a + x.e.pay, 0),
+    unpriced: rows.reduce((a,x) => a + x.e.unpriced, 0),
+    noKm:     rows.reduce((a,x) => a + x.e.noKm, 0),
+    noPick:   rows.reduce((a,x) => a + x.e.noPick, 0),
+  };
 }
 const yenR = v => '¥' + Math.round(+v || 0).toLocaleString();
 
