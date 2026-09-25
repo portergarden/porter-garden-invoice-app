@@ -35,6 +35,12 @@ const MR_COLS = [
   {key:'wait',     label:'荷待ち',      def:false, align:'left',   pw:14, get:r=>escHtml(dailyTrips(r).filter(t=>t.wait).map(t=>`${t.wait.loc||''} ${t.wait.arrive||''}-${t.wait.depart||''}`).join(' / '))},
   {key:'cargo',    label:'荷役作業等',  def:false, align:'left',   pw:14, get:r=>escHtml(dailyTrips(r).filter(t=>t.cargo).map(t=>`${t.cargo.loc||''} ${t.cargo.work_start||''}-${t.cargo.work_end||''}`).join(' / '))},
   {key:'handover', label:'業務交替',    def:false, align:'left',   pw:12, get:r=>r.handover_flag?escHtml(`${r.handover_location||''} ${r.handover_time||''}`):''},
+  /* 概算はドライバーに見せない列なので、画面だけに出す（印刷した紙が本人に渡ることがあるため）。
+     単価を1件も登録していないときは列そのものを出さない（needRates） */
+  {key:'est',      label:'概算(売上)',  def:true,  align:'right',  pw:10, screen:true, print:false, needRates:true,
+    get:r=>{ const e = estimateOneReport(r); return e ? yenR(e.sale) : ''; }},
+  {key:'estPay',   label:'概算(支払)',  def:false, align:'right',  pw:10, screen:true, print:false, needRates:true,
+    get:r=>{ const e = estimateOneReport(r); return e ? yenR(e.pay) : ''; }},
   {key:'status',   label:'状態',        def:true,  align:'center', pw:8,  get:r=>r.status==='rejected'?'差戻し':''},
   {key:'note',     label:'備考',        def:true,  align:'left',   pw:14, screen:true, print:false, get:r=>escHtml(r.note||'')},
 ];
@@ -382,9 +388,14 @@ function loadMrCols() {
 }
 let mrCols = loadMrCols();
 function saveMrCols() { try { localStorage.setItem(MR_COLS_KEY, JSON.stringify(mrCols)); } catch(e) {} }
+/* 今この画面で選べる列。概算の列は、単価を登録している取引先が1件も無ければ出さない
+   （数字の出ない列が並ぶだけになるため）。ドライバー画面はこの表を使っていない */
+function mrAvailableCols() {
+  return MR_COLS.filter(c => !c.needRates || (me?.role !== 'driver' && Object.keys(clientRates || {}).length));
+}
 // where は 'screen' か 'print'。列ごとに出す場所を絞れる（日付は画面用、日＋曜は印刷用）
 function mrSelectedCols(where) {
-  return MR_COLS.filter(c => mrCols[c.key] && (c[where] !== false));
+  return mrAvailableCols().filter(c => mrCols[c.key] && (c[where] !== false));
 }
 function toggleMrCol(key, on) { mrCols[key] = on; saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
 function setAllMrCols(on) { MR_COLS.forEach(c => mrCols[c.key] = on); saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
@@ -402,12 +413,13 @@ function renderMrColPicker() {
   // 画面だけ・印刷だけの列があるので、どちらに出るのかを添える
   const scope = c => c.screen === false ? '<span style="color:var(--text3);font-size:9.5px">（印刷のみ）</span>'
                    : c.print  === false ? '<span style="color:var(--text3);font-size:9.5px">（画面のみ）</span>' : '';
-  el.innerHTML = MR_COLS.map(c => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer">
+  const cols = mrAvailableCols();
+  el.innerHTML = cols.map(c => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer">
     <input type="checkbox" onchange="toggleMrCol('${c.key}',this.checked)"${mrCols[c.key]?' checked':''}>${escHtml(c.label)}${scope(c)}
   </label>`).join('');
-  const n = MR_COLS.filter(c=>mrCols[c.key]).length;
+  const n = cols.filter(c=>mrCols[c.key]).length;
   const cnt = document.getElementById('mrColCount');
-  if (cnt) cnt.textContent = `${n}/${MR_COLS.length}`;
+  if (cnt) cnt.textContent = `${n}/${cols.length}`;
 }
 
 /* ===== 月報 ===== */
