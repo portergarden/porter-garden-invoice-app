@@ -2671,7 +2671,9 @@ function checkAlc(input, warnId) {
    あればその時刻を返す。合計30分に達した休憩でカウントを区切り直す。
    業務終了がまだ無ければ、最後の運行の終了時刻まで見る（入力途中でも気づけるように） */
 function checkContinuousDrivingWarning() {
-  const start = document.getElementById('drStart')?.value;
+  // 業務開始・終了がまだ空でも、運行の時刻から見当を付ける（運行を入れた時点で気づけるように）
+  const start = document.getElementById('drStart')?.value
+    || pendDrTrips.map(t => t.start).filter(Boolean).sort()[0] || '';
   const end = document.getElementById('drEnd')?.value
     || pendDrTrips.map(t => t.end).filter(Boolean).sort().pop() || '';
   if (!start || !end) return null;
@@ -2709,13 +2711,16 @@ function checkContinuousDrivingWarning() {
     return `⚠️ 業務開始 ${start} から数えて、${fmt(at)} の時点で休憩が合計30分に届かないまま連続4時間になります${taken}。改善基準告示では連続運転4時間ごとに合計30分以上（1回10分以上）の休憩が必要です。${fmt(at)} より前に休憩を入れて記録してください。`;
   }
 }
-// 休憩欄の下にその場で出す。休憩・業務時刻・運行を直すたびに呼ぶ
+/* 休憩欄の下と、運行一覧の下の2か所に出す。休憩・業務時刻・運行を直すたびに呼ぶ。
+   運行を入れた時点で気づけるよう、⑤の運行一覧のすぐ下にも同じ内容を出す */
 function updateDrRestWarning() {
-  const el = document.getElementById('drRestWarn');
-  if (!el) return;
   const m = checkContinuousDrivingWarning();
-  el.textContent = m || '';
-  el.style.display = m ? '' : 'none';
+  [['drRestWarn', ''], ['drTripRestWarn', '　下の「⑥ 休憩」で休憩を追加してください。']].forEach(([id, extra]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = m ? m + extra : '';
+    el.style.display = m ? '' : 'none';
+  });
 }
 
 // 休憩・睡眠は12時間稼働などで複数回に分かれることがあるため、追加式のリストで管理する。

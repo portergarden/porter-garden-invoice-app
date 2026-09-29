@@ -1626,7 +1626,9 @@ try {
             <button class="btn sml grn" type="button" id="drTripAddBtn" style="flex:1;justify-content:center" onclick="addDrTrip()">＋ 運行を追加</button>
           </div>
         </div>
-        <div id="drTripList" style="margin-bottom:12px"></div>
+        <div id="drTripList" style="margin-bottom:6px"></div>
+        <!-- 運行を入れた時点で休憩が足りなければ、ここにも同じ警告を出す（⑥まで下りなくても気づけるように） -->
+        <div id="drTripRestWarn" style="display:none;font-size:11px;color:var(--red-text);background:var(--red-bg);border:0.5px solid var(--red);border-radius:var(--radius);padding:6px 8px;margin-bottom:12px;line-height:1.5"></div>
 
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑥ 休憩</div>
         <div class="fld"><label>休憩・睡眠時刻（10分未満の休憩は記録省略可・複数回ある場合は都度「追加」）</label>
@@ -3325,7 +3327,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=71d5c6e3"></script>
+<script src="js/03-dashboard-daily.js?v=9f1aa9ea"></script>
 
 
 <script src="js/04-monthly.js?v=c1099f3d"></script>
