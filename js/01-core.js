@@ -457,6 +457,20 @@ const canonicalCar=car=>{
   return driverIndexes().tailCar.get(n) || car;
 };
 const lkC=id=>clients.find(c=>c.id===id)||null;
+/* ドライバーIDの順に並べる。IDは「107」「1017」のような数字なので、文字として比べると
+   1017 が 107 より前に来てしまう。数字として比べ、IDが無い人は最後、同じなら名前順 */
+const drvIdNum = d => { const v = String(d?.supplier_id ?? '').trim(); return /^\d+$/.test(v) ? +v : null; };
+const bySupplierId = (a, b) => {
+  const na = drvIdNum(a), nb = drvIdNum(b);
+  if (na != null && nb != null && na !== nb) return na - nb;
+  if (na == null && nb != null) return 1;
+  if (na != null && nb == null) return -1;
+  if (na == null && nb == null) {
+    const sa = String(a?.supplier_id || ''), sb = String(b?.supplier_id || '');
+    if (sa !== sb) return sa.localeCompare(sb, 'ja');
+  }
+  return String(a?.name || '').localeCompare(String(b?.name || ''), 'ja');
+};
 /* 取引先を、管理者でもドライバーでも引けるようにする。
    ドライバーは clients テーブルを読めない（RLSで拒否される）ため、
    名前だけを返すRPCで取得した一覧(driverClientNames)から引く。

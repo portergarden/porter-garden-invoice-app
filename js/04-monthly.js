@@ -461,12 +461,9 @@ function toggleMrDrvPicker() {
 function renderMrDrvPicker() {
   const el = document.getElementById('mrDrvBoxes');
   if (!el) return;
-  // その期間に日報を出している人を先に並べる。誰も出していなければ在籍者全員を出す
+  // 並びはドライバーIDの順。日報を出していない人は薄字で分かるようにする
   const submitted = new Set((mrReports||[]).map(r => recDrv(r)?.id).filter(v => v != null));
-  const list = [...activeDrvs()].sort((a,b) => {
-    const sa = submitted.has(a.id) ? 0 : 1, sb2 = submitted.has(b.id) ? 0 : 1;
-    return sa - sb2 || (a.supplier_id||'999').localeCompare(b.supplier_id||'999');
-  });
+  const list = [...activeDrvs()].sort(bySupplierId);
   el.innerHTML = list.map(d => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer${submitted.has(d.id)?'':';color:var(--text3)'}">
     <input type="checkbox" onchange="toggleMrDrv(${d.id},this.checked)"${mrDrvIds.has(d.id)?' checked':''}>${escHtml(d.name)}${d.supplier_id?`<span style="color:var(--text3);font-size:9.5px">(${escHtml(d.supplier_id)})</span>`:''}${submitted.has(d.id)?'':'<span style="color:var(--text3);font-size:9.5px">未提出</span>'}
   </label>`).join('');
@@ -491,7 +488,7 @@ function populateMrDrvSel() {
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">全ドライバー</option>' +
-    [...activeDrvs()].sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
+    [...activeDrvs()].sort(bySupplierId)
       .map(d=>`<option value="${d.id}">${escHtml(d.name)}${d.supplier_id?`（ID:${escHtml(d.supplier_id)}）`:''}</option>`).join('');
   enhanceSelectSearchable('mrDrvSel');
   if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
@@ -599,10 +596,8 @@ function renderMrMatrix(shownDrvs, allDrvs, reports, from, to) {
     const submitted = cells.filter(c => c.st !== 'none').length;
     const warn   = cells.some(c => c.st === 'warn');
     const reject = cells.some(c => c.st === 'reject');
-    return { d, cells, submitted, rank: submitted === 0 ? 0 : warn ? 1 : reject ? 2 : 3 };
-  }).sort((a,b) => a.rank - b.rank
-      || String(a.d.supplier_id||'999').localeCompare(String(b.d.supplier_id||'999'))
-      || String(a.d.name||'').localeCompare(String(b.d.name||''), 'ja'));
+    return { d, cells, submitted, warn, reject };
+  }).sort((a,b) => bySupplierId(a.d, b.d));   // ドライバーIDの順に並べる
 
   const totalSub = rows.reduce((a,r) => a + r.submitted, 0);
   const warnDays = rows.reduce((a,r) => a + r.cells.filter(c=>c.st==='warn').length, 0);
@@ -865,7 +860,7 @@ function renderMrCards() {
   const diffWarnings = [];
 
   const cards = targetDrvs
-    .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
+    .sort(bySupplierId)
     .map(d => {
       // 日報・請求書ともドライバーの特定はrecDrv()で行う（drv_id優先→乗務履歴の代車→登録車両）。
       // 登録車両(d.cars)の文字列一致だけだと、代車を使った日の分が抜け落ちるため。
@@ -1106,7 +1101,7 @@ async function printMonthlyReportA4(onlyDrvId) {
     : mrTargetDrvs();
 
   const pages = targetDrvs
-    .sort((a,b)=>(a.supplier_id||'999').localeCompare(b.supplier_id||'999'))
+    .sort(bySupplierId)
     .map(d => {
       const dReports = drReports.filter(r => recDrv(r)?.id === d.id);
       if (!dReports.length) return null; // その月の日報が1件もないドライバーは出力対象外
