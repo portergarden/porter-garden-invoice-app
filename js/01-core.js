@@ -4180,23 +4180,25 @@ function parseSeikyuCsv(lines){
     }
   }
 }
-// 数字のみの車番をドライバー登録の車番と末尾照合して解決する
-// 例: '1754' → ドライバーに '宮城1754' が登録されていれば '宮城1754' を返す
-// 一致しなければそのまま返す
+/* 数字だけの車番（CSVの略式番号）を、ドライバー登録のフル表記の車番に置き換える。
+   例: '1754' → '仙台480れ1754' が登録されていればそれを返す。
+   突き合わせるのはナンバーの番号部分（ひらがなの後ろの数字。「・」は除く）がまるごと同じものだけ。
+   以前は「末尾がその数字で終わるか」で見ていたため、756 が 仙台480り7756 に化けていた。
+   当てはまる車番が無い・2台以上ある場合は置き換えず、数字のまま返す（未登録として目に付くように） */
 function resolveCar(car){
-  // 数字のみかチェック
   if(!/^\d+$/.test(car))return car;
-  // ドライバーに登録されている車番から末尾一致するものを探す
+  const want=String(+car);   // 先頭の0は無視する（0756 と 756 は同じ番号）
+  const hits=new Map();      // 正規化した車番 → 登録どおりの表記
   for(const d of drvs){
+    if(d.status==='terminated')continue;   // 解約済みの人の車番には寄せない
     for(const c of (d.cars||[])){
       const nc=normCar(c);
-      if(nc.endsWith(car)&&nc.length>car.length){
-        return c; // 登録済みの正式な車番を返す
-      }
+      if(/^\d+$/.test(nc))continue;         // 略式番号どうしは置き換えの対象にしない
+      const m=nc.match(/(\d{1,4})$/);
+      if(m&&String(+m[1])===want)hits.set(nc,c);
     }
   }
-  // 見つからなければそのまま
-  return car;
+  return hits.size===1?[...hits.values()][0]:car;
 }
 
 // 標準フォーマット（アプリ独自CSV）のパース
