@@ -914,8 +914,8 @@ function renderMrCards() {
       if (d.id !== mrSelDrvId) return '';
 
       return `<div class="pnl-card" style="${hasDiff?'border-color:var(--amber-border);':''}">
-        <div class="pnl-head" onclick="togglePnl(this)">
-          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <div class="pnl-head mr-head" onclick="togglePnl(this)">
+          <div class="mr-head-l" style="display:flex;align-items:center;gap:10px;min-width:0">
             <div class="av drv" style="width:24px;height:24px;font-size:10px">${escHtml((d.name||'').slice(-2))}</div>
             <div>
               <div style="font-size:12px;font-weight:500">
@@ -929,8 +929,8 @@ function renderMrCards() {
               </div>
             </div>
           </div>
-          <div style="text-align:right;flex-shrink:0;padding-left:8px">
-            <div style="display:flex;gap:4px;justify-content:flex-end;margin-bottom:3px">
+          <div class="mr-head-r" style="text-align:right;flex-shrink:0;padding-left:8px">
+            <div class="mr-head-btns" style="display:flex;gap:4px;justify-content:flex-end;margin-bottom:3px">
               <button class="btn sml" onclick="event.stopPropagation();printMonthlyReportA4(${d.id})" title="このドライバーの月報をA4縦1枚で見る（PDF保存できます）">📄 月報</button>
               <button class="btn sml" onclick="event.stopPropagation();clearMrDrvFocus()" title="全員の表示に戻る">✕</button>
             </div>
@@ -973,7 +973,7 @@ function renderMrCards() {
             const rows = Object.values(est.byClient).sort((a,b)=>b.sale-a.sale)
               .map(c => `<div class="pnl-row sub"><span>${escHtml(c.name||'（取引先なし）')}</span><span>売上 ${yenR(c.sale)} ／ 支払 ${yenR(c.pay)}</span></div>`).join('');
             return `<div style="margin-bottom:8px;padding:6px 8px;background:var(--bg2);border-radius:var(--radius)">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11px">
+              <div class="mr-est-head" style="display:flex;justify-content:space-between;align-items:baseline;font-size:11px">
                 <span style="font-weight:600">概算 <span style="font-weight:400;color:var(--text2)">（数量×単価。確定額ではありません）</span></span>
                 <span style="font-weight:600">売上 ${yenR(est.sale)} ／ 支払 ${yenR(est.pay)} ／ 差 ${yenR(est.sale-est.pay)}</span>
               </div>
@@ -991,7 +991,7 @@ function renderMrCards() {
           <div style="margin-top:8px;border-top:0.5px solid var(--border);padding-top:6px">
             <div style="font-size:10px;color:var(--text2);margin-bottom:4px;font-weight:500">日別明細</div>
             <div style="overflow-x:auto">
-              <table style="width:100%;border-collapse:collapse;font-size:10px">
+              <table class="mr-day-tbl" style="width:100%;border-collapse:collapse;font-size:10px">
                 <thead><tr style="background:var(--bg2)">
                   ${mrSelectedCols('screen').map(c=>`<th style="padding:3px 6px;text-align:${c.align}">${escHtml(c.label)}</th>`).join('')}
                 </tr></thead>
@@ -999,7 +999,7 @@ function renderMrCards() {
                   ${dReports.map(r => {
                     const alcWarn = +r.alc_before>=0.15||+r.alc_after>=0.15;
                     const healthBad = r.health_before==='bad'||r.health_after==='bad';
-                    return `<tr style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">${
+                    return `<tr data-k="${r.id}" style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">${
                       mrSelectedCols('screen').map(c => {
                         // 目立たせたい列だけ色を付ける。備考は長いので省略表示にする
                         const extra = c.key==='alc' && alcWarn ? ';color:var(--red);font-weight:600'
@@ -1024,6 +1024,9 @@ function renderMrCards() {
   bodyEl.innerHTML = cards.join('')
     || (mrSelDrvId != null ? ''
         : '<div style="color:var(--text2);font-size:11.5px;padding:14px;text-align:center">上の提出状況で<b>ドライバー名を押す</b>と、その人だけの表示に切り替わります</div>');
+  // 日別明細はスマホでは1日＝1枚のカードにする。列は利用者が選んだものなので全部見せ、日付を見出しにする
+  const dateIdx = mrSelectedCols('screen').findIndex(c => c.key === 'date');
+  bodyEl.querySelectorAll('table.mr-day-tbl').forEach(tb => mobilizeTable(tb, { name:'mr', title: dateIdx >= 0 ? dateIdx : 0, hideZero: true }));
 
   // 差異バナー表示
   if (diffWarnings.length) {

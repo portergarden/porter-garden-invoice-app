@@ -485,6 +485,21 @@ td.dim{color:var(--text2)}
   .dr-actions .m-lbl{display:inline;font-size:12px}
 }
 
+/* ===== 月報のドライバーカード（スマホ） ===== */
+@media (max-width:600px){
+  /* 見出し: 名前と集計を1行目、月報ボタンと稼働時間を2行目に回す（横並びだと名前が潰れていた） */
+  .pnl-head.mr-head{flex-wrap:wrap;gap:6px}
+  .pnl-head.mr-head .mr-head-l{flex:1 1 100%}
+  .pnl-head.mr-head .mr-head-r{flex:1 1 100%;display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;text-align:left!important;padding-left:34px!important}
+  .pnl-head.mr-head .mr-head-btns{order:9;margin:0 0 0 auto!important}
+  .pnl-head.mr-head .mr-head-btns .btn{padding:6px 12px;font-size:12px}
+  .mr-est-head{flex-wrap:wrap;gap:2px 8px}
+  .pnl-row.sub{flex-wrap:wrap;gap:2px 8px}
+  /* 日別明細のカードは、日付の見出しを大きめに */
+  table.mr-day-tbl.mtable{font-size:13px!important}
+  table.mr-day-tbl.mtable > tbody > tr > td.m-title{font-size:15px;font-weight:600}
+}
+
 /* ===== 表 → カード（mobilizeTable） =====
    PC幅では普通の表。スマホ幅では1行＝1枚のカードにし、「見出し：値」を縦に並べる */
 .m-more{display:none}
@@ -501,7 +516,7 @@ td.dim{color:var(--text2)}
   table.mtable > tbody > tr > td.m-title{display:block;text-align:left!important;font-size:15px;padding:4px 0 8px!important;
     border-bottom:0.5px solid var(--border)!important;margin-bottom:2px}
   table.mtable > tbody > tr > td.m-title::before{display:none}
-  table.mtable > tbody > tr > td.m-sec{display:none}
+  table.mtable > tbody > tr > td.m-sec, table.mtable > tbody > tr > td.m-zero{display:none}
   table.mtable > tbody > tr.m-open > td.m-sec{display:flex}
   table.mtable > tbody > tr > td input:not([type="checkbox"]), table.mtable > tbody > tr > td select{font-size:16px!important;padding:6px 8px!important;max-width:60vw}
   table.mtable > tbody > tr > td input[type="checkbox"]{width:22px!important;height:22px!important}

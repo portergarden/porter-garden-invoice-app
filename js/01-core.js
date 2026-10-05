@@ -469,6 +469,7 @@ function onNarrowChange(fn) { narrowRerenders.add(fn); }
    入力欄やプルダウンはそのまま動くので、保存の処理は変えずに済む。
      opts.title … カードの見出しにする列番号
      opts.main  … 最初から見せる列番号。それ以外は「詳細」を押すと出る（指定なしなら全部見せる）
+     opts.hideZero … 値が「0」か空のセルはカードでは出さない（数量の0や空欄が何行も並ぶと読みにくいため）
    行に data-k（行を見分ける鍵）があれば、保存で表が描き直されても「詳細」を開いたままにする */
 const mtableOpen = new Set();
 function mobilizeTable(table, opts = {}) {
@@ -485,6 +486,9 @@ function mobilizeTable(table, opts = {}) {
     let hasSec = false;
     tds.forEach((td, i) => {
       td.dataset.label = heads[i];
+      const txt = td.textContent.trim();
+      if (opts.hideZero && i !== opts.title && (txt === '0' || (txt === '' && !td.querySelector('input,select,button,img'))))
+        td.classList.add('m-zero');
       if (i === opts.title) td.classList.add('m-title');
       else if (opts.main && !opts.main.includes(i)) { td.classList.add('m-sec'); hasSec = true; }
     });
