@@ -3384,6 +3384,12 @@ function validateDrStep(step) {
     let car = v('drCar');
     if (car === '__custom__') car = v('drCarCustom');
     if (!v('drD') || !car) return '業務日と車両番号は必須です';
+    // 手入力した車番は、請求と突き合うよう形を確かめる（空白入り・分類番号抜け・番号だけは不可）
+    if (v('drCar') === '__custom__') {
+      const chk = checkNewCarPlate(car);
+      if (!chk.ok) return chk.msg;
+      const el = document.getElementById('drCarCustom'); if (el) el.value = chk.value;
+    }
     if (!v('drTenkoExecutor')) return '点呼執行者を入力してください（点呼記録簿の必須項目です）';
     if (v('drTenkoMethod') !== 'face' && !v('drTenkoMethodNote')) return '対面以外の点呼は、具体的な方法の記録が必要です';
     // 点呼をしなければ業務は始められないため、時刻の記録も必須にしている

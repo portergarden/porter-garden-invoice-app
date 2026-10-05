@@ -408,13 +408,42 @@ function invalidateDriverIndexes() { _carDriverIndex = null; _idDriverIndex = nu
 const carTailNumber = car => { const m = nm(car).match(/(\d{1,4})$/); return m ? m[1] : null; };
 // 解約済みドライバーを除いた一覧。今後の選択・新規登録が不要な画面（月報・カレンダー・各種プルダウン等）で使う
 function activeDrvs() { return drvs.filter(d => d.status !== 'terminated'); }
+/* 新しく登録する車番の形を確かめる。
+   空白が入っていたり、分類番号（480など）が抜けていたりすると、請求・日報の車番と突き合わなくなる。
+   形: 地名 ＋ 分類番号（3桁。例 480／30A）＋ ひらがな1字 ＋ 一連番号（1〜4桁。足りない桁は「・」でもよい）
+   例: 仙台480れ1936 ／ 宮城480り・882
+   全角の数字・英字・中黒は半角などにそろえた値を返す。既に登録済みの車番には使わない（新規登録だけ） */
+function checkNewCarPlate(raw) {
+  const s0 = String(raw ?? '');
+  if (/[\s\u3000]/.test(s0.trim()) ) return { ok:false, msg:'車番に空白が入っています。詰めて入力してください（例: 仙台480れ1936）' };
+  const v = s0.trim()
+    .replace(/[０-９Ａ-Ｚａ-ｚ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[•･·．.]/g, '・')
+    .toUpperCase();
+  if (!v) return { ok:false, msg:'車番を入力してください' };
+  if (/^\d+$/.test(v)) return { ok:false, msg:'番号だけでは登録できません。地名・分類番号・ひらがなも入れてください（例: 仙台480れ1936）' };
+  if (/-{2,}|ー{2,}|_{2,}/.test(v)) return { ok:false, msg:'番号が「----」のままです。ナンバープレートの番号を入れてください' };
+  const m = v.match(/^([\u4E00-\u9FFF\u3041-\u3096\u30A1-\u30FA]{1,5}?)(\d[\dA-Z]{0,2})([\u3041-\u3096])(・{0,3})(\d{1,4})$/);
+  if (!m) {
+    // 「仙台れ1362」のように分類番号だけが抜けている形は、そのことをはっきり伝える
+    const g = v.match(/^([一-鿿ぁ-ゖァ-ヺ]{1,5}?)([ぁ-ゖ])(・{0,3})(\d{1,4})$/);
+    if (g) return { ok:false, msg:`分類番号（480など3桁）が抜けています。「${g[1]}」と「${g[2]}」の間に入れてください（例: 仙台480れ1936）` };
+    return { ok:false, msg:'車番の形が正しくありません。「地名＋分類番号＋ひらがな＋番号」で入れてください（例: 仙台480れ1936）' };
+  }
+  if (m[2].length < 3) return { ok:false, msg:`分類番号（480など3桁）が抜けているようです。「${m[1]}」の後ろに入れてください（例: 仙台480れ1936）` };
+  if (m[4].length + m[5].length > 4) return { ok:false, msg:'番号が5桁以上になっています。ナンバープレートの番号（4桁まで）を確かめてください' };
+  return { ok:true, value: v };
+}
 function driverIndexes() {
   if (!_carDriverIndex) {
     _carDriverIndex = new Map();
     _idDriverIndex = new Map();
     _tailDrvIndex = new Map();  // 末尾番号 → ドライバー（複数の車・人で重複する場合はnull＝特定不能）
     _tailCarIndex = new Map();  // 末尾番号 → フル表記車番（同上）
-    drvs.forEach(d => {
+    // 同じ車を乗り継いでいると、解約済みの人にも同じ車番が残る。先に見つかった人に紐づくため、
+    // 稼働中の人を先に並べて、請求・日報の車番が稼働中の人に付くようにする
+    const ordered = [...drvs].sort((a, b) => (a.status === 'terminated') - (b.status === 'terminated'));
+    ordered.forEach(d => {
       _idDriverIndex.set(d.id, d);
       (d.cars||[]).forEach(c => {
         const n = nm(c);
@@ -426,7 +455,8 @@ function driverIndexes() {
         if (!t) return;
         if (_tailDrvIndex.has(t)) {
           const pd = _tailDrvIndex.get(t), pc = _tailCarIndex.get(t);
-          if (pd && pd.id !== d.id) _tailDrvIndex.set(t, null);
+          // 稼働中の人で既に決まっている番号を、解約済みの人の登録で「特定不能」にしない
+          if (pd && pd.id !== d.id && !(d.status === 'terminated' && pd.status !== 'terminated')) _tailDrvIndex.set(t, null);
           if (pc && nm(pc) !== n) _tailCarIndex.set(t, null);
         } else {
           _tailDrvIndex.set(t, d);
@@ -2592,7 +2622,10 @@ async function onLeaseCompanySelChange(){
 }
 function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dStmtVis').value='auto';document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('dCarStart').value=fmtLocalDate(new Date());document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
-function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');const v=inp.value.trim();if(!v)return;if(!pendTags.includes(v))pendTags.push(v);inp.value='';renderTags();}
+function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');if(!inp.value.trim())return;
+  // 新しく足す車番は形を確かめる（空白入り・分類番号抜け・番号だけは登録しない）
+  const chk=checkNewCarPlate(inp.value);if(!chk.ok){alert(chk.msg);inp.focus();return;}
+  const v=chk.value;if(!pendTags.some(t=>nm(t)===nm(v)))pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
 function renderTags(){const html=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');['cTags','diTags'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=html;});}
 

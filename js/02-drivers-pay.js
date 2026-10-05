@@ -483,8 +483,15 @@ async function syncDriverDocFromVehicleEdit(car, updates) {
   }
 }
 async function saveVehicle() {
-  const car = document.getElementById('vCar').value.trim();
+  let car = document.getElementById('vCar').value.trim();
   if (!car) { alert('車番は必須です'); return; }
+  // 新規登録と、車番を書き換えたときは形を確かめる（既存の登録をそのまま保存し直す分は通す）
+  const before = eVehicleId != null ? vehicles.find(v => v.id === eVehicleId)?.car : null;
+  if (before == null || nm(before) !== nm(car)) {
+    const chk = checkNewCarPlate(car);
+    if (!chk.ok) { alert(chk.msg); return; }
+    car = chk.value;
+  }
   const dup = vehicles.find(v => nm(v.car)===nm(car) && v.id !== eVehicleId);
   if (dup) { alert(`車番「${car}」は既に登録されています`); return; }
   const vType = document.getElementById('vType').value;
