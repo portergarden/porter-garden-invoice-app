@@ -309,6 +309,14 @@ function renderStaffSchedCal() {
   const todayStr = fmtLocalDate(new Date());
   const startDow = firstDay.getDay();
 
+  // スマホは7列に件名を入れると1列が数文字になり読めないため、月表は日付と色の点だけにし、
+  // 下にその月の予定を日付ごとの一覧で出す
+  if (isNarrow()) {
+    document.getElementById('staffSchedGrid').innerHTML = staffSchedMobileHtml(dayMap, firstDay, lastDay, todayStr, startDow, hitIds);
+    renderStaffSchedResults();
+    return;
+  }
+
   let html = '<div class="cal-grid">';
   ['日','月','火','水','木','金','土'].forEach((d,i) => {
     const style = i===0 ? 'color:var(--cal-sun);font-weight:700' : i===6 ? 'color:var(--cal-sat);font-weight:700' : '';
@@ -348,6 +356,79 @@ function renderStaffSchedCal() {
   renderStaffSchedResults();   // 検索結果もカレンダーと同時に描き直す
 }
 const renderStaffSchedCalDebounced = debounce(renderStaffSchedCal, 200);
+onNarrowChange(() => { if (!document.getElementById('pg28')?.classList.contains('hide')) renderStaffSchedCal(); });
+
+/* ---- 予定管理（スマホ） ----
+   上: 小さな月表。日付と、その日の予定の色の点（担当者の色）だけ。押すとその日の予定へ移動、
+       予定が無い日なら追加を開く
+   下: その月の予定を日付ごとに並べた一覧。押すと編集。日付の見出しの「＋」でその日に追加 */
+const SCHED_WD = ['日','月','火','水','木','金','土'];
+function staffSchedMobileHtml(dayMap, firstDay, lastDay, todayStr, startDow, hitIds) {
+  const ym = `${staffSchedYear}-${String(staffSchedMonth+1).padStart(2,'0')}`;
+  const dsOf = day => `${ym}-${String(day).padStart(2,'0')}`;
+  const dnColor = (ds, dow) => (dow===0 || jpHolidayName(ds)) ? 'var(--cal-sun)' : dow===6 ? 'var(--cal-sat)' : '';
+  let grid = '<div class="cal-grid sched-mini">';
+  SCHED_WD.forEach((d,i) => {
+    const c = i===0 ? 'var(--cal-sun)' : i===6 ? 'var(--cal-sat)' : '';
+    grid += `<div class="cal-head"${c?` style="color:${c};font-weight:700"`:''}>${d}</div>`;
+  });
+  for (let i=0; i<startDow; i++) grid += '<div class="cal-day other"></div>';
+  for (let day=1; day<=lastDay.getDate(); day++) {
+    const ds = dsOf(day);
+    const items = dayMap[ds] || [];
+    const dow = (startDow + day - 1) % 7;
+    const col = dnColor(ds, dow);
+    const dots = items.slice(0, 3).map(x => `<span class="sched-dot" style="background:${staffSchedColorFor(x.user_id).text}"></span>`).join('')
+               + (items.length > 3 ? `<span class="sched-more">+${items.length-3}</span>` : '');
+    const hit = hitIds && items.some(x => hitIds.has(x.id));
+    grid += `<div class="cal-day${ds===todayStr?' today':''}${hit?' hit':''}" onclick="staffSchedPickDay('${ds}')">
+      <div class="cal-dn"${col?` style="color:${col};font-weight:700"`:''}>${day}</div>
+      <div class="sched-dots">${dots}</div>
+    </div>`;
+  }
+  const endDow = lastDay.getDay();
+  for (let i=endDow+1; i<7; i++) grid += '<div class="cal-day other"></div>';
+  grid += '</div>';
+
+  // 予定のある日だけを並べる（無い日まで並べると長くなるだけなので）
+  const days = Object.keys(dayMap).sort();
+  const list = days.length ? days.map(ds => {
+    const d = new Date(ds+'T00:00:00'), dow = d.getDay();
+    const col = dnColor(ds, dow);
+    const items = dayMap[ds].slice().sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
+    return `<div class="sched-day" id="schedDay-${ds}">
+      <div class="sched-day-h${ds===todayStr?' today':''}">
+        <span${col?` style="color:${col}"`:''}>${d.getMonth()+1}/${d.getDate()}（${SCHED_WD[dow]}）${ds===todayStr?' <span class="bdg" style="background:var(--blue);color:#fff">今日</span>':''}</span>
+        <button class="ibtn" onclick="openStaffSchedM(null,'${ds}')" title="この日に予定を追加">＋</button>
+      </div>
+      ${items.map(x => {
+        const c = staffSchedColorFor(x.user_id);
+        const u = users.find(v => v.id === x.user_id);
+        const isSpan = x.end_date && x.end_date > x.date;
+        const time = ds === x.date && x.start_time ? `${x.start_time}${x.end_time?`〜${x.end_time}`:''}`
+                   : isSpan ? (ds === x.date ? `〜${x.end_date.slice(5).replace('-','/')}` : '続き') : '終日';
+        const dim = hitIds && !hitIds.has(x.id);
+        return `<div class="sched-item" onclick="openStaffSchedM(${x.id})" style="border-left-color:${c.text}${dim?';opacity:.4':''}">
+          <span class="sched-time">${escHtml(time)}</span>
+          <span class="sched-body">
+            <span class="sched-title">${escHtml(x.title||'')}</span>
+            ${x.note?`<span class="sched-note">${escHtml(x.note)}</span>`:''}
+          </span>
+          ${u?`<span class="bdg" style="background:${c.bg};color:${c.text};flex-shrink:0">${escHtml(u.name)}</span>`:''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('') : '<div style="font-size:12px;color:var(--text2);padding:14px">この月の予定はありません</div>';
+
+  return grid + `<div class="sched-list">${list}</div>`;
+}
+// 月表の日付を押したとき。予定があれば一覧のその日へ、無ければその日で追加を開く
+function staffSchedPickDay(ds) {
+  const el = document.getElementById('schedDay-' + ds);
+  if (!el) { openStaffSchedM(null, ds); return; }
+  el.scrollIntoView({block:'start', behavior:'smooth'});
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
 
 function openStaffSchedM(id, presetDate) {
   const sel = document.getElementById('ssUser');

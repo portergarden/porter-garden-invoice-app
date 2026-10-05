@@ -457,6 +457,14 @@ const canonicalCar=car=>{
   return driverIndexes().tailCar.get(n) || car;
 };
 const lkC=id=>clients.find(c=>c.id===id)||null;
+/* スマホ幅かどうか。画面によってはPCとスマホで組み方そのものを変える（表→カードなど）。
+   CSSの @media (max-width:600px) と同じ境目にしている。
+   向きを変えるなどで境目をまたいだら、登録した画面を描き直す */
+const NARROW_MQ = window.matchMedia ? window.matchMedia('(max-width:600px)') : null;
+const isNarrow = () => !!NARROW_MQ?.matches;
+const narrowRerenders = new Set();
+function onNarrowChange(fn) { narrowRerenders.add(fn); }
+NARROW_MQ?.addEventListener?.('change', () => narrowRerenders.forEach(fn => { try { fn(); } catch(e) { console.warn(e); } }));
 /* ドライバーIDの順に並べる。IDは「107」「1017」のような数字なので、文字として比べると
    1017 が 107 より前に来てしまう。数字として比べ、IDが無い人は最後、同じなら名前順 */
 const drvIdNum = d => { const v = String(d?.supplier_id ?? '').trim(); return /^\d+$/.test(v) ? +v : null; };

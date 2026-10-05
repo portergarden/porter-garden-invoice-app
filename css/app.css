@@ -415,6 +415,32 @@ td.dim{color:var(--text2)}
 }
 
 
+/* ===== 予定管理（スマホ） =====
+   月表は日付と色の点だけにして7列を画面幅に収め、予定の中身は下の一覧で見る */
+#staffSchedGrid .cal-grid.sched-mini{min-width:0;grid-template-columns:repeat(7,minmax(0,1fr));padding:6px 8px;gap:2px}
+#staffSchedGrid .sched-mini .cal-head{font-size:11px;padding:2px}
+#staffSchedGrid .sched-mini .cal-day{min-height:40px;padding:3px 2px;text-align:center;cursor:pointer}
+#staffSchedGrid .sched-mini .cal-day .cal-dn{font-size:13px;margin:0}
+#staffSchedGrid .sched-mini .cal-day.hit{outline:1.5px solid var(--blue)}
+.sched-dots{display:flex;justify-content:center;align-items:center;gap:2px;min-height:8px;margin-top:2px}
+.sched-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sched-more{font-size:8px;color:var(--text2);line-height:1}
+.sched-list{padding:4px 8px 16px}
+.sched-day{margin-top:8px;border-radius:var(--radius);scroll-margin-top:60px}
+.sched-day.flash{animation:schedFlash 1.2s ease}
+@keyframes schedFlash{0%{background:var(--blue-bg)}100%{background:transparent}}
+.sched-day-h{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:700;padding:4px 2px;border-bottom:0.5px solid var(--border)}
+.sched-item{display:flex;align-items:flex-start;gap:8px;padding:8px 6px;border-left:3px solid var(--border);border-bottom:0.5px solid var(--border);background:var(--bg);cursor:pointer}
+.sched-time{flex-shrink:0;width:72px;font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums}
+.sched-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sched-title{font-size:14px;font-weight:600;word-break:break-word}
+.sched-note{font-size:12px;color:var(--text2);word-break:break-word}
+@media (max-width:600px){
+  /* 予定管理の上部: 検索欄は1行使う */
+  #staffSchedSearch{width:100%!important;font-size:16px!important}
+  #pg28 > div:first-child > div:last-child{width:100%}
+}
+
 /* ===== 車両日常点検の良／否 =====
    スマホで押しやすいよう、選択肢はボタン状にする。選ぶまで色は付かない */
 .insp-item{display:flex;align-items:center;gap:6px;padding:4px 6px;border:0.5px solid var(--border);border-radius:var(--radius);background:var(--bg)}
