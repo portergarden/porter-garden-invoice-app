@@ -464,6 +464,27 @@ td.dim{color:var(--text2)}
   .board-head + div{font-size:13.5px!important}
 }
 
+/* ===== 日報管理（管理側の一覧） ===== */
+.m-lbl{display:none}
+@media (max-width:600px){
+  /* 一覧の中だけでスクロールさせると、スマホでは画面のスクロールと二重になって操作しづらい */
+  #dailyListArea{max-height:none!important;overflow:visible!important}
+  .dr-filter{padding:8px 10px!important}
+  .dr-filter .dr-range{display:flex!important;width:100%}
+  .dr-filter .dr-range input[type="date"]{flex:1;min-width:0;font-size:15px!important;padding:6px 4px!important}
+  .dr-filter select{font-size:15px!important;padding:6px 8px!important}
+  #dailyListBody{padding:8px 10px!important}
+  #dailyListBody .dr-card > div{flex-wrap:wrap}
+  #dailyListBody .dr-card .dr-section{font-size:12.5px}
+  #dailyListBody .dr-card span[style*="font-size:12px"]{font-size:14px!important}
+  #dailyListBody .dr-card span[style*="font-size:11px"]{font-size:12.5px!important}
+  /* 操作はカードの下に、文字つきで均等に並べる */
+  .dr-actions{flex-basis:100%;gap:6px!important;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border)}
+  .dr-actions .ibtn{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:8px 4px;font-size:15px;
+    border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg2)}
+  .dr-actions .m-lbl{display:inline;font-size:12px}
+}
+
 /* ===== 表 → カード（mobilizeTable） =====
    PC幅では普通の表。スマホ幅では1行＝1枚のカードにし、「見出し：値」を縦に並べる */
 .m-more{display:none}

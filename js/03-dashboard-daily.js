@@ -3907,14 +3907,24 @@ function renderDailyList() {
           </div>
           ${r.note?`<div style="font-size:11px;color:var(--text2);margin-top:3px">📝 ${escHtml(r.note)}</div>`:''}
         </div>
-        <div style="display:flex;gap:3px;flex-shrink:0">
-          <button class="ibtn" onclick="showDailyForm(${r.id})" title="編集">✎</button>
-          ${canEdit&&r.status!=='rejected'?`<button class="ibtn" style="color:var(--amber-text)" onclick="rejectDailyReport(${r.id})" title="差戻し（要修正としてマークします）">↩</button>`:''}
-          ${canEdit?`<button class="ibtn" style="color:var(--red)" onclick="deleteDailyReport(${r.id})" title="削除">🗑</button>`:''}
+        <!-- 操作。スマホではカードの下に文字つきで並べる（記号だけだと小さくて押し分けにくい） -->
+        <div class="dr-actions" style="display:flex;gap:3px;flex-shrink:0">
+          <button class="ibtn" onclick="openDailyReportPdf(${r.id})" title="この日の業務記録を開く（PDF保存できます）">📄<span class="m-lbl">見る</span></button>
+          <button class="ibtn" onclick="showDailyForm(${r.id})" title="編集">✎<span class="m-lbl">編集</span></button>
+          ${canEdit&&r.status!=='rejected'?`<button class="ibtn" style="color:var(--amber-text)" onclick="rejectDailyReport(${r.id})" title="差戻し（要修正としてマークします）">↩<span class="m-lbl">差戻し</span></button>`:''}
+          ${canEdit?`<button class="ibtn" style="color:var(--red)" onclick="deleteDailyReport(${r.id})" title="削除">🗑<span class="m-lbl">削除</span></button>`:''}
         </div>
       </div>
     </div>`;
   }).join('');
+}
+
+// 管理側の一覧から、1件だけ業務記録の書式で開く（印刷・PDF保存できる）
+function openDailyReportPdf(id) {
+  const r = (dailyReports || []).find(x => x.id === id);
+  if (!r) { showT('この日報が見つかりません', 'twa'); return; }
+  const name = recDrv(r)?.name || r.driver_name || '';
+  openDocPreview(buildDailyReportsPrintDoc([r]), `${r.date} ${name}`);
 }
 
 function renderDailySummary() {
