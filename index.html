@@ -67,7 +67,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css?v=85f2ea34">
+<link rel="stylesheet" href="css/app.css?v=69a923ee">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -1862,10 +1862,14 @@ try {
       <input type="text" id="chatTabSearch" placeholder="🔍 ドライバー名で検索…" oninput="renderChatTabDrvListDebounced()" style="padding:5px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);width:200px">
     </div>
   </div>
-  <div style="display:flex;height:calc(100vh - 100px - env(safe-area-inset-top,0px))">
-    <div id="chatTabDrvList" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
-    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
-      <div id="chatTabHeader" style="padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:13px;font-weight:500;color:var(--text2)">左の一覧からドライバーを選択してください</div>
+  <div id="chatTabSplit" class="chat-split" style="display:flex;height:calc(100vh - 100px - env(safe-area-inset-top,0px))">
+    <div id="chatTabDrvList" class="chat-list" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
+    <div class="chat-thread" style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <!-- スマホではトーク画面が全画面になるので、一覧へ戻るボタンを出す（PCでは隠れている） -->
+      <div class="chat-thread-head" style="display:flex;align-items:center;border-bottom:0.5px solid var(--border)">
+        <button type="button" class="chat-back" onclick="closeChatThread('chatTabSplit')" title="一覧へ戻る">‹</button>
+      <div id="chatTabHeader" style="flex:1;min-width:0;padding:10px 14px;font-size:13px;font-weight:500;color:var(--text2)">左の一覧からドライバーを選択してください</div>
+      </div>
       <div id="chatTabMsgList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px"></div>
       <div id="chatTabInputArea" style="display:none;padding:10px 14px;border-top:0.5px solid var(--border);flex-direction:column;gap:6px;display:flex">
         <div id="chatTabFileChip" style="font-size:11px;color:var(--text2)"></div>
@@ -1886,10 +1890,14 @@ try {
     <span style="font-size:13px;font-weight:500">👥 グループチャット</span>
     <button class="btn pri sml" onclick="openNewChatGroupM()">＋ 新規グループ</button>
   </div>
-  <div style="display:flex;height:calc(100vh - 100px - env(safe-area-inset-top,0px))">
-    <div id="chatGroupList" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
-    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
-      <div id="chatGroupHeader" style="padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:13px;font-weight:500;color:var(--text2)">左の一覧からグループを選択してください</div>
+  <div id="chatGroupSplit" class="chat-split" style="display:flex;height:calc(100vh - 100px - env(safe-area-inset-top,0px))">
+    <div id="chatGroupList" class="chat-list" style="width:260px;flex-shrink:0;border-right:0.5px solid var(--border);overflow-y:auto"></div>
+    <div class="chat-thread" style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <!-- スマホではトーク画面が全画面になるので、一覧へ戻るボタンを出す（PCでは隠れている） -->
+      <div class="chat-thread-head" style="display:flex;align-items:center;border-bottom:0.5px solid var(--border)">
+        <button type="button" class="chat-back" onclick="closeChatThread('chatGroupSplit')" title="一覧へ戻る">‹</button>
+      <div id="chatGroupHeader" style="flex:1;min-width:0;padding:10px 14px;font-size:13px;font-weight:500;color:var(--text2)">左の一覧からグループを選択してください</div>
+      </div>
       <div id="chatGroupMsgList" style="flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px"></div>
       <div id="chatGroupInputArea" style="display:none;padding:10px 14px;border-top:0.5px solid var(--border);flex-direction:column;gap:6px;display:flex">
         <div id="chatGroupFileChip" style="font-size:11px;color:var(--text2)"></div>
@@ -3333,7 +3341,7 @@ try {
 <script src="js/04-monthly.js?v=90c90c9d"></script>
 
 
-<script src="js/05-driver-portal.js?v=9357370e"></script>
+<script src="js/05-driver-portal.js?v=dc2d6d7e"></script>
 
 
 

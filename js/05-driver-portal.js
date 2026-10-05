@@ -1051,10 +1051,31 @@ function renderChatTabDrvList() {
     </div>`;
   }).join('');
 }
+/* スマホでは、一覧からトークを開いたらトーク画面を全画面で出す（LINEと同じ動き）。
+   端末の「戻る」でも一覧へ戻れるよう、履歴を1つ積む */
+function openChatThread(splitId) {
+  const el = document.getElementById(splitId);
+  if (!el || !isNarrow()) return;
+  if (!el.classList.contains('thread-open')) {
+    el.classList.add('thread-open');
+    try { history.pushState({ chatThread: splitId }, ''); } catch(e) {}
+  }
+}
+function closeChatThread(splitId) {
+  const el = document.getElementById(splitId);
+  if (!el?.classList.contains('thread-open')) return;
+  // 自分で積んだ履歴なら戻る（popstate で閉じる）。それ以外はそのまま閉じる
+  if (history.state?.chatThread === splitId) { history.back(); return; }
+  el.classList.remove('thread-open');
+}
+window.addEventListener('popstate', () => {
+  document.querySelectorAll('.chat-split.thread-open').forEach(el => el.classList.remove('thread-open'));
+});
 async function openChatTabDrv(drvId) {
   const d = drvs.find(x => x.id === drvId);
   if (!d) return;
   chatTabDrvId = drvId;
+  openChatThread('chatTabSplit');
   document.getElementById('chatTabHeader').textContent = `💬 ${d.name}`;
   document.getElementById('chatTabInputArea').style.display = 'flex';
   document.getElementById('chatTabMsgList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
@@ -1210,6 +1231,7 @@ async function openChatGroup(id) {
   const g = chatGroups.find(x=>x.id===id);
   if (!g) return;
   chatGroupSelId = id;
+  openChatThread('chatGroupSplit');
   document.getElementById('chatGroupHeader').innerHTML = `👥 ${escHtml(g.name)} <button class="ibtn" onclick="openEditChatGroupM(${g.id})" title="メンバー編集" style="margin-left:6px">✎</button>`;
   document.getElementById('chatGroupInputArea').style.display = 'flex';
   document.getElementById('chatGroupMsgList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:12px">読み込み中...</div>';
@@ -2348,13 +2370,13 @@ function renderBoardTo(elId) {
     const targetCnt = (p.target_driver_ids||[]).length;
     const targetNames = targetCnt ? drvs.filter(d=>p.target_driver_ids.includes(d.id)).map(d=>d.name).join('、') : '';
     return `<div style="border:0.5px solid ${p.priority==='urgent'?'var(--red)':p.priority==='important'?'var(--amber-border)':'var(--border)'};border-radius:var(--radius-lg);padding:10px 12px;margin-bottom:8px;background:var(--bg)${p.priority==='urgent'?';background:var(--red-bg)':''}${pending?';opacity:0.65':''}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:8px">
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+      <div class="board-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:8px">
+        <div class="board-tags" style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
           <span style="font-size:10px;padding:1px 6px;border-radius:99px;border:0.5px solid ${priColor};color:${priColor}">${priLabel}</span>
           ${pending?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--amber-bg);color:var(--amber-text)" title="この投稿はドライバーにはまだ表示されません">⏰ 予約中: ${new Date(p.publish_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>`:''}
           ${p.recurrence_id?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="繰り返し投稿の一部です">🔁 繰り返し</span>`:''}
           ${targetCnt?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--bg2);color:var(--text2)" title="${escHtml(targetNames)}">🎯 ${targetCnt}名限定</span>`:''}
-          <span style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title)}</span>
+          <span class="board-title" style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
           <span style="font-size:10px;color:var(--text2)">${escHtml(p.author)} ${dt}</span>

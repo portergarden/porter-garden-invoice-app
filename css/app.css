@@ -303,8 +303,15 @@ td.dim{color:var(--text2)}
   /* 管理側のチャットは「左に一覧・右にスレッド」の横並び。一覧が260px固定のため
      375pxの画面ではスレッドが115pxまで潰れ、送信ボタンが画面外に出て押せなかった。
      狭い画面では縦に積んで、どちらも使えるようにする */
-  #pg27 > div[style*="height:calc(100vh"], #pg30 > div[style*="height:calc(100vh"]{flex-direction:column}
-  #chatTabDrvList, #chatGroupList{width:100%!important;max-height:32vh;border-right:none!important;border-bottom:0.5px solid var(--border)}
+  /* チャット: 一覧を全画面で出し、押したらトーク画面を全画面で重ねる（LINEと同じ動き）。
+     以前は一覧とトークを縦に積んでいたが、一覧が32vhしか無く、トークも入力欄が画面外に出がちだった */
+  .chat-split{height:auto!important;display:block!important}
+  .chat-split > .chat-list{width:100%!important;border-right:none!important;max-height:none}
+  .chat-split > .chat-list > div{padding:12px 14px!important}
+  .chat-split > .chat-thread{display:none!important}
+  .chat-split.thread-open > .chat-thread{display:flex!important;position:fixed;inset:0;z-index:90;background:var(--bg);
+    padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .chat-thread textarea{font-size:16px!important}
   /* flexの中のテキスト入力は既定で縮まないため、隣のボタンが画面外へ押し出される。
      チャットの送信ボタンが押せなくなっていたのはこれが原因 */
   #pgMain div[style*="display:flex"] > input[type="text"]{min-width:0}
@@ -439,6 +446,22 @@ td.dim{color:var(--text2)}
   /* 予定管理の上部: 検索欄は1行使う */
   #staffSchedSearch{width:100%!important;font-size:16px!important}
   #pg28 > div:first-child > div:last-child{width:100%}
+}
+
+/* チャットの「一覧へ戻る」。スマホのトーク画面でだけ出す */
+.chat-back{display:none}
+@media (max-width:600px){
+  .chat-back{display:block;flex-shrink:0;background:none;border:none;color:var(--blue);font-size:30px;line-height:1;padding:4px 4px 6px 12px;cursor:pointer}
+}
+
+/* 掲示板（管理・ドライバー共通）: スマホでは件名が「…」で切れないよう、見出し行を折り返して件名を1行使う */
+@media (max-width:600px){
+  .board-head{flex-wrap:wrap;align-items:center!important;row-gap:4px!important}
+  /* 札（重要・限定など）と件名を見出し行の直下に並べ直し、件名だけを次の行いっぱいに出す */
+  .board-tags{display:contents!important}
+  .board-tags + div{margin-left:auto}
+  .board-title{flex-basis:100%;white-space:normal!important;font-size:14px!important;font-weight:600!important;order:9}
+  .board-head + div{font-size:13.5px!important}
 }
 
 /* ===== 表 → カード（mobilizeTable） =====
