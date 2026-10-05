@@ -837,7 +837,7 @@ function renderBillingProgress() {
       const sm = b.send_method || c.send_method || '';
       const due = bpEffectiveDue(b, c, month);
       const overdue = bpIsOverdue(b, c, month);
-      return `<tr>
+      return `<tr data-k="${c.id}">
         <td style="${td};text-align:center"><input type="checkbox" class="bpRowChk" value="${c.id}" data-manual="${b.manual?1:0}" onchange="updateBpBulkBar()" style="width:14px;height:14px;cursor:pointer"></td>
         <td style="${td};text-align:left;white-space:nowrap${indent?';padding-left:18px':''}">
           ${indent?'<span style="color:var(--text3)">└ </span>':''}<span style="font-weight:600">${escHtml(c.name)}</span>
@@ -916,6 +916,8 @@ function renderBillingProgress() {
     }).join('');
   })()}</tbody></table>`;
 
+  // スマホでは1社＝1枚のカード。金額・ステータス・提出期限・提出日だけ先に見せる
+  mobilizeTable(area.querySelector('table'), { name:'bp', title:1, main:[2,4,5,9] });
   // 金額入力などで再描画されても行の選択が消えないよう復元する
   if (keepSel.size) {
     document.querySelectorAll('.bpRowChk').forEach(el => { if (keepSel.has(el.value)) el.checked = true; });
@@ -1392,7 +1394,7 @@ function renderPersonalTasks() {
     const needsAck = isRequest && !acked && t.status !== 'done';   // 強調するのは未完了で未確認のものだけ
     // レ点は担当者本人だけが操作できる。他人の分と完了済みは状態の表示だけにする
     const canAck = isMine && String(uid) === String(me?.id||'') && t.status !== 'done';
-    return `<tr style="${t.status==='done'?'opacity:.6':''}${isMine&&needsAck?';background:var(--amber-bg)':''}">
+    return `<tr data-k="${t.id}" style="${t.status==='done'?'opacity:.6':''}${isMine&&needsAck?';background:var(--amber-bg)':''}">
       <td style="${td};text-align:center">${isRequest
         ? `<input type="checkbox" ${acked?'checked':''} ${canAck?'':'disabled'} onchange="togglePtAck(${t.id},this.checked)"
              title="${canAck?'依頼を確認したらレ点を付けます（ダッシュボードのお知らせが消えます）':t.status==='done'?'完了済みのため変更できません':`確認のレ点は担当者本人（${escHtml(uname(t.assignee_user_id))}）だけが付けられます`}"
@@ -1444,6 +1446,8 @@ function renderPersonalTasks() {
     + `<div class="ctitle">👥 他人の分
        <span style="font-weight:400;color:var(--text2);font-size:11px">${scope==='requested'?`${escHtml(selfName)}が依頼した分`:'すべて'}・${others.length}件</span></div>`
     + tableHtml(others, false, scope==='requested' ? '自分が依頼したタスクはありません' : '他の人が担当のタスクはありません');
+  // スマホでは1件＝1枚のカード。確認・ステータス・期限・メモ・担当者・操作を先に見せる
+  area.querySelectorAll('table').forEach(tb => mobilizeTable(tb, { name:'pt', title:1, main:[0,2,4,6,7,9] }));
 }
 const renderPersonalTasksDebounced = debounce(renderPersonalTasks, 250);
 /* 依頼の確認レ点。担当者本人だけが付け外しできる（依頼した側が勝手に確認済みにしない） */
@@ -1680,7 +1684,7 @@ function renderTaskTop() {
     </div>
 
     <div class="ctitle">対応が必要な業務 <span style="font-weight:400;color:var(--text2);font-size:11px">${problems.length}件（上位8件）</span></div>
-    ${problems.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    ${problems.length ? `<table id="ttProblems" style="width:100%;border-collapse:collapse;margin-bottom:16px">
       <thead><tr style="background:var(--bg2)">
         <th style="${td};text-align:left">種別</th><th style="${td};text-align:left">相手先</th>
         <th style="${td}">ステータス</th><th style="${td}">提出期限</th><th style="${td}"></th>
@@ -1710,6 +1714,8 @@ function renderTaskTop() {
         </tr>`;
       }).join('')}</tbody></table>` : '<div style="color:var(--text2);font-size:12px;padding:8px 0">期限が近いタスクはありません</div>'}
   `;
+  // 対応が必要な業務は5列あり、スマホでは収まらないのでカードにする
+  mobilizeTable(document.getElementById('ttProblems'), { name:'tt', title:1 });
 }
 
 /* ============================================================
@@ -1878,7 +1884,7 @@ function renderDriverProgress() {
       const sc = BP_STATUS_COLOR[st] || BP_STATUS_COLOR.todo;
       const due = bpEffectiveDue(b, d, month);
       const overdue = bpIsOverdue(b, d, month);
-      return `<tr>
+      return `<tr data-k="${d.id}">
         <td style="${td};text-align:center"><input type="checkbox" class="dpRowChk" value="${d.id}" data-manual="${b.manual?1:0}" onchange="updateDpBulkBar()" style="width:14px;height:14px;cursor:pointer"></td>
         <td style="${td};text-align:left;white-space:nowrap">
           <span style="font-weight:600">${escHtml(d.name)}</span>
@@ -1916,6 +1922,8 @@ function renderDriverProgress() {
       </tr>`;
     }).join('')}</tbody></table>`;
 
+  // スマホでは1社＝1枚のカード。金額・ステータス・提出期限・発行送付日だけ先に見せる
+  mobilizeTable(area.querySelector('table'), { name:'dp', title:1, main:[2,3,4,6] });
   if (keepSel.size) {
     document.querySelectorAll('.dpRowChk').forEach(el => { if (keepSel.has(el.value)) el.checked = true; });
     updateDpBulkBar();

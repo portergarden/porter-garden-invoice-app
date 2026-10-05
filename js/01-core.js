@@ -464,6 +464,47 @@ const NARROW_MQ = window.matchMedia ? window.matchMedia('(max-width:600px)') : n
 const isNarrow = () => !!NARROW_MQ?.matches;
 const narrowRerenders = new Set();
 function onNarrowChange(fn) { narrowRerenders.add(fn); }
+/* 表をスマホでは「1行＝1枚のカード」に組み替える（PC幅では見た目は変わらない）。
+   列の見出しを各セルの data-label に写し、CSS（table.mtable）で「見出し：値」の縦並びにする。
+   入力欄やプルダウンはそのまま動くので、保存の処理は変えずに済む。
+     opts.title … カードの見出しにする列番号
+     opts.main  … 最初から見せる列番号。それ以外は「詳細」を押すと出る（指定なしなら全部見せる）
+   行に data-k（行を見分ける鍵）があれば、保存で表が描き直されても「詳細」を開いたままにする */
+const mtableOpen = new Set();
+function mobilizeTable(table, opts = {}) {
+  if (!table) return;
+  const name = opts.name || table.id || '';
+  table.classList.add('mtable');
+  const heads = [...table.querySelectorAll('thead tr:first-child > th')]
+    // 見出しの無い列は、選択用のチェックボックスなら「選択」、それ以外（ボタン列）は「操作」
+    .map(th => (th.childNodes[0]?.nodeType === 3 ? th.childNodes[0].textContent : th.textContent).trim()
+               || (th.querySelector('input[type="checkbox"]') ? '選択' : '操作'));
+  table.querySelectorAll('tbody > tr').forEach(tr => {
+    const tds = [...tr.children];
+    if (tds.length !== heads.length) { tr.classList.add('m-group'); return; }   // 親会社のまとめ行など
+    let hasSec = false;
+    tds.forEach((td, i) => {
+      td.dataset.label = heads[i];
+      if (i === opts.title) td.classList.add('m-title');
+      else if (opts.main && !opts.main.includes(i)) { td.classList.add('m-sec'); hasSec = true; }
+    });
+    const key = tr.dataset.k ? `${name}:${tr.dataset.k}` : '';
+    if (key && mtableOpen.has(key)) tr.classList.add('m-open');
+    const t = tds[opts.title];
+    if (hasSec && t) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'm-more';
+      b.textContent = tr.classList.contains('m-open') ? '閉じる' : '詳細';
+      b.onclick = ev => {
+        ev.stopPropagation();
+        const open = tr.classList.toggle('m-open');
+        b.textContent = open ? '閉じる' : '詳細';
+        if (key) { if (open) mtableOpen.add(key); else mtableOpen.delete(key); }
+      };
+      t.prepend(b);
+    }
+  });
+}
 NARROW_MQ?.addEventListener?.('change', () => narrowRerenders.forEach(fn => { try { fn(); } catch(e) { console.warn(e); } }));
 /* ドライバーIDの順に並べる。IDは「107」「1017」のような数字なので、文字として比べると
    1017 が 107 より前に来てしまう。数字として比べ、IDが無い人は最後、同じなら名前順 */
