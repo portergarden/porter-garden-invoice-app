@@ -1057,19 +1057,27 @@ function openChatThread(splitId) {
   const el = document.getElementById(splitId);
   if (!el || !isNarrow()) return;
   if (!el.classList.contains('thread-open')) {
+    el._listScrollY = window.scrollY;   // 一覧へ戻ったときに元の位置から見せる
     el.classList.add('thread-open');
     try { history.pushState({ chatThread: splitId }, ''); } catch(e) {}
   }
+}
+// トーク画面を閉じて一覧へ戻す。一覧は閉じている間は消しているので、スクロール位置を戻す
+function endChatThread(el) {
+  if (!el?.classList.contains('thread-open')) return;
+  el.classList.remove('thread-open');
+  const y = el._listScrollY;
+  if (y != null) requestAnimationFrame(() => window.scrollTo(0, y));
 }
 function closeChatThread(splitId) {
   const el = document.getElementById(splitId);
   if (!el?.classList.contains('thread-open')) return;
   // 自分で積んだ履歴なら戻る（popstate で閉じる）。それ以外はそのまま閉じる
   if (history.state?.chatThread === splitId) { history.back(); return; }
-  el.classList.remove('thread-open');
+  endChatThread(el);
 }
 window.addEventListener('popstate', () => {
-  document.querySelectorAll('.chat-split.thread-open').forEach(el => el.classList.remove('thread-open'));
+  document.querySelectorAll('.chat-split.thread-open').forEach(endChatThread);
 });
 async function openChatTabDrv(drvId) {
   const d = drvs.find(x => x.id === drvId);

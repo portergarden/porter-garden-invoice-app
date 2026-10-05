@@ -312,6 +312,11 @@ td.dim{color:var(--text2)}
   .chat-split.thread-open > .chat-thread{display:flex!important;position:fixed;inset:0;z-index:90;background:var(--bg);
     padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
   .chat-thread textarea{font-size:16px!important}
+  /* トーク画面を開いている間は、後ろの一覧を消して画面のスクロールも止める。
+     iPhoneでは重ねた画面の後ろが指の動きにつられてスクロールし、一覧の名前が透けて流れて見えていた */
+  .chat-split.thread-open > .chat-list{display:none!important}
+  body:has(#pg27:not(.hide) .chat-split.thread-open), body:has(#pg30:not(.hide) .chat-split.thread-open){overflow:hidden!important;overscroll-behavior:none}
+  #chatTabMsgList, #chatGroupMsgList{overscroll-behavior:contain}
   /* flexの中のテキスト入力は既定で縮まないため、隣のボタンが画面外へ押し出される。
      チャットの送信ボタンが押せなくなっていたのはこれが原因 */
   #pgMain div[style*="display:flex"] > input[type="text"]{min-width:0}
