@@ -2625,7 +2625,9 @@ function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalT
 function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');if(!inp.value.trim())return;
   // 新しく足す車番は形を確かめる（空白入り・分類番号抜け・番号だけは登録しない）
   const chk=checkNewCarPlate(inp.value);if(!chk.ok){alert(chk.msg);inp.focus();return;}
-  const v=chk.value;if(!pendTags.some(t=>nm(t)===nm(v)))pendTags.push(v);inp.value='';renderTags();}
+  // 空白違いなど同じ車番がすでにあるときは、足さずに今回の表記へ置き換える（空白を消して入れ直した分が反映されるように）
+  const key=t=>nm(t).replace(/[•･]/g,'・');
+  const v=chk.value;const i=pendTags.findIndex(t=>key(t)===key(v));if(i>=0)pendTags[i]=v;else pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
 function renderTags(){const html=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');['cTags','diTags'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=html;});}
 
@@ -2668,6 +2670,9 @@ async function delDrv(id){
 }
 async function saveDrv(){
   const name=document.getElementById('dN').value.trim();if(!name){alert('名前は必須です');return;}
+  // 車番欄に打ったまま「追加」を押さずに保存したときも、その車番を取り込む
+  const ciEl=document.getElementById('dCi');
+  if(ciEl&&ciEl.value.trim()){addTag();if(ciEl.value.trim())return;}
   const supId=document.getElementById('dSup').value.trim();
   if(supId){const dup=drvs.find(d=>d.supplier_id===supId&&d.id!==eDrvId);if(dup){alert(`ドライバーID「${supId}」は既に「${dup.name}」で登録されています。重複しないIDを入力してください。`);return;}}
   // 車番が他のドライバーにも登録されていないか確認する。
