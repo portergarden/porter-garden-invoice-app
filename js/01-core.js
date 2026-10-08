@@ -398,6 +398,8 @@ const typeLabel=t=>(TYPE_META[t]||TYPE_META.other).label;
 const typeShort=t=>(TYPE_META[t]||TYPE_META.other).short;
 const typeBadge=t=>(TYPE_META[t]||TYPE_META.other).badge;
 const nm=s=>(s||'').replace(/\s/g,'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+// 車番どうしが同じかを見るための形（空白・全角に加えて「•」「･」と「・」の違いもそろえる）
+const carKey=s=>nm(s).replace(/[•･]/g,'・');
 // 車番→ドライバー・ID→ドライバーの索引（drvsが変わるたびinvalidateDriverIndexes()でnullに戻し、
 // 次回lkD/recDrv呼び出し時に再構築する）。件数が多いページ（明細一覧・ドライバー一覧等）で
 // 行ごとにdrvs.find()の線形探索を繰り返す(O(件数×ドライバー数))のを避け、体感速度を上げるため
@@ -2626,8 +2628,7 @@ function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');
   // 新しく足す車番は形を確かめる（空白入り・分類番号抜け・番号だけは登録しない）
   const chk=checkNewCarPlate(inp.value);if(!chk.ok){alert(chk.msg);inp.focus();return;}
   // 空白違いなど同じ車番がすでにあるときは、足さずに今回の表記へ置き換える（空白を消して入れ直した分が反映されるように）
-  const key=t=>nm(t).replace(/[•･]/g,'・');
-  const v=chk.value;const i=pendTags.findIndex(t=>key(t)===key(v));if(i>=0)pendTags[i]=v;else pendTags.push(v);inp.value='';renderTags();}
+  const v=chk.value;const i=pendTags.findIndex(t=>carKey(t)===carKey(v));if(i>=0)pendTags[i]=v;else pendTags.push(v);inp.value='';renderTags();}
 function rmTag(i){pendTags.splice(i,1);renderTags();}
 function renderTags(){const html=pendTags.map((c,i)=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:1px 5px;background:var(--blue-bg);color:var(--blue-text);border-radius:99px">${c}<button onclick="rmTag(${i})" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:12px;line-height:1;padding:0">×</button></span>`).join('');['cTags','diTags'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=html;});}
 

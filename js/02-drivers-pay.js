@@ -482,6 +482,46 @@ async function syncDriverDocFromVehicleEdit(car, updates) {
     } catch(e) { console.warn('syncDriverDocFromVehicleEdit:', e.message); }
   }
 }
+/* ドライバー登録の車番（drivers.cars）と乗務履歴（vehicle_assignments）の旧表記を新しい表記に書き換える。
+   onlyDrvId を渡すとそのドライバーだけを直す。請求データの車番は取り込んだときのまま残す */
+async function renameCarInDrivers(oldCar, newCar, onlyDrvId) {
+  const k = carKey(oldCar);
+  const targets = drvs.filter(d => (onlyDrvId == null || d.id === onlyDrvId) && (d.cars||[]).some(c => carKey(c) === k));
+  for (const d of targets) {
+    const cars = [];
+    for (const c of d.cars) { const v = carKey(c) === k ? newCar : c; if (!cars.some(x => carKey(x) === carKey(v))) cars.push(v); }
+    const {error} = await sb.from('drivers').update({cars}).eq('id', d.id);
+    if (error) { showT(`${d.name} さんの車番を直せませんでした: ${error.message}`, 'ter'); continue; }
+    d.cars = cars;
+    addLog('車番の書き換え', `${d.name}: ${oldCar} → ${newCar}`);
+  }
+  if (targets.length) { invalidateDriverIndexes(); renderDrv(); }
+  const hist = vehicleAssignments.filter(a => carKey(a.car) === k && (onlyDrvId == null || a.driver_id === onlyDrvId));
+  for (const a of hist) {
+    const {error} = await sb.from('vehicle_assignments').update({car: newCar}).eq('id', a.id);
+    if (!error) a.car = newCar;
+  }
+}
+// 新しく台帳に入れた車番と同じ車が、ドライバー側に不完全な形で登録されていないか探す。
+// 番号部分が同じで、ひらがなが入っていればそれも同じもの。台帳に既にある車番は対象外
+function findIncompleteDriverCars(car) {
+  const num = s => { const m = carKey(s).match(/(\d{1,4})$/); return m ? String(+m[1]) : null; };
+  const kana = s => (carKey(s).match(/[ぁ-ん]/) || [])[0] || null;
+  const n = num(car), kn = kana(car);
+  if (!n) return [];
+  const out = [];
+  for (const d of drvs) {
+    if (d.status === 'terminated') continue;
+    for (const c of (d.cars||[])) {
+      if (carKey(c) === carKey(car) || checkNewCarPlate(c).ok) continue;
+      if (vehicles.some(v => carKey(v.car) === carKey(c))) continue;
+      if (num(c) !== n) continue;
+      const kc = kana(c); if (kc && kn && kc !== kn) continue;
+      out.push({drv: d, old: c});
+    }
+  }
+  return out;
+}
 async function saveVehicle() {
   let car = document.getElementById('vCar').value.trim();
   if (!car) { alert('車番は必須です'); return; }
@@ -515,12 +555,18 @@ async function saveVehicle() {
       const idx = vehicles.findIndex(v=>v.id===eVehicleId);
       if (idx>=0) vehicles[idx] = data;
       addLog('車両編集', car);
+      // 車番を書き換えたら、ドライバー登録の車番と乗務履歴も新しい表記にそろえる
+      if (before && before !== car) await renameCarInDrivers(before, car);
       await syncDriverDocFromVehicleEdit(car, { shaken_expiry: obj.shaken_expiry, jibai_expiry: obj.jibai_expiry, nini_expiry: obj.nini_expiry });
     } else {
       const {data, error} = await sb.from('vehicles').insert(obj).select().single();
       if (error) throw error;
       vehicles.push(data);
       addLog('車両追加', car);
+      // ドライバーに不完全な形（「480」抜け・空白入り・番号だけ等）で登録されている同じ車があれば、この表記に直すか聞く
+      for (const {drv, old} of findIncompleteDriverCars(car)) {
+        if (confirm(`${drv.name} さんに車番「${old}」が登録されています。\n同じ車として「${car}」に直しますか？`)) await renameCarInDrivers(old, car, drv.id);
+      }
     }
     closeM('mVehicle');
     renderVehicles();
