@@ -2586,11 +2586,19 @@ async function initDailyForm(reportId=null) {
     // 管理者アカウント自身にドライバーが紐づけられている場合（本人も乗務するケース）、
     // 自分の車両を「自分の車両」として先頭にまとめて出す（全ドライバー分の一覧はそのまま維持する）
     const myDrv = me?.driver_id ? drvs.find(d=>d.id===me.driver_id) : null;
+    // 自分の車両は先頭にだけ出し、下の全ドライバー分からは外す（同じ車番が2つ並ばないように）
     const myCars = myDrv ? allCarsWithAssigned.filter(x=>x.drvId===myDrv.id).map(x=>x.car) : [];
+    const otherCars = myDrv ? allCarsWithAssigned.filter(x=>x.drvId!==myDrv.id) : allCarsWithAssigned;
     carSel.innerHTML = '<option value="">選択してください</option>' +
-      (myCars.length ? `<optgroup label="自分の車両（${escHtml(myDrv.name)}）">${myCars.map(c => `<option value="${c}">${c}</option>`).join('')}</optgroup>` : '') +
-      allCarsWithAssigned.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
+      (myCars.length ? `<optgroup label="自分の車両（${escHtml(myDrv.name)}）">${myCars.map(c => `<option value="${c}" data-name="${escHtml(myDrv.name)}">${c}</option>`).join('')}</optgroup>` : '') +
+      otherCars.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
     enhanceSelectSearchable('drCar');
+    // 新規入力では、ドライバーに紐づけた管理者アカウントなら自分の車両を最初から選んでおく（運転者名・メーター・出発地点も引き継ぐ）
+    if (!reportId && myCars.length) {
+      carSel.value = myCars[0];
+      carSel._syncSearchInput?.();   // 絞り込み入力欄の表示も選んだ車番にそろえる
+      onDrCarChange();
+    }
   }
   carCustom.style.display = 'none';
   carCustom.value = '';
