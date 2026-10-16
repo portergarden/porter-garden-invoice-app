@@ -2467,6 +2467,49 @@ async function showDailyForm(reportId=null) {
     }
   }
   renderDrSteps();
+  checkDrSameDay();
+}
+
+/* ===== 日報は1人1日1枚 =====
+   同じ日に2回以上稼働したときは、新しい日報を作らず、その日の日報の「② 稼働」に運行を足してもらう。
+   新規入力で、同じドライバー・同じ業務日の日報が既にあれば案内を出し、次へ進む・提出するのを止める */
+let drSameDayReport = null;
+let drSameDaySeq = 0;
+async function checkDrSameDay() {
+  const box = document.getElementById('drSameDay');
+  drSameDayReport = null;
+  if (box) box.style.display = 'none';
+  if (editDailyId != null || !sb) return null;
+  const drvId = drFormDrvId();
+  const date = document.getElementById('drD')?.value;
+  if (drvId == null || !date) return null;
+  const seq = ++drSameDaySeq;
+  try {
+    const {data, error} = await sb.from('daily_reports').select('*').eq('drv_id', drvId).eq('date', date).order('id').limit(1);
+    if (seq !== drSameDaySeq || error || !data?.length) return null;   // 問い合わせ中に日付などが変わったら古い結果は捨てる
+    drSameDayReport = data[0];
+  } catch(e) { console.warn('checkDrSameDay:', e.message); return null; }
+  if (box) {
+    const r = drSameDayReport;
+    const who = me?.role === 'driver' ? '' : `${escHtml(r.driver_name || '')} さんの`;
+    box.innerHTML = `⚠ ${escHtml(r.date)} の${who}日報はすでに提出されています（日報は1日1枚です）。<br>
+      同じ日の2回目以降の稼働は、その日報を開いて「② 稼働」に運行を追加してください。<br>
+      <button class="btn sml pri" type="button" onclick="openDrSameDayForTrip()">この日の日報を開いて運行を追加</button>`;
+    box.style.display = '';
+  }
+  return drSameDayReport;
+}
+// 既にある同じ日の日報を開き、運行を足す「② 稼働」へ進める。書きかけの新規分は破棄する
+async function openDrSameDayForTrip() {
+  const r = drSameDayReport;
+  if (!r) return;
+  if (pendDrTrips.length && !confirm('いま入力中の内容は破棄して、この日の日報を開きます。よろしいですか？')) return;
+  clearDrDraft();
+  if (!dailyReports.some(x => x.id === r.id)) dailyReports.unshift(r);
+  await showDailyForm(r.id);
+  drStep = 2;
+  renderDrSteps();
+  showT('「＋ 運行を追加」で今回の稼働を足し、最後に提出し直してください');
 }
 
 function showDailyList() {
@@ -2733,7 +2776,7 @@ function onDrCarChange() {
   // 車が決まった時点で、その車の前回の帰着メーターを引き継ぐ
   if (carSel.value && carSel.value !== '__custom__') prefillOdoStart(carSel.value);
   // 管理者の代理入力では車番からドライバーが決まるため、出発地点もここで引き継ぐ
-  if (me?.role !== 'driver') prefillStartLoc();
+  if (me?.role !== 'driver') { prefillStartLoc(); checkDrSameDay(); }
 }
 
 function checkAlc(input, warnId) {
@@ -3384,6 +3427,7 @@ function validateDrStep(step) {
     let car = v('drCar');
     if (car === '__custom__') car = v('drCarCustom');
     if (!v('drD') || !car) return '業務日と車両番号は必須です';
+    if (drSameDayReport && editDailyId == null) return 'この日の日報はすでに提出されています。上の「この日の日報を開いて運行を追加」から運行を足してください';
     // 手入力した車番は、請求と突き合うよう形を確かめる（空白入り・分類番号抜け・番号だけは不可）
     if (v('drCar') === '__custom__') {
       const chk = checkNewCarPlate(car);
@@ -3422,6 +3466,7 @@ function onDrDateChange() {
     : (carSel?.value || '');
   if (car) prefillOdoStart(car);
   prefillStartLoc();
+  checkDrSameDay();
 }
 async function prefillOdoStart(car) {
   const el = document.getElementById('drOdoStart');
@@ -3675,6 +3720,12 @@ async function submitDailyReport() {
   // （恒久登録車両はlkD、乗務履歴で割り当て中の代車はlkDByAssignで解決。車番プルダウンに
   // 両方の車両が候補として出るようになったため、代車を選んだ場合も正しく紐づける）。
   const resolvedDrvId = (me?.role === 'driver') ? me.driver_id : (lkDByAssign(car, date)?.id ?? lkD(car)?.id ?? null);
+  if (!editDailyId && await checkDrSameDay()) {
+    resultEl.textContent = '⚠ この日の日報はすでに提出されています。新しく出さずに、その日報を開いて「② 稼働」に運行を追加してください';
+    resultEl.style.color = 'var(--red)';
+    goDrStep(1);
+    return;
+  }
 
   const obj = {
     date,

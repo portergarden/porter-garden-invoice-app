@@ -67,7 +67,7 @@ let parsedPayCsv = [];
         integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-<link rel="stylesheet" href="css/app.css?v=1b2f24cf">
+<link rel="stylesheet" href="css/app.css?v=9cb5a887">
 
 <script>
 // ダーク/ライトモードの保存済み選択を、body描画前になるべく早く反映してちらつきを防ぐ
@@ -1368,6 +1368,8 @@ try {
         <div class="fld"><label>運転者名</label>
           <input type="text" id="drName" readonly style="background:var(--bg2);color:var(--text2)">
         </div>
+        <!-- 同じ日の日報が既にあるときの案内（日報は1日1枚。2回目以降の稼働は運行として足す） -->
+        <div id="drSameDay" class="dr-sameday" style="display:none"></div>
 
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">② 業務前点呼</div>
         <div style="font-size:10px;color:var(--text2);margin-bottom:6px">点呼記録簿として保存する項目です。一人で事業を営む場合は自ら点呼を行い「対面」で記録します</div>
@@ -3338,7 +3340,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=645ca8ef"></script>
+<script src="js/03-dashboard-daily.js?v=084f5998"></script>
 
 
 <script src="js/04-monthly.js?v=9bc028b1"></script>

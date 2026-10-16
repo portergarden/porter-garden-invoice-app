@@ -383,16 +383,23 @@ td.dim{color:var(--text2)}
 .msg-gone{opacity:0.75;font-style:italic}
 
 
+/* 同じ日の日報が既にあるときの案内 */
+.dr-sameday{margin:4px 0 10px;padding:10px 12px;border-radius:var(--radius);background:var(--amber-bg);color:var(--amber-text);font-size:12px;line-height:1.6}
+.dr-sameday .btn{margin-top:6px}
+
 /* ===== 管理画面のスマホ表示 =====
    管理画面はPCの横幅を前提に作ってあり、スマホでは見出しが切れる・
    一覧の列が重なるといった崩れが出ていた。ここでまとめて詰める。
    ドライバーポータル(.drv-nav / .drv-subnav)は別に調整済みなので触らない。 */
 @media (max-width:767px){
-  /* 上部バー: 会社名とユーザー名は畳んで、操作ボタンを1行に収める */
+  /* 上部バー: 会社名と権限バッジは畳んで、操作ボタンを1行に収める。
+     ログイン中の名前は、どのアカウントで入っているか分かるよう縮めて残す */
   .topbar{padding:6px 8px;gap:4px}
   .topbar-l{font-size:12px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #tbCompanyName, #tbName, #tbBdg{display:none}
-  .topbar-r{flex-shrink:0;gap:2px}
+  #tbCompanyName, #tbBdg{display:none}
+  #tbName{font-size:11px;font-weight:600;max-width:6.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:2px}
+  .topbar-r{min-width:0;gap:2px}
+  .topbar-r > :not(#tbName){flex-shrink:0}
   .topbar-r .btn.sml{padding:4px 8px;font-size:11px}
 
   /* ナビ: 横スクロールだと端のタブが画面外に隠れ、存在に気づけない。折り返して全部見せる */
