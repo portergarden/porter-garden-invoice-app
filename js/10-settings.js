@@ -1793,6 +1793,40 @@ REVOKE ALL ON FUNCTION public.trg_daily_report_vehicle_usage() FROM PUBLIC, anon
 REVOKE ALL ON FUNCTION public.trg_drivers_ensure_vehicles() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.trg_users_ensure_vehicles() FROM PUBLIC, anon, authenticated;
 
+-- ドライバーが画面（API）から直接 vehicles を書き換えるときは、車検・自賠責・任意保険の期限だけにする。
+-- 種別・リース会社・料金・状態・車番などは社内だけ。DB側の処理（SECURITY DEFINER の関数）は所有者として動くので対象外
+CREATE OR REPLACE FUNCTION public.trg_vehicles_driver_limit()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $function$
+BEGIN
+  IF current_user <> 'authenticated' OR public."current_role"() = ANY (ARRAY['admin','editor']) THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.car IS DISTINCT FROM OLD.car OR NEW.status IS DISTINCT FROM OLD.status
+       OR NEW.vehicle_type IS DISTINCT FROM OLD.vehicle_type OR NEW.lease_company IS DISTINCT FROM OLD.lease_company
+       OR NEW.daily_rate IS DISTINCT FROM OLD.daily_rate OR NEW.monthly_rate IS DISTINCT FROM OLD.monthly_rate
+       OR NEW.rate_type IS DISTINCT FROM OLD.rate_type OR NEW.prorate IS DISTINCT FROM OLD.prorate
+       OR NEW.note IS DISTINCT FROM OLD.note OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+      RAISE EXCEPTION 'ドライバーが変更できるのは車検・自賠責・任意保険の期限だけです';
+    END IF;
+    RETURN NEW;
+  END IF;
+  NEW.status := 'active';
+  NEW.vehicle_type := 'unclassified';
+  NEW.lease_company := NULL;
+  NEW.daily_rate := NULL;
+  NEW.monthly_rate := NULL;
+  NEW.rate_type := 'daily';
+  NEW.prorate := false;
+  NEW.note := '';
+  RETURN NEW;
+END;
+$function$;
+DROP TRIGGER IF EXISTS vehicles_driver_limit ON public.vehicles;
+CREATE TRIGGER vehicles_driver_limit BEFORE INSERT OR UPDATE ON public.vehicles
+  FOR EACH ROW EXECUTE FUNCTION public.trg_vehicles_driver_limit();
+REVOKE ALL ON FUNCTION public.trg_vehicles_driver_limit() FROM PUBLIC, anon, authenticated;
+
 -- ============================================================
 -- 5. 最初のadminユーザー登録（1回だけ手動実行）
 --    事前にDashboard > Authenticationで管理者用アカウントを作成し、
