@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   pay_month_offset int DEFAULT 2, pay_day text DEFAULT 'end',
   invoice_no text, other_deductions jsonb NOT NULL DEFAULT '[]',
   bank text, company text, note text, lease_company text,
+  last_name text, first_name text, last_kana text, first_kana text, -- 氏名（姓・名）とフリガナ（カタカナ）。nameは「姓　名」の全角空白区切りで保つ
   company_client_id bigint REFERENCES clients(id) ON DELETE SET NULL, -- 所属会社（会社マスタへの直接紐づけ。companyは表示・集計用の複製）
   partner_id bigint, -- 統合前の協力会社ID。参照はしていないが切り戻し用に残している
   -- 支払明細書をポータルに出すか。auto=協力会社所属なら非表示 / show=常に表示 / hide=常に非表示
@@ -665,9 +666,11 @@ $function$;
 --   partner_companies には作らない）
 -- p_car_type / p_car_lease: 本人が選んだ車の種別（台帳でまだ未分類の車にだけ反映）。旧い5引数の版は消す（残すと呼び出しが曖昧になる）
 DROP FUNCTION IF EXISTS public.submit_driver_registration(text, text, text, text[], text);
+DROP FUNCTION IF EXISTS public.submit_driver_registration(text, text, text, text[], text, text, text);
 CREATE OR REPLACE FUNCTION public.submit_driver_registration(
   p_token text, p_name text, p_tel text, p_cars text[], p_partner_name text DEFAULT NULL,
-  p_car_type text DEFAULT NULL, p_car_lease text DEFAULT NULL)
+  p_car_type text DEFAULT NULL, p_car_lease text DEFAULT NULL,
+  p_last_name text DEFAULT NULL, p_first_name text DEFAULT NULL, p_last_kana text DEFAULT NULL, p_first_kana text DEFAULT NULL)
 RETURNS TABLE(driver_id integer, merged boolean)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
 DECLARE
@@ -683,7 +686,18 @@ DECLARE
   v_cars_clean text[];
   v_next_client_no integer;
   v_attempt int := 0;
+  v_ln text := nullif(trim(coalesce(p_last_name,'')),'');
+  v_fn text := nullif(trim(coalesce(p_first_name,'')),'');
+  v_lk text := nullif(trim(coalesce(p_last_kana,'')),'');
+  v_fk text := nullif(trim(coalesce(p_first_kana,'')),'');
+  v_name text;
 BEGIN
+  -- 姓・名が分かれて届いたときは、氏名を「姓　名」（全角空白）にそろえる
+  IF v_ln IS NOT NULL THEN
+    v_name := v_ln || CASE WHEN v_fn IS NOT NULL THEN '　' || v_fn ELSE '' END;
+  ELSE
+    v_name := trim(p_name);
+  END IF;
   SELECT * INTO v_row FROM public.driver_invites WHERE token = p_token FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'invalid_token';
@@ -693,7 +707,7 @@ BEGIN
     RAISE EXCEPTION 'token_expired';
   END IF;
 
-  IF p_name IS NULL OR length(trim(p_name)) = 0 THEN RAISE EXCEPTION 'name_required'; END IF;
+  IF v_name IS NULL OR length(v_name) = 0 THEN RAISE EXCEPTION 'name_required'; END IF;
   v_tel := nullif(trim(coalesce(p_tel,'')),'');
   IF v_tel IS NULL THEN RAISE EXCEPTION 'tel_required'; END IF;
 
@@ -711,7 +725,7 @@ BEGIN
     SELECT * INTO v_existing FROM public.drivers WHERE tel = v_tel LIMIT 1;
     IF v_existing.id IS NULL THEN
       SELECT * INTO v_existing FROM public.drivers
-        WHERE regexp_replace(name, '\\s', '', 'g') = regexp_replace(trim(p_name), '\\s', '', 'g') LIMIT 1;
+        WHERE regexp_replace(name, '[\\s　]', '', 'g') = regexp_replace(v_name, '[\\s　]', '', 'g') LIMIT 1;
     END IF;
   END IF;
 
@@ -725,7 +739,10 @@ BEGIN
     END LOOP;
     UPDATE public.drivers
        SET cars = v_merged_cars,
-           tel = coalesce(nullif(trim(coalesce(v_existing.tel,'')),''), v_tel)
+           tel = coalesce(nullif(trim(coalesce(v_existing.tel,'')),''), v_tel),
+           -- 既に登録されている氏名・読みは上書きしない（空のところだけ埋める）
+           last_name = coalesce(last_name, v_ln), first_name = coalesce(first_name, v_fn),
+           last_kana = coalesce(last_kana, v_lk), first_kana = coalesce(first_kana, v_fk)
      WHERE id = v_existing.id;
     UPDATE public.driver_invites
        SET used_at = now(), driver_id = v_existing.id, created_new = false
@@ -765,8 +782,8 @@ BEGIN
       END IF;
     END IF;
 
-    INSERT INTO public.drivers (name, tel, cars, supplier_id, company_client_id, company)
-    VALUES (trim(p_name), v_tel, v_cars_clean, v_next_supplier_id::text, v_company_id, v_partner_name)
+    INSERT INTO public.drivers (name, last_name, first_name, last_kana, first_kana, tel, cars, supplier_id, company_client_id, company)
+    VALUES (v_name, v_ln, v_fn, v_lk, v_fk, v_tel, v_cars_clean, v_next_supplier_id::text, v_company_id, v_partner_name)
     RETURNING id INTO v_new_driver_id;
     UPDATE public.driver_invites
        SET used_at = now(), driver_id = v_new_driver_id, created_new = true
@@ -809,7 +826,7 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.check_driver_invite(text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.submit_driver_registration(text, text, text, text[], text, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_driver_registration(text, text, text, text[], text, text, text, text, text, text, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.check_cars_registered(text, text[]) TO anon, authenticated;
 
 -- ============================================================

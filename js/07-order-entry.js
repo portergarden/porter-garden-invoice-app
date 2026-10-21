@@ -1433,7 +1433,7 @@ async function confirmFileImport() {
     const taxAmountRaw = get(row,colIdx(m.col_tax_amount)).replace(/,/g,'');
     const driverRaw = get(row,colIdx(m.col_driver));
     // ドライバーから車番を逆引き
-    const drv = drvs.find(d=>d.name===driverRaw||(d.cars||[]).some(c=>nm(c)===nm(driverRaw)));
+    const drv = drvs.find(d=>nm(d.name)===nm(driverRaw)||(d.cars||[]).some(c=>nm(c)===nm(driverRaw)));
     const car = drv ? (drv.cars||[])[0]||driverRaw : driverRaw;
     const hwAmt = +hwRaw||0;
     // 種別：その行の日付の月に個別設定（default_type_by_month）があればそれを優先し、

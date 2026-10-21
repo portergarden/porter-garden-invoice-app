@@ -436,6 +436,57 @@ function checkNewCarPlate(raw) {
   if (m[4].length + m[5].length > 4) return { ok:false, msg:'番号が5桁以上になっています。ナンバープレートの番号（4桁まで）を確かめてください' };
   return { ok:true, value: v };
 }
+/* ===== ドライバーの氏名（姓・名）とフリガナ =====
+   フリガナはカタカナにそろえる（取引先のカナ欄・銀行振込の名義と同じ表記）。
+   漢字は変換前の「読み」（ひらがな）をIMEの入力途中から拾って自動で入れる。
+   氏名(drivers.name)は「姓　名」（全角空白）で保ち、既存の名前照合（空白を無視して比べる）はそのまま使える */
+const toKatakana = s => String(s || '').replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+const isKatakana = s => /^[ァ-ヶー・]+$/.test(s);
+const joinDrvName = (last, first) => [last, first].filter(Boolean).join('　');
+// 姓・名が入っていない古い登録は、名前を空白で割って姓・名に分ける
+function splitDrvName(d) {
+  if (d.last_name) return {last: d.last_name, first: d.first_name || '', lastKana: d.last_kana || '', firstKana: d.first_kana || ''};
+  const parts = String(d.name || '').trim().split(/[\s　]+/);
+  return {last: parts[0] || '', first: parts.slice(1).join('　'), lastKana: '', firstKana: ''};
+}
+function attachAutoKana(srcId, dstId) {
+  const s = document.getElementById(srcId), d = document.getElementById(dstId);
+  if (!s || !d || s._autoKana) return;
+  s._autoKana = true;
+  let base = '', cur = '', last = '';
+  // 手で直したフリガナは上書きしない（空、または自動で入れたままのときだけ書く）
+  const write = v => { if (d.value === '' || d.value === last) { last = toKatakana(v); d.value = last; } };
+  s.addEventListener('compositionstart', () => { cur = ''; });
+  s.addEventListener('compositionupdate', e => {
+    if (/^[ぁ-んー]+$/.test(e.data || '')) { cur = e.data; write(base + cur); }
+  });
+  s.addEventListener('compositionend', () => { base += cur; cur = ''; write(base); });
+  s.addEventListener('input', e => {
+    if (!e.isComposing && s.value === '') { base = ''; cur = ''; write(''); last = ''; }
+  });
+}
+function initAutoKana() {
+  [['dLast','dLastKana'],['dFirst','dFirstKana'],['diLast','diLastKana'],['diFirst','diFirstKana']].forEach(([a,b]) => attachAutoKana(a,b));
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAutoKana); else initAutoKana();
+// 画面の姓・名・フリガナ欄から値を集める。問題があれば msg を返す
+function readDrvNameFields(prefix, kanaRequired) {
+  const v = id => (document.getElementById(prefix + id)?.value || '').trim().replace(/[\s　]+/g, '');
+  const last = v('Last'), first = v('First'), lastKana = toKatakana(v('LastKana')), firstKana = toKatakana(v('FirstKana'));
+  if (!last) return {msg: '姓を入力してください'};
+  if (kanaRequired && !lastKana) return {msg: 'セイ（フリガナ）を入力してください'};
+  if (lastKana && !isKatakana(lastKana)) return {msg: 'セイ（フリガナ）はカタカナで入力してください'};
+  if (kanaRequired && first && !firstKana) return {msg: 'メイ（フリガナ）を入力してください'};
+  if (firstKana && !isKatakana(firstKana)) return {msg: 'メイ（フリガナ）はカタカナで入力してください'};
+  return {last, first, lastKana, firstKana, name: joinDrvName(last, first)};
+}
+function setDrvNameFields(d) {
+  const p = splitDrvName(d);
+  document.getElementById('dLast').value = p.last;
+  document.getElementById('dFirst').value = p.first;
+  document.getElementById('dLastKana').value = p.lastKana;
+  document.getElementById('dFirstKana').value = p.firstKana;
+}
 function driverIndexes() {
   if (!_carDriverIndex) {
     _carDriverIndex = new Map();
@@ -2633,7 +2684,7 @@ async function onLeaseCompanySelChange(){
     populateLeaseCompanyList(name);
   } catch(e) { showT('リース会社の追加に失敗しました: '+e.message, 'ter'); sel.value=''; }
 }
-function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dN','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dVehProrate').checked=false;document.getElementById('dStmtVis').value='auto';document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('dCarStart').value=fmtLocalDate(new Date());document.getElementById('dCarType').value='';document.getElementById('mDrv').classList.add('on');}
+function openDrvM(){populatePartnerSel();populateLeaseCompanyList();switchModalTab('mDrv','basic');eDrvId=null;pendTags=[];pendOtherDeductions=[];['dLast','dFirst','dLastKana','dFirstKana','dTel','dBank','dNote','dCi','dSup','dEmail','dLoginId','dInvoiceNo','dOtherName','dOtherAmt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});document.getElementById('dSup').value=nextIdFor(drvs,'supplier_id');document.getElementById('dStatus').value='active';document.getElementById('dFeeRate').value=-15;document.getElementById('dAdminFee').value=-10000;document.getElementById('dVehRental').value=-30000;document.getElementById('dVehProrate').checked=false;document.getElementById('dStmtVis').value='auto';document.getElementById('dSubmitRuleType').value='none';document.getElementById('dSubmitRuleDay').value='';document.getElementById('dSendMemo').value='';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay('end');document.getElementById('dPayMonthOffset').value='2';document.getElementById('dPayDay').value=dayInputDisplay('end');document.getElementById('dLoginFld').style.display='';document.getElementById('dCreateLogin').checked=false;document.getElementById('dLoginIdWrap').style.display='none';renderTags();renderOtherDeductions();document.getElementById('dCarStart').value=fmtLocalDate(new Date());document.getElementById('dCarType').value='';document.getElementById('mDrv').classList.add('on');}
 // src='di'はドライバー自己登録ページ（#pgDriverInvite）用。管理側モーダル(#cTags/#dCi)とIDが重複しないよう入力欄を分けている
 function addTag(src){const inp=document.getElementById(src==='di'?'diCi':'dCi');if(!inp.value.trim())return;
   // 新しく足す車番は形を確かめる（空白入り・分類番号抜け・番号だけは登録しない）
@@ -2662,7 +2713,7 @@ function renderOtherDeductions(){
     <button class="ibtn" onclick="rmOtherDeduction(${i})" title="削除">🗑</button>
   </div>`).join('');
 }
-function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.company_client_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.getElementById('dN').value=d.name;document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dVehProrate').checked=!!d.vehicle_prorate;document.getElementById('dStmtVis').value=d.statement_visibility||'auto';document.getElementById('dCarStart').value='';document.getElementById('dCarType').value='';document.getElementById('dSubmitRuleType').value=d.submit_rule_type||'none';document.getElementById('dSubmitRuleDay').value=d.submit_rule_day??'';document.getElementById('dSendMemo').value=d.send_memo||'';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
+function editDrv(id){const d=drvs.find(x=>x.id===id);if(!d)return;populatePartnerSel(d.company_client_id);populateLeaseCompanyList(d.lease_company||'');switchModalTab('mDrv','basic');eDrvId=id;pendTags=[...(d.cars||[])];document.setDrvNameFields(d);document.getElementById('dTel').value=d.tel||'';document.getElementById('dBank').value=d.bank||'';document.getElementById('dNote').value=d.note||'';document.getElementById('dCi').value='';document.getElementById('dSup').value=d.supplier_id||'';document.getElementById('dStatus').value=d.status||'active';const eEl=document.getElementById('dEmail');if(eEl)eEl.value=d.email||'';const lEl=document.getElementById('dLoginId');if(lEl)lEl.value=d.driver_login_id||'';document.getElementById('dFeeRate').value=(d.fee_rate!=null?d.fee_rate*100:-15);document.getElementById('dAdminFee').value=d.admin_fee??-10000;document.getElementById('dVehRental').value=d.vehicle_rental??-30000;document.getElementById('dVehProrate').checked=!!d.vehicle_prorate;document.getElementById('dStmtVis').value=d.statement_visibility||'auto';document.getElementById('dCarStart').value='';document.getElementById('dCarType').value='';document.getElementById('dSubmitRuleType').value=d.submit_rule_type||'none';document.getElementById('dSubmitRuleDay').value=d.submit_rule_day??'';document.getElementById('dSendMemo').value=d.send_memo||'';onDrvSubmitRuleChange();document.getElementById('dClosingDay').value=dayInputDisplay(d.closing_day);document.getElementById('dPayMonthOffset').value=d.pay_month_offset??2;document.getElementById('dPayDay').value=dayInputDisplay(d.pay_day);document.getElementById('dInvoiceNo').value=d.invoice_no||'';pendOtherDeductions=[...(d.other_deductions||[])];renderTags();renderOtherDeductions();document.getElementById('dLoginFld').style.display='none';document.getElementById('mDrv').classList.add('on');}
 async function delDrv(id){
   const d=drvs.find(x=>x.id===id);if(!d)return;
   const cnt=recs.filter(r=>(d.cars||[]).some(c=>nm(c)===nm(r.car))).length;
@@ -2681,7 +2732,8 @@ async function delDrv(id){
   }catch(e){showT('削除エラー: '+e.message,'ter');}
 }
 async function saveDrv(){
-  const name=document.getElementById('dN').value.trim();if(!name){alert('名前は必須です');return;}
+  const nameParts=readDrvNameFields('d', eDrvId===null);if(nameParts.msg){alert(nameParts.msg);return;}
+  const name=nameParts.name;
   // 車番欄に打ったまま「追加」を押さずに保存したときも、その車番を取り込む
   const ciEl=document.getElementById('dCi');
   if(ciEl&&ciEl.value.trim()){addTag();if(ciEl.value.trim())return;}
@@ -2707,6 +2759,8 @@ async function saveDrv(){
   }
   const obj={
     name,
+    last_name:nameParts.last, first_name:nameParts.first||null,
+    last_kana:nameParts.lastKana||null, first_kana:nameParts.firstKana||null,
     company:partnerName,
     company_client_id:partnerId,
     cars:pendTags,
@@ -3768,7 +3822,7 @@ async function checkDriverInviteToken(token){
     }
     statusEl.style.display = 'none';
     pendTags = [];
-    document.getElementById('diName').value = '';
+    ['diLast','diFirst','diLastKana','diFirstKana'].forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('diTel').value = '';
     document.getElementById('diCi').value = '';
     document.getElementById('diCarType').value = '';document.getElementById('diCarLease').value = '';document.getElementById('diCarLease').style.display = 'none';
@@ -3800,12 +3854,13 @@ async function ensureAndShowDriverLogin(driverId){
   }
 }
 async function submitDriverSelfRegistration(){
-  const name = document.getElementById('diName').value.trim();
+  const nameParts = readDrvNameFields('di', true);
+  const name = nameParts.name || '';
   const tel = document.getElementById('diTel').value.trim();
   const partner = document.getElementById('diPartner').value.trim();
   const errEl = document.getElementById('diErr');
   errEl.textContent = '';
-  if (!name) { errEl.textContent = 'お名前を入力してください'; return; }
+  if (nameParts.msg) { errEl.textContent = nameParts.msg; return; }
   if (!tel) { errEl.textContent = '電話番号を入力してください'; return; }
   if (!pendTags.length) { errEl.textContent = '担当車番を1台以上追加してください'; return; }
   const carType = document.getElementById('diCarType').value;
@@ -3843,7 +3898,7 @@ async function submitDriverSelfRegistration(){
   }
   showLoad(true);
   try{
-    const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel, p_cars: pendTags, p_partner_name: partner||null, p_car_type: carType, p_car_lease: carLease||null });
+    const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel, p_cars: pendTags, p_partner_name: partner||null, p_car_type: carType, p_car_lease: carLease||null, p_last_name: nameParts.last, p_first_name: nameParts.first||null, p_last_kana: nameParts.lastKana, p_first_kana: nameParts.firstKana||null });
     if (error) throw error;
     // 電話番号または氏名が既存ドライバーと一致した場合、新規登録せず車番だけ既存レコードに追記している（二重登録防止）
     const row = Array.isArray(data) ? data[0] : data;
