@@ -1610,7 +1610,9 @@ BEGIN
     VALUES (car_txt, p_drv, p_date, NULL, 'driver', 'daily_report', '日報から自動作成（普段の車）');
   ELSE
     INSERT INTO public.vehicle_assignments (car, driver_id, start_date, end_date, rate_type, daily_rate, monthly_rate, prorate, bill_to, source, note)
-    VALUES (car_txt, p_drv, p_date, p_date, coalesce(v.rate_type,'daily'), v.daily_rate, v.monthly_rate, coalesce(v.prorate,false),
+    -- 代車は元の車が月額でも日割りで入れる（1日の代車に月額満額が付かないように）
+    VALUES (car_txt, p_drv, p_date, p_date, coalesce(v.rate_type,'daily'), v.daily_rate, v.monthly_rate,
+            coalesce(v.rate_type,'daily') = 'monthly' OR coalesce(v.prorate,false),
             'pending', 'daily_report', '日報から自動作成（代車）');
   END IF;
 END;

@@ -682,8 +682,16 @@ function lkDByAssign(car, date) {
   const d = String(date).slice(0,10);
   const hits = list.filter(v => (v.start_date||'') <= d && (!v.end_date || d <= v.end_date));
   if (!hits.length) return null;
-  // 末尾番号の重複などで複数のドライバーが該当する場合は、誤判定を避けて特定しない
-  if (new Set(hits.map(h=>h.driver_id)).size > 1) return null;
+  if (new Set(hits.map(h=>h.driver_id)).size > 1) {
+    // 末尾番号の重複（別の車どうし）で複数のドライバーが該当する場合は、誤判定を避けて特定しない
+    if (new Set(hits.map(h=>carKey(h.car))).size > 1) return null;
+    // 同じ車で記録が重なった（普段の人の使用中の記録＋その日だけの代車の記録）ときは、期間の短い記録（代車）を優先する。
+    // 同じ長さで重なる（2人とも使用中など）ときは決めない
+    const span = h => h.end_date ? (new Date(h.end_date) - new Date(h.start_date)) : Infinity;
+    const sorted = [...hits].sort((a,b) => span(a) - span(b));
+    if (span(sorted[0]) === span(sorted[1])) return null;
+    return driverIndexes().id.get(sorted[0].driver_id) || null;
+  }
   return driverIndexes().id.get(hits[0].driver_id) || null;
 }
 // 同じ車両を複数人で稼働することがあるため、次の優先順位で判定する:
