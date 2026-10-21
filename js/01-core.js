@@ -4086,9 +4086,13 @@ function processCsvText(text){
     });
   }
 
+  // 台帳に無い車番が、地名だけ違う登録済みの車と思われるときは、登録済みの表記に直す
+  const carFixes = fixCsvCarRegions();
+
   const dups=parsedCsv.filter(r=>recs.some(x=>x.date===r.date&&normCar(x.car)===normCar(r.car)));
   document.getElementById('cDups').innerHTML=dups.map(d=>`<div class="duprow">⚠ ${escHtml(d.date)} / ${escHtml(d.car)} — 重複の可能性</div>`).join('');
   let statusMsg = `${parsedCsv.length}件を読み込みました${dups.length?`（重複疑い ${dups.length}件）`:''}`;
+  if (carFixes.length) statusMsg += ` ／ 車番を台帳の表記に直しました: ${carFixes.map(f => `${f.from}→${f.to}（${f.n}件）`).join('、')}`;
   if (seikyu && !manualCliId) statusMsg += ' ／ ⚠ この形式は行ごとの取引先名を含まないため、上の「反映先の取引先」で選択してください';
   document.getElementById('cSt').textContent = statusMsg;
   document.getElementById('cSt').style.color = (seikyu && !manualCliId) ? 'var(--red)' : 'var(--text2)';

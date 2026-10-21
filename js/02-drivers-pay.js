@@ -1198,6 +1198,110 @@ async function deleteCarAlias(id) {
   showT('読み替えをやめました');
 }
 
+/* ===== 車番の一括置換（取り込み済みの請求・日報・ドライバー登録・車両台帳・乗務履歴をまとめて直す） =====
+   「仙台480れ2618」と「宮城480れ2618」のように地名だけ違う表記ゆれや、打ち間違いを一度に直す。
+   読み替えとは別で、請求データの車番そのものを書き換える。 */
+const carTailOf = car => (carKey(car).match(/(\d{1,4})$/) || [])[1] || null;
+async function scanCarUsage(oldCar) {
+  const k = carKey(oldCar), tail = carTailOf(oldCar);
+  const out = {invoices: [], daily_reports: [], vehicle_assignments: []};
+  if (!tail) return out;
+  for (const t of Object.keys(out)) {
+    const {data, error} = await fetchAllRows(() => sb.from(t).select('id,car').like('car', '%' + tail).order('id'));
+    if (error) throw error;
+    out[t] = (data || []).filter(r => carKey(r.car) === k).map(r => r.id);
+  }
+  return out;
+}
+function openCarRenameM() {
+  document.getElementById('crOld').value = '';
+  document.getElementById('crNew').value = '';
+  document.getElementById('crResult').innerHTML = '';
+  document.getElementById('crApplyBtn').classList.add('hide');
+  document.getElementById('mCarRename').classList.add('on');
+}
+async function previewCarRename() {
+  const oldCar = document.getElementById('crOld').value.trim(), newCar = document.getElementById('crNew').value.trim();
+  const el = document.getElementById('crResult'), btn = document.getElementById('crApplyBtn');
+  btn.classList.add('hide');
+  if (!oldCar || !newCar) { el.innerHTML = '<div style="color:var(--red);font-size:12px">直す前の車番と、正しい車番を入れてください</div>'; return; }
+  if (carKey(oldCar) === carKey(newCar)) { el.innerHTML = '<div style="color:var(--red);font-size:12px">同じ車番です</div>'; return; }
+  const chk = checkNewCarPlate(newCar);
+  if (!chk.ok) { el.innerHTML = `<div style="color:var(--red);font-size:12px">正しい車番: ${escHtml(chk.msg)}</div>`; return; }
+  document.getElementById('crNew').value = chk.value;
+  showLoad(true);
+  try {
+    const u = await scanCarUsage(oldCar);
+    const k = carKey(oldCar), nk = carKey(chk.value);
+    const drvN = drvs.filter(d => (d.cars||[]).some(c => carKey(c) === k)).length;
+    const vOld = vehicles.find(v => carKey(v.car) === k), vNew = vehicles.find(v => carKey(v.car) === nk);
+    const line = (label, n) => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid var(--border)"><span>${label}</span><b>${n}件</b></div>`;
+    el.innerHTML = `<div style="font-size:12px;margin:10px 0 4px">「${escHtml(oldCar)}」→「${escHtml(chk.value)}」で書き換わるもの</div>`
+      + line('請求データ', u.invoices.length) + line('日報', u.daily_reports.length) + line('乗務履歴', u.vehicle_assignments.length)
+      + line('ドライバー登録の車番', drvN) + line('車両台帳', vOld && !vNew ? 1 : 0)
+      + (vOld && vNew ? '<div style="font-size:11px;color:var(--amber-text);margin-top:6px">車両台帳には新旧どちらの車もあります。台帳の旧い方は、書き換え後に車両管理で削除してください。</div>' : '');
+    const total = u.invoices.length + u.daily_reports.length + u.vehicle_assignments.length + drvN + (vOld && !vNew ? 1 : 0);
+    if (!total) { el.innerHTML += '<div style="font-size:12px;color:var(--text2);margin-top:8px">書き換える対象はありませんでした</div>'; }
+    else btn.classList.remove('hide');
+  } catch(e) { el.innerHTML = `<div style="color:var(--red);font-size:12px">調べられませんでした: ${escHtml(e.message)}</div>`; }
+  showLoad(false);
+}
+async function applyCarRename() {
+  const oldCar = document.getElementById('crOld').value.trim(), newCar = document.getElementById('crNew').value.trim();
+  if (!oldCar || !newCar || !confirm(`「${oldCar}」を「${newCar}」にまとめて書き換えます。元に戻すには逆の置換が必要です。よろしいですか？`)) return;
+  showLoad(true);
+  try {
+    const k = carKey(oldCar), nk = carKey(newCar);
+    // 台帳・ドライバー・乗務履歴を先に直す（日報の更新で台帳や履歴が二重にできないように）
+    const vOld = vehicles.find(v => carKey(v.car) === k);
+    if (vOld && !vehicles.some(v => carKey(v.car) === nk)) {
+      const {error} = await sb.from('vehicles').update({car: newCar}).eq('id', vOld.id);
+      if (error) throw error;
+      vOld.car = newCar;
+    }
+    await renameCarInDrivers(oldCar, newCar);
+    const u = await scanCarUsage(oldCar);
+    for (const t of ['vehicle_assignments', 'invoices', 'daily_reports']) {
+      for (let i = 0; i < u[t].length; i += 200) {
+        const {error} = await sb.from(t).update({car: newCar}).in('id', u[t].slice(i, i + 200));
+        if (error) throw error;
+      }
+    }
+    const invSet = new Set(u.invoices);
+    recs.forEach(r => { if (invSet.has(r.id)) r.car = newCar; });
+    vehicleAssignments.forEach(a => { if (carKey(a.car) === k) a.car = newCar; });
+    invalidateVehicleAssignIndex(); invalidateDriverIndexes();
+    addLog('車番の一括置換', `${oldCar} → ${newCar}（請求${u.invoices.length}・日報${u.daily_reports.length}・履歴${u.vehicle_assignments.length}）`);
+    closeM('mCarRename');
+    renderVehicles(); renderDrv(); renderInv?.();
+    showT(`書き換えました（請求${u.invoices.length}件・日報${u.daily_reports.length}件）`);
+  } catch(e) { showT('書き換えエラー: ' + e.message, 'ter'); }
+  showLoad(false);
+}
+
+/* CSV取り込み時の自動補正。車両台帳（とドライバー登録）に無い車番でも、
+   「分類番号・ひらがな・番号」が同じ登録済みの車が1台だけあれば、地名の違いは表記ゆれとみなして登録済みの表記に直す。
+   例: CSVが「仙台480れ2618」で、台帳に「宮城480れ2618」だけある → 宮城に直して取り込む。
+   台帳にその表記の車がある場合や、候補が2台以上ある場合は何もしない。直した内容を返す */
+function fixCsvCarRegions() {
+  const tailOf = c => (carKey(c).match(/^[一-鿿ぁ-ゖァ-ヺ]{1,5}?(\d[\dA-Z]{0,2}[ぁ-ゖ].*)$/) || [])[1] || null;
+  const known = new Map();   // 車番キー → 登録どおりの表記
+  vehicles.filter(v => v.status !== 'scrapped').forEach(v => known.set(carKey(v.car), v.car));
+  drvs.forEach(d => (d.cars||[]).filter(isFullPlateNumber).forEach(c => { if (!known.has(carKey(c))) known.set(carKey(c), c); }));
+  const byTail = new Map();
+  known.forEach((car, key) => { const t = tailOf(key); if (t) { if (!byTail.has(t)) byTail.set(t, []); byTail.get(t).push(car); } });
+  const fixes = new Map();
+  parsedCsv.forEach(r => {
+    if (!r.car || !isFullPlateNumber(r.car) || known.has(carKey(r.car))) return;
+    const t = tailOf(r.car), cands = t ? byTail.get(t) : null;
+    if (!cands || cands.length !== 1) return;
+    const key = carKey(r.car) + '→' + cands[0];
+    fixes.set(key, {from: r.car, to: cands[0], n: (fixes.get(key)?.n || 0) + 1});
+    r.car = cands[0];
+  });
+  return [...fixes.values()];
+}
+
 // --- CSV取り込み時の確認 ---
 let carConfirmItems = [];
 /* 取り込む行のうち、ドライバーが決まらない車番を集める。

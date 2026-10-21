@@ -1060,6 +1060,7 @@ try {
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn" onclick="openCarAliasM()" title="取引先のCSVの車番が間違っているとき、実際の車として扱う設定です">車番の読み替え</button>
+        <button class="btn" onclick="openCarRenameM()" title="取り込み済みの請求・日報・ドライバー登録などの車番を、まとめて正しい表記に書き換えます">車番の一括置換</button>
         <button class="btn" onclick="openLeaseBillingM()" title="リース会社の代車が無く、こちらの車を貸した分を会社ごとにまとめます">リース会社への請求</button>
         <button class="btn hide" id="bImportCars" onclick="importUnregisteredCars()" title="ドライバー登録にあって車両管理に無い車番をまとめて登録します">↓ 未登録の車番を取り込む</button>
         <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
@@ -3064,6 +3065,23 @@ try {
         </div>
         <button class="btn pri sml" onclick="addCarAliasFromForm()">＋ 追加</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: 車番の一括置換 -->
+<div class="overlay" id="mCarRename">
+  <div class="modal" style="width:520px;max-width:96vw">
+    <div class="mh">車番の一括置換 <button class="ibtn" onclick="closeM('mCarRename')">✕</button></div>
+    <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
+      <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">取り込み済みの請求・日報・乗務履歴・ドライバー登録・車両台帳の車番を、まとめて正しい表記に書き換えます（例: 仙台480れ2618 → 宮城480れ2618）。先に件数を確認してから実行できます。</div>
+      <div class="g2">
+        <div class="fld"><label>直す前の車番</label><input type="text" id="crOld" placeholder="例: 仙台480れ2618" style="width:100%"></div>
+        <div class="fld"><label>正しい車番</label><input type="text" id="crNew" placeholder="例: 宮城480れ2618" style="width:100%"></div>
+      </div>
+      <button class="btn sml" onclick="previewCarRename()">件数を確認</button>
+      <div id="crResult" style="font-size:12px"></div>
+      <div class="mfoot"><button class="btn" onclick="closeM('mCarRename')">閉じる</button><button class="btn pri hide" id="crApplyBtn" onclick="applyCarRename()">この内容で書き換える</button></div>
     </div>
   </div>
 </div>
