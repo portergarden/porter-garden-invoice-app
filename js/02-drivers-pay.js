@@ -91,6 +91,12 @@ function vehiclePlateVariants() {
 /* 車両カルテの「使用者」。乗務履歴に使用中の記録があればそれを最優先し、
    無ければドライバー登録の担当車番から引く（取り込んだ車両にも使用者が出るようにするため） */
 function vehicleUserDriver(car) {
+  // 日報で最後にこの車に乗った人を最優先する（車を乗り継いでも、使用者が実態に合うように）
+  const last = vehicleLastUse.get(carKey(car));
+  if (last) {
+    const d = drvs.find(x => x.id === last.drv_id);
+    if (d) return {drv: d, fromAssign: true, fromReport: true, lastDate: last.date};
+  }
   const byAssign = currentVehicleDriver(car);
   if (byAssign) return {drv: byAssign, fromAssign: true};
   const d = drvs.find(x => x.status !== 'terminated' && (x.cars||[]).some(c => nm(c)===nm(car)));
@@ -228,16 +234,21 @@ function vehicleTypeLabel(v) {
    ・直近の日報3回が続けて同じ「普段と違う車」のドライバー（普段の車番を変えるかどうか聞く） */
 const USUAL_CAR_CHANGE_DAYS = 3;
 let vehicleCarChangeHints = [];
+// 車番 → 日報で最後に乗った人と日付（直近180日分。車両一覧の「現在の使用者」「最終使用日」に使う）
+let vehicleLastUse = new Map();
 async function loadVehicleNotices() {
   if (!sb) { vehicleCarChangeHints = []; return; }
   await loadVehicleAssignments();
   const since = fmtLocalDate(new Date(Date.now() - 30*86400000));
+  const sinceLast = fmtLocalDate(new Date(Date.now() - 180*86400000));
   try {
-    const { data, error } = await sb.from('daily_reports').select('car,date,drv_id').gte('date', since).not('drv_id', 'is', null).order('date', {ascending:false});
+    const { data, error } = await fetchAllRows(() => sb.from('daily_reports').select('car,date,drv_id').gte('date', sinceLast).not('drv_id', 'is', null).order('date', {ascending:false}).order('id', {ascending:false}));
     if (error) throw error;
+    vehicleLastUse = new Map();
+    (data||[]).forEach(r => { if (r.car && !vehicleLastUse.has(carKey(r.car))) vehicleLastUse.set(carKey(r.car), {drv_id: r.drv_id, date: r.date}); });
     const byDrv = new Map();
     (data||[]).forEach(r => {
-      if (!r.car) return;
+      if (!r.car || r.date < since) return;
       if (!byDrv.has(r.drv_id)) byDrv.set(r.drv_id, []);
       byDrv.get(r.drv_id).push(r);
     });
@@ -403,6 +414,7 @@ function renderVehicles() {
     <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
       <div style="width:125px;flex-shrink:0;">車番</div>
       <div style="width:100px;flex-shrink:0;">現在の使用者</div>
+      <div style="width:80px;flex-shrink:0;">最終使用日</div>
       <div style="width:60px;flex-shrink:0;">種別</div>
       <div style="width:115px;flex-shrink:0;">リース会社</div>
       <div style="width:110px;flex-shrink:0;">車検</div>
@@ -419,7 +431,8 @@ function renderVehicles() {
     return `<div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;margin-bottom:6px;gap:12px;cursor:pointer" title="ダブルクリックで編集" ondblclick="editVehicle(${v.id})">
       <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
         <div style="width:125px;font-weight:600;font-size:13px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
-        <div style="width:100px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();openVehicleHistM('${escAttrJs(v.car)}')" ondblclick="event.stopPropagation()" title="${drv?(user.fromAssign?'乗務履歴に登録された使用者\n':'ドライバー登録の担当車番から表示しています（乗務履歴は未登録）\n'):''}クリックで車両カルテの乗務履歴を開きます">${drv?escHtml(drv.name)+(user.fromAssign?'':'<span style="color:var(--text2)">*</span>'):'未割当'}</div>
+        <div style="width:100px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();openVehicleHistM('${escAttrJs(v.car)}')" ondblclick="event.stopPropagation()" title="${drv?(user.fromReport?'日報で最後にこの車に乗った人\n':user.fromAssign?'乗務履歴に登録された使用者\n':'ドライバー登録の担当車番から表示しています（乗務履歴は未登録）\n'):''}クリックで車両カルテの乗務履歴を開きます">${drv?escHtml(drv.name)+(user.fromAssign?'':'<span style="color:var(--text2)">*</span>'):'未割当'}</div>
+        <div style="width:80px;font-size:11px;flex-shrink:0;color:var(--text2)" title="日報に最後に載った日（直近180日）">${user?.lastDate || (vehicleLastUse.get(carKey(v.car))?.date) || '—'}</div>
         <div style="width:60px;font-size:11px;flex-shrink:0;${v.vehicle_type==='unclassified'?'color:var(--amber-text);font-weight:600':'color:var(--text2)'}" title="${v.vehicle_type==='unclassified'?'自動で登録されたため種別が未確認です。編集して会社の車両／持ち込み／リース車両のいずれかを選択してください':''}">${v.vehicle_type==='unclassified'?'⚠ ':''}${vehicleTypeLabel(v)}</div>
         <div style="width:115px;font-size:11px;flex-shrink:0;color:var(--text2);overflow-wrap:break-word;word-break:break-word;">${v.vehicle_type==='lease'?escHtml(v.lease_company||'（未設定）'):'—'}</div>
         ${!scrapped ? `
