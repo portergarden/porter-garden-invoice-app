@@ -933,7 +933,8 @@ CREATE POLICY "users_delete" ON users FOR DELETE TO authenticated USING ("curren
 -- 請求書・受注データ: 社内は全件、ドライバーは自分の車番の行のみ閲覧可
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "invoices_select" ON invoices;
-CREATE POLICY "invoices_select" ON invoices FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR car IN (SELECT unnest(d.cars) FROM drivers d WHERE d.id = (SELECT driver_id FROM users WHERE auth_uid = auth.uid())));
+-- 請求データ（取引先への請求額を含む）は社内だけ。ドライバーは配信された明細書（driver_statements）で支払額を見る
+CREATE POLICY "invoices_select" ON invoices FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
 DROP POLICY IF EXISTS "invoices_insert" ON invoices;
 CREATE POLICY "invoices_insert" ON invoices FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
 DROP POLICY IF EXISTS "invoices_update" ON invoices;
