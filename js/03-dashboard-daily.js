@@ -4296,11 +4296,8 @@ function buildDailyReportsPrintDoc(reports) {
 function printDailyReports() {
   const list = filteredDailyReportsForExport();
   if (!list.length) { alert('対象の日報がありません'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
-  try { win.opener = null; } catch(_) {}
-  win.document.open(); win.document.write(buildDailyReportsPrintDoc(list)); win.document.close();
+  // 別タブで印刷画面を開いたまま戻ると元の画面が固まるため、アプリ内のプレビューで開く
+  openDocPreview(buildDailyReportsPrintDoc(list), `日報（${list.length}件）`);
   addLog('日報印刷', `${list.length}件`);
 }
 /* ドライバーポータル: 現在表示中の月の自分の日報を印刷（loadDriverDailyListがdailyReportsに反映済み）。

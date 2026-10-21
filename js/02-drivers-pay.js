@@ -1860,13 +1860,9 @@ async function bulkExportPayExcelStacked() {
    確定するとPromiseが {name, cli}（cli=一致した協力会社レコード。詳細自動記載用）または null（宛先なし）で
    解決し、キャンセル時は undefined で解決する */
 let _kanAteResolve = null;
-let _kanAteOpenWin = false; // trueなら「この宛先で発行」を押した瞬間にPDF用のタブを開く
-let _kanAteWin = null;
-function openKanAte(suggested, openWin) {
+function openKanAte(suggested) {
   return new Promise(resolve => {
     _kanAteResolve = resolve;
-    _kanAteOpenWin = !!openWin;
-    _kanAteWin = null;
     const dl = document.getElementById('kanAteList');
     dl.innerHTML = clients.map(c=>`<option value="${escHtml(c.name)}">`).join('');
     document.getElementById('kanAteInput').value = suggested||'';
@@ -1895,14 +1891,11 @@ function updateKanAteInfo() {
 function confirmKanAte() {
   const name = document.getElementById('kanAteInput').value.trim();
   document.getElementById('mKanAte').classList.remove('on');
-  // クリックの処理の中で開く（後から開くとブラウザにポップアップとして止められる）
-  if (_kanAteOpenWin) { _kanAteWin = window.open('','_blank'); _kanAteOpenWin = false; }
   const resolve = _kanAteResolve; _kanAteResolve = null;
   if (resolve) resolve(name ? { name, cli: findKanAteClient() } : null);
 }
 function closeKanAte() {
   document.getElementById('mKanAte').classList.remove('on');
-  _kanAteOpenWin = false;
   const resolve = _kanAteResolve; _kanAteResolve = null;
   if (resolve) resolve(undefined);
 }
@@ -1979,9 +1972,7 @@ function bulkCreatePaySlipPdf() {
   if (!checked.length) { alert('ドライバーを選択してください'); return; }
   const groups = checked.map(drvId => window._aggPayGroups?.[String(drvId)]?.rows).filter(rows=>rows && rows.length);
   if (!groups.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  writeStatementWindow(win, () => buildStatementHtmlMulti('payment', groups));
+  openStatementPreview(() => buildStatementHtmlMulti('payment', groups));
 }
 
 // 今回の集計結果に含まれるドライバーの協力会社名を候補にプルダウンを更新する
@@ -2120,8 +2111,7 @@ function printLeaseStatement(company) {
   </div>
   <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
-  const win = window.open('','_blank');
-  if (!writeStatementWindow(win, () => html)) return;
+  if (!openStatementPreview(() => html)) return;
   addLog('リース代明細書作成', `${company} ${month} ${itemRows.length}台 ${yen(total)}`);
 }
 
@@ -2165,17 +2155,10 @@ async function bulkCreatePaySlipPdfWithCover() {
   if (!groups.length) { alert('対象データがありません'); return; }
   const companies = [...new Set(groups.map(rows => recDrv(rows[0])?.company).filter(Boolean))];
   const suggested = companies.length === 1 ? companies[0] : '';
-  // PDFのタブは、宛先モーダルの「この宛先で発行」を押した瞬間に開く（confirmKanAte内）。
-  // 以前は最初のクリックで空タブを先に開き、元のタブへフォーカスを戻していたが、
-  // Edgeなどではフォーカスが戻らず、真っ白な about:blank のタブだけが表に残って
-  // 宛先モーダルが裏で待ったまま「発行できない」ように見えていた。
-  // ボタンを押した瞬間に開けばポップアップとしてブロックもされない
-  const addressee = await openKanAte(suggested, true);
-  const win = _kanAteWin; _kanAteWin = null;
+  // 別タブは開かず、アプリ内のプレビューで見せる（openStatementPreview の説明を参照）
+  const addressee = await openKanAte(suggested);
   if (addressee === undefined) return;
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  if (!writeStatementWindow(win, () => buildStatementHtmlMultiWithCover('payment', groups, addressee))) return;
-  win.focus();
+  if (!openStatementPreview(() => buildStatementHtmlMultiWithCover('payment', groups, addressee))) return;
   addLog('PDF出力', `支払明細書（鑑形式） 選択${checked.length}件${addressee?' 宛て:'+addressee.name:''}`);
 }
 

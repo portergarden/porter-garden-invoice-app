@@ -1887,18 +1887,15 @@ async function openStmtStatusM() {
 // 直接window.open(signedUrl)すると生のソースがそのまま表示され文字化けもするため、
 // fetchで本文を取得してから自分でウィンドウに書き込む（既存のPDF表示と同じ方式）
 async function viewStatementFile(path) {
-  const win = window.open('','_blank');
-  if (!win) { showT('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください', 'ter'); return; }
-  // 元のタブと切り離し、PDFタブを閉じた後に元画面の操作が効かなくなる問題を防ぐ
-  try { win.opener = null; } catch(_) {}
+  // 別タブではなくアプリ内のプレビューで開く（別タブで印刷画面を開いたまま戻ると元の画面が固まるため）
   try {
     const {data, error} = await sb.storage.from('driver-statements').createSignedUrl(path, 3600);
     if (error) throw error;
     const res = await fetch(data.signedUrl);
     if (!res.ok) throw new Error('ファイルの取得に失敗しました（' + res.status + '）');
     const html = await res.text();
-    win.document.open(); win.document.write(html); win.document.close();
-  } catch(e) { win.close(); showT('表示エラー: ' + e.message, 'ter'); }
+    openDocPreview(html, (html.match(/<title>([^<]*)<\/title>/) || [])[1] || '支払明細書');
+  } catch(e) { showT('表示エラー: ' + e.message, 'ter'); }
 }
 async function deleteStatement(id, path) {
   if (!confirm('この明細書の配信を取り消しますか？（ドライバーからも見えなくなります）')) return;
@@ -3313,6 +3310,23 @@ function statementDocStyle() {
 // 誤判定して発行不能になる（実際に全PDFボタンが発行できなくなる障害の原因だった）。
 // 元のタブとの分離（閉じた後にボタンが効かなくなる問題の対策）は、参照を受け取った上で
 // opener切断（win.opener=null）によって行う
+/* 明細書をアプリ内のプレビュー（iframe）で開く。印刷・PDF保存はプレビューの「印刷 / PDF保存」から。
+   別タブ（window.open）で開いて自動で印刷を始めると、印刷画面を開いたまま元のタブへ戻ったときに
+   元のタブが固まり、検索欄やプルダウンが反応しなくなる（同じ処理の流れを共有するため）。
+   アプリ内で印刷すれば、印刷画面を閉じるまで画面は覆われ、閉じればそのまま操作を続けられる */
+function openStatementPreview(htmlBuilderFn) {
+  let html;
+  try { html = htmlBuilderFn(); }
+  catch(e) {
+    alert('PDFの作成に失敗しました: ' + (e && e.message ? e.message : e));
+    console.error('PDF生成エラー:', e);
+    return false;
+  }
+  html = html.replace(/<script>window\.onload=\(\)=>window\.print\(\);<\/script>/g, '');
+  const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || 'プレビュー';
+  openDocPreview(html, title);
+  return true;
+}
 function writeStatementWindow(win, htmlBuilderFn) {
   try {
     if (!win || win.closed) throw new Error('PDF表示用のウィンドウが閉じられました。ポップアップブロックの設定をご確認のうえ、再度お試しください');
@@ -3485,9 +3499,7 @@ function printPnlPdf(drvId, month, explicitRows) {
   if (!drv) return;
   const monthRecs = explicitRows || recs.filter(r=>r.date?.startsWith(month)&&(drv.cars||[]).some(c=>nm(c)===nm(r.car)));
   if (!monthRecs.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  writeStatementWindow(win, () => buildStatementHtml('payment', monthRecs));
+  openStatementPreview(() => buildStatementHtml('payment', monthRecs));
 }
 
 /* ===== 請求書PDF（取引先向け） ===== */
@@ -3496,7 +3508,5 @@ function printInvoicePdf(cliId, month, explicitRows) {
   if (!cli) return;
   const monthRecs = explicitRows || recs.filter(r=>r.date?.startsWith(month)&&r.cli===cliId);
   if (!monthRecs.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  writeStatementWindow(win, () => buildStatementHtml('billing', monthRecs));
+  openStatementPreview(() => buildStatementHtml('billing', monthRecs));
 }

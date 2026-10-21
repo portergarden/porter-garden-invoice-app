@@ -2502,18 +2502,14 @@ async function importBankCsvRows(){
 function printAllPnlPdf2() {
   const groups = Object.values(window._aggPayGroups || {}).map(g => g.rows).filter(rows => rows.length);
   if (!groups.length) { showT('対象データがありません','twa'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  writeStatementWindow(win, () => buildStatementHtmlMulti('payment', groups));
+  openStatementPreview(() => buildStatementHtmlMulti('payment', groups));
 }
 
 // 請求明細書作成タブ: 集計期間にデータがある全取引先分の請求書PDFを、選択の有無に関わらず一括発行する
 function printAllInvPdf() {
   const groups = Object.values(window._aggInvGroups || {}).map(g => g.rows).filter(rows => rows.length);
   if (!groups.length) { showT('対象データがありません','twa'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  writeStatementWindow(win, () => buildStatementHtmlMulti('billing', groups));
+  openStatementPreview(() => buildStatementHtmlMulti('billing', groups));
 }
 
 

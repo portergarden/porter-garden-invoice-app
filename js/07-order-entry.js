@@ -932,9 +932,7 @@ function bulkCreateInvoicePdf() {
   if (!checked.length) { alert('取引先を選択してください'); return; }
   const groups = checked.map(cliId => Object.values(window._aggInvGroups||{}).find(g=>g.cli===cliId)?.rows).filter(rows=>rows && rows.length);
   if (!groups.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  writeStatementWindow(win, () => buildStatementHtmlMulti('billing', groups));
+  openStatementPreview(() => buildStatementHtmlMulti('billing', groups));
 }
 
 // 鑑（表紙）付きの請求明細書PDFを、選択した複数取引先分まとめて作成する
@@ -943,9 +941,7 @@ function bulkCreateInvoicePdfWithCover() {
   if (!checked.length) { alert('取引先を選択してください'); return; }
   const groups = checked.map(cliId => Object.values(window._aggInvGroups||{}).find(g=>g.cli===cliId)?.rows).filter(rows=>rows && rows.length);
   if (!groups.length) { alert('対象データがありません'); return; }
-  const win = window.open('','_blank');
-  if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  if (!writeStatementWindow(win, () => buildStatementHtmlMultiWithCover('billing', groups, null))) return;
+  if (!openStatementPreview(() => buildStatementHtmlMultiWithCover('billing', groups, null))) return;
   addLog('PDF出力', `請求明細書（鑑形式） 選択${checked.length}件`);
 }
 
