@@ -4383,7 +4383,7 @@ function renderCloseTable(month, monthRecs) {
     if (drv) {
       const feeRate = drv.fee_rate != null ? drv.fee_rate : -0.15;
       const adminFee = drv.admin_fee != null ? drv.admin_fee : -10000;
-      const vehicleRental = drv.vehicle_rental != null ? drv.vehicle_rental : -30000;
+      const vehicleRental = driverVehicleRental(drv).amt;
       const baseGrossAll = dRecs.reduce((a,r)=>a+(r.fare||0)+(r.hw||0)+(r.oth||0),0); // 全明細の税別ベース額（非課税分を含む）
       const nonTax = dRecs.filter(r=>(r.tax||0)===0).reduce((a,r)=>a+sub(r),0);
       const baseGross = baseGrossAll - nonTax; // 税別金額（課税対象分のみ。非課税分は業務手数料の対象外）
@@ -4444,7 +4444,7 @@ function downloadBook1Csv() {
         cell(isFirst ? (d.fee_rate!=null?d.fee_rate:-0.15) : ''),
         cell(''),
         cell(isFirst ? (d.admin_fee!=null?d.admin_fee:-10000) : ''),
-        cell(isFirst ? (d.vehicle_rental!=null?d.vehicle_rental:-30000) : ''),
+        cell(isFirst ? driverVehicleRental(d).amt : ''),
         cell(isFirst ? (d.supplier_id||'') : ''),
         cell(fmtDate(payDate)),
         cell(idx+1),

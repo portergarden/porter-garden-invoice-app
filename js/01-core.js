@@ -1190,12 +1190,14 @@ function buildStatementSheetData(side, rows) {
     const fbAll = sortedRows.reduce((a,r)=>{const b=feeBreakdown(r,'payment');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other,nonTax:a.nonTax+b.nonTax};},{hw:0,oth:0,other:0,nonTax:0});
     const feeRate = d?.fee_rate ?? -0.15;
     const adminFee = d?.admin_fee ?? -10000;
-    const vehRental = d?.vehicle_rental ?? -30000;
     const { bizFee, netSubtotal, netTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
     // 車両管理の乗務履歴（日額設定のある代車）から、この明細書の対象期間に重なる日数分のリース料を自動計算する。
     // 対象期間は支払集計タブの集計期間ピッカーを使い、未設定なら選択した明細の実日付範囲にフォールバックする
     const vhPeriodFrom = document.getElementById('aggPayFrom')?.value || sortedRows[0]?.date || '';
     const vhPeriodTo = document.getElementById('aggPayTo')?.value || sortedRows[sortedRows.length-1]?.date || '';
+    // 車両リース代：車両カルテの料金があればそれを、無ければドライバー登録の車両リース代
+    const vr = driverVehicleRental(d, vhPeriodFrom, vhPeriodTo);
+    const vehRental = vr.amt;
     const othItems = otherItemsForPeriod(d, vhPeriodFrom, vhPeriodTo);
     const otherTotal = othItems.total;
     // 追加料金（高速代・立替・その他）。集計タブ(runAggPay)の支払合計と同じ計上方法で合計へ加算する
@@ -1215,7 +1217,7 @@ function buildStatementSheetData(side, rows) {
       ['消費税（10%）', netTax],
       ...(extraFeeTotal ? [['追加料金（高速代・立替など）', extraFeeTotal]] : []),
       ['事務手数料', adminFee],
-      [d?.lease_company ? `車両リース代（${d.lease_company}）` : '車両リース代', vehRental],
+      [vr.company ? `車両リース代（${vr.company}）` : '車両リース代', vehRental],
       ...othItems.items.map(it=>[it.name, it.amount]),
       ['支払合計金額', takeHome],
     ];

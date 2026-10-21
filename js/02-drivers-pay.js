@@ -1046,6 +1046,45 @@ function vehicleRentalForPeriod(driverId, from, to) {
   return { total, items };
 }
 
+/* 支払明細書の「車両リース代」。
+   普段の車（ドライバー登録の車番）が車両カルテで「リース車両」「会社の車両」になっていて料金が入っていれば、
+   その料金とリース会社を使う。入っていなければ、これまでどおりドライバー登録の「車両リース代」を使う。
+   乗務履歴があればこの集計期間に乗った分だけ（月額は満額、日割り指定なら日割り）、
+   乗務履歴がまだ無い車は期間まるごと使ったものとして数える。
+   乗務履歴に個別の料金を入れた記録は「その他の項目」側（vehicleRentalForPeriod）で数えるので、ここでは数えない */
+function driverVehicleRental(d, from, to) {
+  const fallback = { amt: d?.vehicle_rental ?? -30000, company: d?.lease_company || '', fromVehicle: false };
+  if (!d) return fallback;
+  const rated = (d.cars||[]).map(c => vehicles.find(v => carKey(v.car) === carKey(c)))
+    .filter(v => v && v.status !== 'scrapped' && ['lease','company'].includes(v.vehicle_type)
+      && (v.rate_type === 'monthly' ? v.monthly_rate : v.daily_rate));
+  if (!rated.length) return fallback;
+  const todayStr = fmtLocalDate(new Date());
+  let total = 0;
+  rated.forEach(v => {
+    const rate = { rate_type: v.rate_type, daily_rate: v.daily_rate, monthly_rate: v.monthly_rate, prorate: v.prorate };
+    const own = (vehicleAssignments||[]).filter(a => a.driver_id === d.id && carKey(a.car) === carKey(v.car)
+      && billsDriver(a) && a.daily_rate == null && a.monthly_rate == null)
+      .sort((a,b) => (a.start_date||'').localeCompare(b.start_date||''))
+      // 日報から自動で作った一番古い記録の開始日は「最初に日報を出した日」で、乗り始めた日ではない。
+      // 日報を使い始める前の期間を0円にしないよう、その記録だけは開始日で切らない
+      .map((a, i) => i === 0 && a.source === 'daily_report' ? { ...a, start_date: '0000-01-01' } : a);
+    if (!own.length) {
+      // 乗務履歴がまだ無い車は、集計期間まるごと使ったものとする
+      const c = assignmentCharge({ car: v.car, start_date: from || '0000-01-01', end_date: to || todayStr, ...rate }, from, to);
+      if (c) total += c.amt;
+      return;
+    }
+    if (v.rate_type === 'monthly' && !v.prorate) {
+      // 満額は、期間に1日でも乗っていれば1か月分（記録が2本に分かれていても二重に取らない）
+      if (own.some(a => assignmentCharge({ ...a, ...rate }, from, to))) total += v.monthly_rate;
+      return;
+    }
+    own.forEach(a => { const c = assignmentCharge({ ...a, ...rate }, from, to); if (c) total += c.amt; });
+  });
+  return { amt: -Math.abs(total), company: rated.find(v => v.lease_company)?.lease_company || '', fromVehicle: true };
+}
+
 // リース会社へ請求する分（リース会社の代車が無く、こちらの車を貸した記録）を会社ごとにまとめる
 function leaseBillingForPeriod(from, to) {
   const groups = new Map();
@@ -1424,7 +1463,7 @@ function buildPayCsvRow(r, d, payDate, idx) {
     fee_rate:       d.fee_rate != null ? d.fee_rate : -0.15,
     note_col:       '',
     admin_fee:      d.admin_fee != null ? d.admin_fee : -10000,
-    vehicle_rental: d.vehicle_rental != null ? d.vehicle_rental : -30000,
+    vehicle_rental: driverVehicleRental(d, document.getElementById('aggPayFrom')?.value || '', document.getElementById('aggPayTo')?.value || '').amt,
     invoice_no:     d.supplier_id || '',
     issue_date:     '',
     payment_date:   payDate,
@@ -1589,7 +1628,8 @@ function runAggPay() {
     const advHwSum = fb.hw + fb.oth - baseHwOth;
     const feeRate = d.fee_rate ?? -0.15;
     const adminFee = d.admin_fee ?? -10000;
-    const vehRental = d.vehicle_rental ?? -30000;
+    const vr = driverVehicleRental(d, from, to);   // 車両カルテの料金があればそれを、無ければドライバー登録の車両リース代
+    const vehRental = vr.amt;
     const { bizFee, netSubtotal, netTax, bizFeeWithTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
     const netIncl = netSubtotal + netTax; // 差引合計(税込)＝（税別金額−業務手数料）＋消費税10%
     const extraFeeTotal = sumRecsExtraFees(rows, 'payment'); // 受注入力の追加料金（支払／両方指定分）
@@ -1636,7 +1676,7 @@ function runAggPay() {
       <td style="padding:6px 8px;text-align:right;font-weight:500" title="（税別金額−業務手数料）＋消費税10%">${yen(netIncl)}</td>
       <td style="padding:6px 8px;text-align:right">${yen(advHwSum)}</td>
       <td style="padding:6px 8px;text-align:right;border-left:0.5px solid var(--border);color:${adminFee<0?'#e05b5b':'inherit'}">${yen(adminFee)}</td>
-      <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}${d.lease_company?`<div style="font-size:9.5px;color:var(--text2);font-weight:400">${escHtml(d.lease_company)}</div>`:''}</td>
+      <td style="padding:6px 8px;text-align:right;color:${vehRental<0?'#e05b5b':'inherit'}">${yen(vehRental)}${vr.company?`<div style="font-size:9.5px;color:var(--text2);font-weight:400">${escHtml(vr.company)}</div>`:''}${vr.fromVehicle?'<div style="font-size:9px;color:var(--text3);font-weight:400">車両カルテの料金</div>':''}</td>
       <td style="padding:6px 8px;text-align:right;color:${(nonTaxSum+otherTotal)<0?'#e05b5b':'inherit'}" title="クリックでこの集計期間の「その他の項目」を編集できます${nonTaxSum?'\n（非課税分 '+yen(nonTaxSum)+' を含む。非課税分はここでは編集できません）':''}\n${othItems.items.length?othItems.items.map(it=>`${it.name}: ${yen(it.amount)}`).join('\n'):'内訳なし'}">
         <span onclick="event.stopPropagation();openPayAdjM(${d.id})" style="cursor:pointer;text-decoration:underline dotted">${yen(nonTaxSum + otherTotal)}</span>
         ${othItems.overridden?'<div style="font-size:9px;color:var(--amber-text);font-weight:600">上書き中</div>':''}
@@ -1846,10 +1886,12 @@ function renderLeaseAggBody(groups) {
   const el = document.getElementById('leaseAggBody');
   if (!el) return;
   const buckets = {};
+  const pFrom = document.getElementById('aggPayFrom')?.value || '', pTo = document.getElementById('aggPayTo')?.value || '';
   Object.values(groups).forEach(g => {
     const d = g.drv;
-    const amt = Math.abs(d.vehicle_rental ?? -30000);
-    const key = d.lease_company || '未設定';
+    const vr = driverVehicleRental(d, pFrom, pTo);
+    const amt = Math.abs(vr.amt);
+    const key = vr.company || '未設定';
     if (!buckets[key]) buckets[key] = { total: 0, drivers: [] };
     buckets[key].total += amt;
     buckets[key].drivers.push(d.name);
@@ -1887,11 +1929,11 @@ function renderLeaseAggBody(groups) {
 // 会社マスタで「車両リース会社」登録済みなら住所・担当者などを宛先に自動記載する
 function printLeaseStatement(company) {
   const groups = window._aggPayGroups || {};
-  const entries = Object.values(groups).filter(g => (g.drv.lease_company||'') && nm(g.drv.lease_company) === nm(company));
-  if (!entries.length) { alert('対象データがありません'); return; }
-  const p = clients.find(x => nm(x.name) === nm(company)) || null;
   const from = document.getElementById('aggPayFrom')?.value || '';
   const to = document.getElementById('aggPayTo')?.value || '';
+  const entries = Object.values(groups).filter(g => { const c = driverVehicleRental(g.drv, from, to).company; return c && nm(c) === nm(company); });
+  if (!entries.length) { alert('対象データがありません'); return; }
+  const p = clients.find(x => nm(x.name) === nm(company)) || null;
   const periodLabel = (from||to) ? `対象期間: ${from.replace(/-/g,'/')} 〜 ${to.replace(/-/g,'/')}` : '';
   const month = from.slice(0,7);
   const itemRows = entries
@@ -1901,7 +1943,7 @@ function printLeaseStatement(company) {
       // フル表記のみに絞って「同じ車を2台と誤表示」しないようにする
       const fullCars = (g.drv.cars||[]).filter(isFullPlateNumber);
       const cars = (fullCars.length ? fullCars : (g.drv.cars||[])).join('、') || '—';
-      return { no:i+1, name:g.drv.name, cars, amt: Math.abs(g.drv.vehicle_rental ?? -30000) };
+      return { no:i+1, name:g.drv.name, cars, amt: Math.abs(driverVehicleRental(g.drv, from, to).amt) };
     });
   const total = itemRows.reduce((s,it)=>s+it.amt,0);
   const cAll = companySettings || {};
