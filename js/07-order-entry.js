@@ -760,16 +760,16 @@ function runAggInv() {
     const cliName = cliObj ? cliObj.name : '（未設定）';
     const cnt = g.rows.length;
     const subTotalAll = g.rows.reduce((s,r)=>s+(r.fare||0)+(r.hw||0)+(r.oth||0), 0); // 全明細の税抜ベース額（非課税分を含む）
-    const taxTotal = g.rows.reduce((s,r)=>s+rtax(r), 0); // 内消費税額
+    const taxTotal = g.rows.reduce((s,r)=>s+rtax(r), 0) + extraFeeTaxPortion(g.rows, 'billing'); // 内消費税額（税込で扱う追加料金の分も含める）
     const extraFeeTotal = sumRecsExtraFees(g.rows, 'billing'); // 受注入力の追加料金（請求／両方指定分）
-    const taxedTotal = subTotalAll + taxTotal + extraFeeTotal; // 税込金額（追加料金を含む）
+    const taxedTotal = subTotalAll + g.rows.reduce((s,r)=>s+rtax(r), 0) + extraFeeTotal; // 税込金額（追加料金を含む。追加料金の税は extraFeeTotal 側に含まれている）
     const fb = g.rows.reduce((a,r)=>{const b=feeBreakdown(r,'billing');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other,nonTax:a.nonTax+b.nonTax};},{hw:0,oth:0,other:0,nonTax:0});
     const othTotal = fb.oth; // 立替金額（追加料金の「立替」名称分を含む）
     const hwTotal = fb.hw; // 高速代など（追加料金の「高速」名称分を含む）
     const nonTaxTotal = g.rows.filter(r=>(r.tax||0)===0).reduce((s,r)=>s+sub(r),0) + fb.nonTax; // 非課税額（税率0%の明細の合計＋追加料金の非課税分）
     const subTotal = subTotalAll - nonTaxTotal; // 税別金額（課税対象分のみ。非課税分は含まない）
     const feeRate = cliObj?.fee_rate || 0;
-    const feeAmt = Math.round(taxedTotal * feeRate / 100); // 手数料など（取引先マスタの手数料率を税込金額に適用）
+    const feeAmt = roundHalfUp(taxedTotal * feeRate / 100); // 手数料など（取引先マスタの手数料率を税込金額に適用）
     const grandTotal = taxedTotal + feeAmt; // 請求合計金額（税込金額＋手数料）
     const dueLabel = cliObj ? closingDayLabel(cliObj.closing_day) : '-';
     gTotalCnt+=cnt; gTaxed+=taxedTotal; gTaxOnly+=taxTotal; gOth+=othTotal; gHw+=hwTotal; gNonTax+=nonTaxTotal; gFee+=feeAmt; gGrand+=grandTotal;
@@ -979,7 +979,7 @@ function calcQ0Total() {
   let total = b.total;
   // 追加料金（請求／両方）を加算
   (q0ExtraFees||[]).filter(f=>f.applies==='billing'||f.applies==='both').forEach(f => {
-    total += f.tax==='excl' ? Math.round(f.amount*1.10) : f.amount;
+    total += f.tax==='excl' ? roundHalfUp(f.amount*1.10) : f.amount;
   });
   document.getElementById('q0Total').textContent = yen(total);
 
@@ -991,7 +991,7 @@ function calcQ0Total() {
   let payTotal = p.total;
   // 追加料金（支払／両方）を加算（外税は税込換算。集計時のsumRecsExtraFeesと同じ扱い）
   (q0ExtraFees||[]).filter(f=>f.applies==='payment'||f.applies==='both').forEach(f => {
-    payTotal += f.tax==='excl' ? Math.round(f.amount*1.10) : f.amount;
+    payTotal += f.tax==='excl' ? roundHalfUp(f.amount*1.10) : f.amount;
   });
   document.getElementById('q0PayTotal').textContent = yen(payTotal);
 }

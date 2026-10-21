@@ -3227,7 +3227,10 @@ function getCompanyBlock() {
 
 /* ===== 明細書PDF（請求書／支払明細書 共通・Excel帳票と統一デザイン） ===== */
 // buildStatementSheetData()（Excel帳票と共通のデータ組み立て関数）の結果を.doc要素へ組み立てる（1件分）
+// 帳票の金額表記。マイナスは「¥-10,000」ではなく「-¥10,000」と書く
+const yenS = n => n < 0 ? '-¥' + Math.round(-n).toLocaleString() : yen(n);
 function buildStatementDocInner(side, rows) {
+  const yen = yenS;
   const d = buildStatementSheetData(side, rows);
   const isBilling = side === 'billing';
   const notesHtml = escHtml(d.notes || 'なし').replace(/\n/g, '<br>');
@@ -3296,6 +3299,9 @@ function statementDocStyle() {
   table.bottom-table{page-break-inside:avoid;break-inside:avoid}
   table.bottom-table tr{page-break-inside:avoid;break-inside:avoid}
   table.items tr{page-break-inside:avoid;break-inside:avoid}
+  /* 距離・時間や作業明細に区切りのない長い文字列が入っても、隣の欄へはみ出さず折り返す */
+  table.items tbody td:not(.num){overflow-wrap:anywhere}
+  td.notes-cell,td.breakdown-cell .lbl2{overflow-wrap:anywhere}
   .doc-parties,.period-bar,table.summary-table{page-break-inside:avoid;break-inside:avoid}`;
 }
 
@@ -3364,6 +3370,7 @@ function buildStatementHtmlMulti(side, rowGroups) {
 // コムトラ同様の金額5項目・合計行・独立した太字合計）を1枚の.docとして作成する。
 // addressee: {name, cli} 形式（cliがあれば住所・TEL・担当者を自動記載）
 function buildCoverPageHtml(side, rowGroups, addressee) {
+  const yen = yenS;
   const isBilling = side === 'billing';
   const c = addressee?.cli;
   const addresseeBlock = addressee?.name ? `
@@ -3452,7 +3459,8 @@ function buildStatementHtmlMultiWithCover(side, rowGroups, addressee) {
   table.cover-table td.cname{text-align:left}
   table.cover-table td.num{font-variant-numeric:tabular-nums}
   /* 合計金額欄のみ、色ではなく文字サイズで強調する */
-  table.cover-table td.total{font-size:13px;font-weight:700}
+  table.cover-table td.total{font-size:12px;font-weight:700;white-space:nowrap}
+  table.cover-table td.num{white-space:nowrap}
   table.cover-table tfoot td{background:var(--bg2);font-weight:700}
   .cover-total-box{display:flex;justify-content:space-between;align-items:center;border:1.5px solid var(--border);padding:12px 18px;margin:4px 0 14px;font-size:15px;font-weight:700}
   .cover-total-box .val{font-size:19px}

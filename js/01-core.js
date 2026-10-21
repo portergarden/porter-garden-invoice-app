@@ -915,11 +915,42 @@ const rtaxBySide=(r,side)=>(r.tax_amount!=null && subBySide(r,side)===sub(r)) ? 
 // 業務手数料の計算方式：単価（税別金額）から業務手数料を引いた「合計」に消費税(10%・四捨五入)を掛け直す（合計＋消費税）。
 // 単価と業務手数料それぞれに個別で消費税をかけて合算する旧方式は、端数処理のタイミングが2箇所に分かれるため
 // 数円の丸め誤差が生じることがあった。まとめて1回だけ、合計に対して四捨五入することでこれを解消する。
-function calcBizFeeWithTax(gross, taxAmt, feeRate) {
+// byRate（税率→その税率の税別金額。taxableGrossByRate()の結果）を渡すと、10%以外の課税明細（8%軽減など）が
+// 混ざっていても税率ごとに按分して消費税を出す。渡さない／10%だけのときは従来どおり合計の10%
+function calcBizFeeWithTax(gross, taxAmt, feeRate, byRate) {
   const bizFee = roundHalfUp(gross * feeRate); // 業務手数料＝単価×手数料率
   const netSubtotal = gross + bizFee; // 合計＝単価－業務手数料
-  const netTax = roundHalfUp(netSubtotal * 0.1); // 合計に対する消費税（10%・四捨五入）
+  const rates = byRate ? Object.keys(byRate).filter(k => byRate[k]) : [];
+  let netTax;
+  if (!rates.length || (rates.length === 1 && +rates[0] === 10)) {
+    netTax = roundHalfUp(netSubtotal * 0.1); // 合計に対する消費税（10%・四捨五入）
+  } else {
+    const total = rates.reduce((a, k) => a + byRate[k], 0);
+    netTax = total ? roundHalfUp(rates.reduce((a, k) => a + netSubtotal * (byRate[k] / total) * (+k) / 100, 0)) : 0;
+  }
   return { bizFee, netSubtotal, netTax, bizFeeWithTax: bizFee + (netTax - taxAmt) };
+}
+// 課税明細（税率0%を除く）の税別金額を税率ごとに集計する（業務手数料の対象になる分）
+function taxableGrossByRate(rows, side) {
+  const m = {};
+  (rows || []).forEach(r => {
+    const rate = r.tax ?? 10;
+    if (!rate) return;
+    m[rate] = (m[rate] || 0) + subBySide(r, side);
+  });
+  return m;
+}
+// 追加料金のうち税込で扱う分（外税→1.1倍済み／内税）に含まれる消費税額。
+// 合計金額には元々含まれているが、「内消費税額」欄に出ていないと税額の表示が実際より少なくなる
+function extraFeeTaxPortion(rows, side) {
+  let sum = 0;
+  (rows || []).forEach(r => (r.extra_fees || []).forEach(f => {
+    if (f.applies !== side && f.applies !== 'both') return;
+    const amt = f.amount || 0;
+    if (f.tax === 'excl') sum += roundHalfUp(amt * 1.10) - amt;
+    else if (f.tax === 'incl') sum += Math.round(amt * 10 / 110);
+  }));
+  return sum;
 }
 // 受注入力の「追加料金」を集計・PDFへ反映するための合算ヘルパー
 // side: 'billing'（請求）| 'payment'（支払）。applies が'both'の行は両方に加算対象
@@ -929,7 +960,7 @@ function sumRecsExtraFees(rows, side, taxRatePct){
   (rows||[]).forEach(r => {
     (r.extra_fees||[]).forEach(f => {
       if (f.applies === side || f.applies === 'both') {
-        sum += f.tax === 'excl' ? Math.round((f.amount||0) * (1 + rate/100)) : (f.amount||0);
+        sum += f.tax === 'excl' ? roundHalfUp((f.amount||0) * (1 + rate/100)) : (f.amount||0);
       }
     });
   });
@@ -945,7 +976,7 @@ function feeBreakdown(r, side, taxRatePct){
   let hw = hwRawBySide(r, side), oth = othRawBySide(r, side), other = 0, nonTax = 0;
   (r.extra_fees||[]).forEach(f => {
     if (f.applies !== side && f.applies !== 'both') return;
-    const amt = f.tax === 'excl' ? Math.round((f.amount||0) * (1 + rate/100)) : (f.amount||0);
+    const amt = f.tax === 'excl' ? roundHalfUp((f.amount||0) * (1 + rate/100)) : (f.amount||0);
     // 非課税指定の追加料金は、名称に関わらず非課税額として扱う（そうしないと税込金額欄に
     // 紛れ込んでしまい、非課税額欄に反映されず金額の内訳が分からなくなる）
     if (f.tax === 'none') nonTax += amt;
@@ -1088,6 +1119,7 @@ function shiftAggDetailMonth(dir) {
     return _aggDetailSide === 'billing' ? r.cli === _aggDetailGroupId : recDrv(r)?.id === _aggDetailGroupId;
   }).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   _aggDetailSelected = new Set();
+  window.statementPeriodOverride = {from: _aggDetailFrom, to: _aggDetailTo};
   updateAggDetailPeriodLabel();
   renderAggDetailFull();
 }
@@ -1103,6 +1135,7 @@ function openAggDetailFull(side, key) {
   _aggDetailFrom = document.getElementById(side==='billing'?'aggInvFrom':'aggPayFrom')?.value || (_aggDetailRows[0]?.date || '');
   _aggDetailTo = document.getElementById(side==='billing'?'aggInvTo':'aggPayTo')?.value || (_aggDetailRows[_aggDetailRows.length-1]?.date || '');
   updateAggDetailPeriodLabel();
+  window.statementPeriodOverride = {from: _aggDetailFrom, to: _aggDetailTo};
   _aggDetailReturnPage = side === 'billing' ? 0 : 6;
   const title = side === 'billing'
     ? (clients.find(c=>c.id===g.cli)?.name || '（未設定）')
@@ -1126,6 +1159,8 @@ function openAggDetailFull(side, key) {
 /* ===== 統一デザインの明細書（Excel帳票＋PDF共通のレイアウト定義） ===== */
 // 発行日：ツールバーの発行日欄（#stmtIssueDate系）で指定されていればそれを使用し、未指定なら本日の日付にする
 window.statementIssueDateOverride = '';
+// 明細画面（pg20）を開いている間だけ、支払明細書の車両リース代・その他の控除に使う期間（{from,to}）。通常はnull
+window.statementPeriodOverride = null;
 function getStatementIssueDate() {
   return (window.statementIssueDateOverride ? new Date(window.statementIssueDateOverride+'T00:00:00') : new Date())
     .toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric'});
@@ -1210,7 +1245,17 @@ function buildStatementSheetData(side, rows) {
     headLabel = '請求明細書';
     docPrefix = 'IV';
     dateLabel = 'お支払い期限';
-    dateValue = closingDayLabel(cli?.closing_day);
+    // 取引先マスタの入金設定（○か月後の○日）から出す。以前は「締日」の表示を載せていたため、
+    // 月も入っておらず、入力した入金日の設定が請求書に反映されていなかった。入金予定と同じ計算にそろえる
+    {
+      const basisMonth = (sortedRows[sortedRows.length-1]?.date || '').slice(0,7);
+      const payDay = cli?.pay_day || 'end';
+      if (basisMonth) {
+        const due = computeDueDate(basisMonth, cli?.pay_month_offset ?? 1, payDay);
+        const [yy, mm, dd] = due.split('-');
+        dateValue = `${yy}/${mm}/${payDay === 'end' ? '末日' : (+dd)+'日'}`;
+      } else dateValue = '—';
+    }
     recipientLines = [
       `${cli?cli.name:'（未設定）'}　御中`,
       [cli?.zip?`〒${cli.zip}`:'', cli?.address||''].filter(Boolean).join(' '),
@@ -1225,13 +1270,13 @@ function buildStatementSheetData(side, rows) {
     const nonTax = sortedRows.filter(r=>(r.tax||0)===0).reduce((a,r)=>a+sub(r),0) + fbAll.nonTax;
     const taxedTotal = subtotal + taxAmt + fbAll.hw + fbAll.oth + fbAll.other + fbAll.nonTax;
     const feeRate = cli?.fee_rate || 0;
-    const feeAmt = Math.round(taxedTotal * feeRate / 100);
+    const feeAmt = roundHalfUp(taxedTotal * feeRate / 100);
     const grandTotal = taxedTotal + feeAmt;
     breakdownRows = [
       ['手数料など'+(feeRate?`（${feeRate}%）`:''), feeAmt],
       ['請求合計金額', grandTotal],
     ];
-    var summary = { taxed: taxedTotal, taxOnly: taxAmt, nonTax, oth: fbAll.oth, advHw: fbAll.hw + fbAll.oth, grand: grandTotal };
+    var summary = { taxed: taxedTotal, taxOnly: taxAmt + extraFeeTaxPortion(sortedRows, 'billing'), nonTax, oth: fbAll.oth, advHw: fbAll.hw + fbAll.oth, grand: grandTotal };
   } else {
     const d = drvPay(recDrv(sortedRows[0])); // 協力会社フォールバック（振込先・登録番号・手数料率）を適用
     groupId = d?.id;
@@ -1249,11 +1294,14 @@ function buildStatementSheetData(side, rows) {
     const fbAll = sortedRows.reduce((a,r)=>{const b=feeBreakdown(r,'payment');return{hw:a.hw+b.hw,oth:a.oth+b.oth,other:a.other+b.other,nonTax:a.nonTax+b.nonTax};},{hw:0,oth:0,other:0,nonTax:0});
     const feeRate = d?.fee_rate ?? -0.15;
     const adminFee = d?.admin_fee ?? -10000;
-    const { bizFee, netSubtotal, netTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
+    const { bizFee, netSubtotal, netTax } = calcBizFeeWithTax(gross, taxAmt, feeRate, taxableGrossByRate(sortedRows, 'payment'));
     // 車両管理の乗務履歴（日額設定のある代車）から、この明細書の対象期間に重なる日数分のリース料を自動計算する。
     // 対象期間は支払集計タブの集計期間ピッカーを使い、未設定なら選択した明細の実日付範囲にフォールバックする
-    const vhPeriodFrom = document.getElementById('aggPayFrom')?.value || sortedRows[0]?.date || '';
-    const vhPeriodTo = document.getElementById('aggPayTo')?.value || sortedRows[sortedRows.length-1]?.date || '';
+    // 明細画面で◀▶により月を移した場合は、その画面の期間を使う（集計タブの期間のままだと、
+    // 別の月の車両リース代・その他の控除が付いてしまう）
+    const stmtOv = window.statementPeriodOverride;
+    const vhPeriodFrom = stmtOv?.from || document.getElementById('aggPayFrom')?.value || sortedRows[0]?.date || '';
+    const vhPeriodTo = stmtOv?.to || document.getElementById('aggPayTo')?.value || sortedRows[sortedRows.length-1]?.date || '';
     // 車両リース代：車両カルテの料金があればそれを、無ければドライバー登録の車両リース代
     const vr = driverVehicleRental(d, vhPeriodFrom, vhPeriodTo);
     const vehRental = vr.amt;
@@ -1273,7 +1321,7 @@ function buildStatementSheetData(side, rows) {
       ...(nonTaxRows ? [['非課税額（業務手数料対象外）', nonTaxRows]] : []),
       [`業務手数料（率${(feeRate*100).toFixed(1)}%）`, bizFee],
       ['合計（単価－業務手数料）', netSubtotal],
-      ['消費税（10%）', netTax],
+      [(() => { const ks = Object.keys(taxableGrossByRate(sortedRows, 'payment')).filter(k => taxableGrossByRate(sortedRows, 'payment')[k]); return ks.length === 1 ? `消費税（${ks[0]}%）` : (ks.length ? '消費税' : '消費税（10%）'); })(), netTax],
       ...(extraFeeTotal ? [['追加料金（高速代・立替など）', extraFeeTotal]] : []),
       ['事務手数料', adminFee],
       [vr.company ? `車両リース代（${vr.company}）` : '車両リース代', vehRental],
@@ -1282,7 +1330,7 @@ function buildStatementSheetData(side, rows) {
     ];
     // taxOnlyは「税込金額(taxedSummary)に含まれる消費税」＝手数料差引後の合計に対する消費税(netTax)。
     // 立替・高速代などの追加料金は非課税のため税額を持たない
-    var summary = { taxed: taxedSummary, taxOnly: netTax, nonTax, oth: fbAll.oth, advHw: fbAll.oth + fbAll.hw, grand: takeHome };
+    var summary = { taxed: taxedSummary, taxOnly: netTax + extraFeeTaxPortion(sortedRows, 'payment'), nonTax, oth: fbAll.oth, advHw: fbAll.oth + fbAll.hw, grand: takeHome };
   }
 
   const companyLines = [
@@ -1290,6 +1338,8 @@ function buildStatementSheetData(side, rows) {
     ...formatCompanyAddressLines(cAll),
     `${cAll.tel?'TEL '+cAll.tel:''}`,
     `${cAll.reg_no?'登録番号 '+cAll.reg_no:''}`,
+    // 請求明細書にはお振込先が要る。会社設定の振込先が個別の明細書には載っていなかった
+    ...(side === 'billing' && cAll.bank ? [`振込先 ${cAll.bank}`] : []),
   ];
 
   const items = sortedRows.map((r,i)=>{
@@ -1314,7 +1364,7 @@ function buildStatementSheetData(side, rows) {
       if (f.applies !== side && f.applies !== 'both') return;
       const name = f.name || '';
       if (f.tax === 'advance' || name.includes('高速') || name.includes('通行料')) return; // 高速・立替代列に表示済み
-      const amt = f.tax === 'excl' ? Math.round((f.amount||0) * 1.10) : (f.amount||0);
+      const amt = f.tax === 'excl' ? roundHalfUp((f.amount||0) * 1.10) : (f.amount||0);
       const d = recDrv(r);
       items.push({
         no: items.length+1, date: r.date, car: r.car||'', driverName: d?d.name:'',
@@ -1496,7 +1546,19 @@ async function downloadXlsxWithPageSetup(wb, filename, rowBreaksBySheetIndex) {
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
 
-const STATEMENT_COLS_WCH = [4,5,5,6,6,6,11,11,11,9,9,7,11,13];
+const STATEMENT_COLS_WCH = [4,5,5,6,6,6,11,11,11,10,9,7,12,13];
+// 結合セル（列幅wchの合計=widthWch）に文字を折り返して入れたときの行数の目安。
+// 全角は半角2文字分として数える。Excelは行の高さを自動で伸ばさないため、
+// 長い住所・作業明細・備考が途中で切れて見えないよう、この行数から行の高さを決める
+function stEstLines(text, widthWch, sz) {
+  const perLine = Math.max(4, widthWch * (11 / (sz || 10)) * 0.92);
+  return String(text ?? '').split('\n').reduce((n, para) => {
+    let units = 0;
+    for (const ch of para) units += /[ -~｡-ﾟ]/.test(ch) ? 1 : 2;
+    return n + Math.max(1, Math.ceil(units / perLine));
+  }, 0);
+}
+const stColsWidth = (c0, c1) => STATEMENT_COLS_WCH.slice(c0, c1 + 1).reduce((a, b) => a + b, 0);
 
 // 列の合計幅がページ幅より広いため、印刷時はExcelのfitToWidth（自動縮小）で1ページ幅に収めている。
 // 縮小率は環境（実際に使われるフォントの字幅）によって変わり、JS側で正確に予測することはできない
@@ -1526,16 +1588,21 @@ function writeStatementBlock(ws, side, rows, startRow, merge, rowBreaksOut) {
   setH(r, 8); r++;
 
   const recipRow = r;
+  // 宛名・住所・自社情報は折り返して表示し、長い行は行の高さを伸ばして切れないようにする
+  const recipRowCount = Math.max(d.recipientLines.length, d.companyLines.length);
+  const lineH = (text, c0, c1, sz) => text ? stEstLines(text, stColsWidth(c0, c1), sz) * (sz * 1.35) + 2 : 0;
   d.recipientLines.forEach((line, i) => {
     if (!line) return;
-    stCellMerge(ws, merge, recipRow+i, 0, recipRow+i, 6, line, stStyle({border:false, sz: i===0?12:9.5}));
+    stCellMerge(ws, merge, recipRow+i, 0, recipRow+i, 6, line, stStyle({border:false, sz: i===0?12:9.5, wrap:true, v:'top'}));
   });
   d.companyLines.forEach((line, i) => {
     if (!line) return;
-    stCellMerge(ws, merge, recipRow+i, 7, recipRow+i, 13, line, stStyle({border:false, sz: i===0?12:9.5}));
+    stCellMerge(ws, merge, recipRow+i, 7, recipRow+i, 13, line, stStyle({border:false, sz: i===0?12:9.5, wrap:true, v:'top'}));
   });
-  const recipRowCount = Math.max(d.recipientLines.length, d.companyLines.length);
-  for (let i=0; i<recipRowCount; i++) setH(recipRow+i, i===0?18:14);
+  for (let i=0; i<recipRowCount; i++) {
+    const sz = i===0 ? 12 : 9.5;
+    setH(recipRow+i, Math.max(i===0?18:14, lineH(d.recipientLines[i], 0, 6, sz), lineH(d.companyLines[i], 7, 13, sz)));
+  }
   r = recipRow + recipRowCount;
   setH(r, 8); r++;
 
@@ -1585,7 +1652,16 @@ function writeStatementBlock(ws, side, rows, startRow, merge, rowBreaksOut) {
       used = 0;
       writeItemHeader(r); r++;
     }
-    setH(r, ITEM_ROW_HPT);
+    // 作業明細・車番名前が長いときは行を高くして全文が見えるようにする（固定の高さだと途中で切れる）
+    const itemH = Math.max(ITEM_ROW_HPT,
+      stEstLines(it.task, stColsWidth(6, 8), 10) * 13.5 + 4,
+      stEstLines(it.driverName ? `${it.car}\n${it.driverName}` : it.car, stColsWidth(3, 5), 10) * 13.5 + 4);
+    if (rowBreaksOut && itemH > ITEM_ROW_HPT && used + itemH > STATEMENT_PAGE_BUDGET_PT) {
+      rowBreaksOut.push(r - 1);
+      used = 0;
+      writeItemHeader(r); r++;
+    }
+    setH(r, itemH);
     stCell(ws, `A${r}`, it.no, stStyle({h:'center', v:'center'}));
     stCellMerge(ws, merge, r, 1, r, 2, it.date, stStyle({h:'center', v:'center'}));
     stCellMerge(ws, merge, r, 3, r, 5, it.driverName ? `${it.car}\n${it.driverName}` : it.car, stStyle({h:'center', v:'center', wrap:true}));
@@ -1606,8 +1682,10 @@ function writeStatementBlock(ws, side, rows, startRow, merge, rowBreaksOut) {
   // 備考欄と内訳（業務手数料・控除など）を横並びの箱で表示（コムトラの帳票と同じレイアウト）。
   // 箱全体が現在のページの残り高さに収まらない場合は、箱の直前で改ページして
   // 新しいページの先頭から箱を開始する（箱が途中で分断されるのを防ぐ）
-  const BOX_ROW_HPT = 20;
   const boxRowCount = Math.max(d.breakdownRows.length, 3);
+  // 備考が長いときは内訳の行を高くして、備考欄(C～I列・結合)に全文が収まるようにする
+  const notesNeedH = stEstLines(d.notes || '', stColsWidth(2, 8), 10) * 13.5 + 6;
+  const BOX_ROW_HPT = Math.max(20, Math.ceil(notesNeedH / boxRowCount));
   if (rowBreaksOut && used + boxRowCount * BOX_ROW_HPT > STATEMENT_PAGE_BUDGET_PT) {
     rowBreaksOut.push(r - 1);
     used = 0;
@@ -1819,6 +1897,7 @@ function aggDetailCreatePdf() {
 }
 
 function closeAggDetailFull() {
+  window.statementPeriodOverride = null;
   const el = document.getElementById(_aggDetailReturnPage===0 ? 'nt0' : 'nt6');
   goPage(_aggDetailReturnPage, el);
   if (_aggDetailReturnPage === 6) runAggPay();
@@ -1993,6 +2072,7 @@ function goPage(n,el){
   if (n!==18 && document.body.classList.contains('entry-fullscreen')) toggleEntryFullscreen();
   if (n!==27) unsubscribeChatTabRealtime();
   if (n!==30) unsubscribeChatGroupRealtime();
+  if (n!==20) window.statementPeriodOverride = null; // 明細画面を離れたら、明細書の期間指定も外す
   for(let i=0; i<=33; i++){ const p=document.getElementById('pg'+i); if(p) p.classList.add('hide'); }
   document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('on'));
   const target = document.getElementById('pg'+n);

@@ -1580,7 +1580,9 @@ function buildPayCsvRow(r, d, payDate, idx) {
     car_info:       `${r.car||''} ${d.name||''}`.trim(),
     detail:         detail,
     // 受注入力で支払運賃が個別入力されていればそれを優先。未入力（旧データ等）は従来通り運賃を流用
-    highway:        (r.pay_hw != null && r.pay_hw !== 0) ? r.pay_hw : (r.highway || 0),
+    // 高速・立替代は支払明細書と同じ数え方にそろえる（支払側の高速代＋追加料金の高速・立替）。
+    // 以前は pay_hw だけを見ていたため、追加料金で入れた高速代（立替）が明細一覧・CSV・合計目安に出ていなかった
+    highway:        (() => { const fb = feeBreakdown(r, 'payment'); return fb.hw + fb.oth; })(),
     distance:       r.distance || '',
     qty:            r.qty !== undefined ? r.qty : 1,
     price:          (r.pay_fare != null && r.pay_fare !== 0) ? r.pay_fare : (r.price !== undefined ? r.price : (r.fare || 0)),
@@ -1740,7 +1742,7 @@ function runAggPay() {
     // この期間に、請求先がまだ決まっていない代車の記録があれば知らせる（決めるまでは控除に入らない）
     const pendInPeriod = pendingBillAssignments().filter(a => a.driver_id === d.id && a.start_date <= to && (!a.end_date || a.end_date >= from));
     const vehRental = vr.amt;
-    const { bizFee, netSubtotal, netTax, bizFeeWithTax } = calcBizFeeWithTax(gross, taxAmt, feeRate);
+    const { bizFee, netSubtotal, netTax, bizFeeWithTax } = calcBizFeeWithTax(gross, taxAmt, feeRate, taxableGrossByRate(rows, 'payment'));
     const netIncl = netSubtotal + netTax; // 差引合計(税込)＝（税別金額−業務手数料）＋消費税10%
     const extraFeeTotal = sumRecsExtraFees(rows, 'payment'); // 受注入力の追加料金（支払／両方指定分）
     // 車両管理の乗務履歴（日額設定のある代車）から、この集計期間に重なる日数分のリース料を自動計算する
