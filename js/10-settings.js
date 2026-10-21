@@ -1501,6 +1501,9 @@ CREATE TABLE IF NOT EXISTS car_aliases (
 --     普段の車＝終わりのない記録を1本。普段と違う車＝代車として日付つきで記録し、請求先「未確定」で入れる
 --   ・料金は日額／月額（満額・日割り）、請求先はドライバー／リース会社／請求しない／未確定
 -- ============================================================
+-- 車両代はドライバーごとに1か所（drivers.vehicle_rental）。乗り始め・返した期間を乗務履歴の日数で日割りにするか
+ALTER TABLE drivers ADD COLUMN IF NOT EXISTS vehicle_prorate boolean NOT NULL DEFAULT false;
+-- vehicles の料金列は使わない（2026-10-21 にドライバー登録へ一本化）。代車の料金は vehicle_assignments ごとに決める
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rate_type text NOT NULL DEFAULT 'daily';   -- 'daily' | 'monthly'
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS monthly_rate int;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS prorate boolean NOT NULL DEFAULT false;    -- 月額を集計期間の途中分だけ日割りにする

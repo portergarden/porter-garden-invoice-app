@@ -2710,7 +2710,9 @@ try {
         <div class="fld"><label>業務手数料率（%）</label><input type="number" id="dFeeRate" placeholder="例: -15" step="0.1" title="運賃に対する手数料率。マイナスで控除"></div>
         <div class="fld"><label>事務手数料（円）</label><input type="number" id="dAdminFee" placeholder="例: -10000" step="1"></div>
       </div>
-      <div class="fld"><label>車両リース代（円）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1"></div>
+      <div class="fld"><label>車両リース代（円・毎月。控除はマイナスで入力）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1">
+        <label style="font-size:12px;display:block;margin-top:4px"><input type="checkbox" id="dVehProrate"> 乗り始めた月・車を返した月は、乗っていた日数で日割りにする</label>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">※ 車両代はここだけで決めます（車両カルテには料金はありません）。日割りの日数は、車両管理の乗務履歴から数えます。</div></div>
       <div class="fld"><label>リース会社（任意・車両代の支払先を集計する際に使用）</label><select id="dLeaseCompany" onchange="onLeaseCompanySelChange()"><option value="">（未設定）</option></select></div>
       <div class="fld"><label>支払明細書のポータル表示</label>
         <select id="dStmtVis">
@@ -2979,16 +2981,7 @@ try {
         <label>リース会社</label>
         <select id="vLeaseCompany" style="width:100%" onchange="onVehicleLeaseSelChange()"></select>
       </div>
-      <div style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px">
-        <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">貸すときの料金（任意）</div>
-        <div style="font-size:10.5px;color:var(--text2);margin-bottom:6px">代車として貸したとき、乗務履歴に最初から入る料金です。記録ごとに変えられます。</div>
-        <div class="g2">
-          <div class="fld"><label>料金の決め方</label><select id="vRateType" onchange="onRateTypeChange('v')" style="width:100%"><option value="daily">日額</option><option value="monthly">月額</option></select></div>
-          <div class="fld" id="vDailyRateWrap"><label>日額（円）</label><input type="number" id="vDailyRate" placeholder="例: 1500" style="width:100%"></div>
-          <div class="fld" id="vMonthlyRateWrap" style="display:none"><label>月額（円）</label><input type="number" id="vMonthlyRate" placeholder="例: 30000" style="width:100%"></div>
-        </div>
-        <label id="vProrateWrap" style="display:none;font-size:12px"><input type="checkbox" id="vProrate"> 集計期間の途中から・途中までの分は日割りにする（チェックなしは満額）</label>
-      </div>
+      <div style="font-size:10.5px;color:var(--text2);margin-top:4px">※ 車両代はドライバーごとに、ドライバー登録の「車両リース代」で決めます。ここは車の情報だけです。</div>
 
       <div style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px">
         <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">車検・保険の期限</div>
@@ -3007,7 +3000,7 @@ try {
       <!-- 使用者・乗務履歴。車番が確定している（＝保存済みの）車両でだけ操作できる -->
       <div id="vhSection" style="border-top:0.5px solid var(--border);margin-top:14px;padding-top:12px">
         <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">使用者・乗務履歴</div>
-        <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">日報を出すと自動で記録されます。普段と違う車（代車）は請求先「未確定」で入るので、✎で請求先を決めてください。請求明細の車番→ドライバーの判定にも、この履歴が日付ごとに使われます。</div>
+        <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">誰がいつこの車に乗ったかの記録です。日報を出すと自動で記録されます。普段と違う車（代車）は請求先「未確定」で入るので、✎で請求先と金額を決めてください（普段の車の車両代はドライバー登録で決めるので、ここで金額を入れる必要はありません）。</div>
         <div id="vhCurrentArea" style="margin-bottom:12px"></div>
         <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px">
           <input type="hidden" id="vhEditId">
@@ -3386,9 +3379,9 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=5f0afada"></script>
+<script src="js/01-core.js?v=58e12570"></script>
 
-<script src="js/02-drivers-pay.js?v=f48887f5"></script>
+<script src="js/02-drivers-pay.js?v=ea2e68b9"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
@@ -3462,7 +3455,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=fa5a5f63"></script>
+<script src="js/10-settings.js?v=d0f7aecf"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>
