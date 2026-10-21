@@ -110,7 +110,7 @@ function initQ0Form() {
   const allCars = drvs.flatMap(d=>(d.cars||[]).map(c=>({car:c,name:d.name})))
     .filter(x=>x.car && x.name && !/^\d+$/.test(x.car));
   document.getElementById('q0CarList').innerHTML =
-    allCars.map(x=>`<option value="${x.car}（${x.name}）">`).join('');
+    allCars.map(x=>`<option value="${escHtml(`${x.car}（${x.name}）`)}">`).join('');
 
   // 乗務ドライバー（同一車両を複数人で稼働する場合の手動選択用）
   populateQ0DrvSel();
@@ -128,7 +128,7 @@ function renderTemplateSelect() {
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">選択して自動入力…</option>' +
-    q0Templates.map((t,i)=>`<option value="${i}">${t.name}</option>`).join('');
+    q0Templates.map((t,i)=>`<option value="${i}">${escHtml(t.name)}</option>`).join('');
   if (cur) sel.value = cur;
 }
 
@@ -535,7 +535,7 @@ function renderQ0FeeList() {
   if (!el) return;
   if (!q0ExtraFees.length) { el.innerHTML = '<span style="color:var(--text3)">登録なし</span>'; return; }
   el.innerHTML = q0ExtraFees.map((f,i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:0.5px solid var(--border)">
-    <span>${f.name} <span style="color:var(--text2)">（${q0FeeAppliesLabel[f.applies]}・${q0FeeTaxLabel[f.tax]}）</span></span>
+    <span>${escHtml(f.name)} <span style="color:var(--text2)">（${q0FeeAppliesLabel[f.applies]}・${q0FeeTaxLabel[f.tax]}）</span></span>
     <span>${yen(f.amount)} <button class="ibtn" style="font-size:10px" onclick="removeQ0ExtraFee(${i})">✕</button></span>
   </div>`).join('');
 }
@@ -827,7 +827,7 @@ function populateAggInvCliSel(groups) {
   const entries = Object.values(groups||{}).filter(g=>g.cli).map(g=>({id:g.cli, name: clients.find(c=>c.id===g.cli)?.name || `ID:${g.cli}`}));
   entries.sort((a,b)=>a.name.localeCompare(b.name,'ja'));
   sel.innerHTML = entries.length
-    ? entries.map(e=>`<option value="${e.id}">${e.name}</option>`).join('')
+    ? entries.map(e=>`<option value="${e.id}">${escHtml(e.name)}</option>`).join('')
     : '<option value="">（該当する取引先なし）</option>';
   if (entries.some(e=>String(e.id)===cur)) sel.value = cur;
 }

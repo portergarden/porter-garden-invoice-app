@@ -2606,7 +2606,7 @@ async function renderDashWarnings(){
   box.innerHTML=`<div style="display:flex;align-items:center;gap:8px;overflow-x:auto;padding-bottom:2px">
       <span class="ctitle" style="margin-bottom:0;flex-shrink:0">⚠ 警告（${items.length}）</span>
       ${items.map(it=>`<div onclick="goPage(${it.go},document.getElementById('${it.nt}'))" title="${it.btn}" style="display:flex;align-items:center;gap:5px;padding:5px 10px;background:var(--${it.sev==='red'?'red-bg':'amber-bg'});border:0.5px solid ${it.sev==='red'?'#F09595':'var(--amber-border)'};border-radius:99px;font-size:11px;color:var(--${it.sev==='red'?'red-text':'amber-text'});white-space:nowrap;flex-shrink:0;cursor:pointer">
-        <span>${it.icon}</span><span>${it.text}</span>
+        <span>${it.icon}</span><span>${escHtml(it.text)}</span>
       </div>`).join('')}
     </div>`;
 }
@@ -3548,7 +3548,7 @@ function renderUsr(){
     const rc=u.role==='admin'?'ad':u.role==='editor'?'ed':u.role==='driver'?'drv':'vi';
     const isMe=me&&me.id===u.id;
     const drvName=u.role==='driver'&&u.driver_id?(drvs.find(d=>d.id===u.driver_id)?.name||''):'';
-    return`<div class="urow"><div class="uav">${(u.name||'').slice(0,2)}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${u.name}${isMe?' <span style="font-size:10px;color:var(--blue)">（ログイン中）</span>':''}</div><div style="font-size:10px;color:var(--text2)">ID: ${u.id}${drvName?` ｜ 🚚 ${drvName}`:''}</div></div><span class="bdg ${rc}">${rn}</span>${!isMe?`<button class="ibtn" onclick="editUsr('${u.id}')">✎</button><button class="ibtn" onclick="delUsr('${u.id}')">🗑</button>`:''}</div>`;
+    return`<div class="urow"><div class="uav">${escHtml((u.name||'').slice(0,2))}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${escHtml(u.name)}${isMe?' <span style="font-size:10px;color:var(--blue)">（ログイン中）</span>':''}</div><div style="font-size:10px;color:var(--text2)">ID: ${u.id}${drvName?` ｜ 🚚 ${drvName}`:''}</div></div><span class="bdg ${rc}">${rn}</span>${!isMe?`<button class="ibtn" onclick="editUsr('${u.id}')">✎</button><button class="ibtn" onclick="delUsr('${u.id}')">🗑</button>`:''}</div>`;
   }).join('');
 }
 function onUsrRoleChange(){
@@ -4053,7 +4053,7 @@ function openPdfM(){
 async function handlePdf(file){
   if(!file)return;const st=document.getElementById('pSt');st.textContent='PDF読み込み中…';parsedPdf=[];
   try{
-    const ab=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+    const ab=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:ab,isEvalSupported:false}).promise;
     const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
     for(let i=1;i<=Math.min(pdf.numPages,3);i++){
       const page=await pdf.getPage(i),vp=page.getViewport({scale:2.0});

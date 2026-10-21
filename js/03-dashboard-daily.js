@@ -2206,8 +2206,8 @@ function renderScheduleGrouped(data, listId, opts) {
       return `<div class="${cls}">
         <input type="checkbox" data-schedid="${s.id}" ${checked?'checked':''} onchange="${opts.toggleSelFn}(${s.id},this.checked)">
         <div style="flex:1">
-          <div style="font-weight:500">${opts.getName(s)} <span style="font-size:10px;color:var(--text2)">${s.month ? s.month+'分' : ''}</span></div>
-          ${s.note ? `<div style="font-size:10px;color:var(--text2)">${s.note}</div>` : ''}
+          <div style="font-weight:500">${escHtml(opts.getName(s))} <span style="font-size:10px;color:var(--text2)">${s.month ? s.month+'分' : ''}</span></div>
+          ${s.note ? `<div style="font-size:10px;color:var(--text2)">${escHtml(s.note)}</div>` : ''}
         </div>
         <div style="font-size:13px;font-weight:600">${yen(s.amt)}</div>
         ${badge}
@@ -2245,7 +2245,7 @@ function renderScheduleSummary(data, elId, label, getName) {
   const nextOverdue = next && next.date < today;
   const nextHtml = next
     ? `<div style="font-size:12px;font-weight:600${nextOverdue?';color:var(--red-text)':''}">${next.date}${nextOverdue?'（期限超過）':''}</div>
-       <div style="font-size:12px;margin-top:1px">${getName ? (getName(next)||'—') : '—'}${next.month?` <span style="color:var(--text2)">${next.month}分</span>`:''}</div>
+       <div style="font-size:12px;margin-top:1px">${getName ? (escHtml(getName(next))||'—') : '—'}${next.month?` <span style="color:var(--text2)">${next.month}分</span>`:''}</div>
        <div style="font-size:13px;font-weight:600;margin-top:1px">${yen(next.amt)}</div>`
     : `<div style="font-size:11px;color:var(--text2)">予定はありません</div>`;
   el.innerHTML = `
@@ -2591,7 +2591,7 @@ async function initDailyForm(reportId=null) {
     const otherCars = myDrv ? allCarsWithAssigned.filter(x=>x.drvId!==myDrv.id) : allCarsWithAssigned;
     carSel.innerHTML = '<option value="">選択してください</option>' +
       (myCars.length ? `<optgroup label="自分の車両（${escHtml(myDrv.name)}）">${myCars.map(c => `<option value="${c}" data-name="${escHtml(myDrv.name)}">${c}</option>`).join('')}</optgroup>` : '') +
-      otherCars.map(x => `<option value="${x.car}" data-name="${x.name}">${x.car}（${x.name}）</option>`).join('');
+      otherCars.map(x => `<option value="${escHtml(x.car)}" data-name="${escHtml(x.name)}">${escHtml(x.car)}（${escHtml(x.name)}）</option>`).join('');
     enhanceSelectSearchable('drCar');
     // 新規入力では、ドライバーに紐づけた管理者アカウントなら自分の車両を最初から選んでおく（運転者名・メーター・出発地点も引き継ぐ）
     if (!reportId && myCars.length) {

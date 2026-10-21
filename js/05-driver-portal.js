@@ -166,7 +166,8 @@ function imageFileToCanvas(file, maxSize) {
 // PDFの各ページ（最大3ページ）をcanvas化する
 async function pdfFileToCanvases(file, maxSize, maxPages) {
   const ab = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  // pdf.js 3.x には、細工したPDFを開くとスクリプトが動く既知の弱点がある（4.2.67で修正）。isEvalSupported:false はその公式の回避策
+  const pdf = await pdfjsLib.getDocument({ data: ab, isEvalSupported: false }).promise;
   const pageCount = Math.min(pdf.numPages, maxPages);
   const canvases = [];
   for (let i = 1; i <= pageCount; i++) {
@@ -350,7 +351,7 @@ function docRowHtml(drvId, t, canDelete) {
       ${!t.noExpiry && doc?.expiry_date ? `<span style="font-size:11px;color:var(--text2)">${t.expLabel}: ${doc.expiry_date}</span>` : ''}
       ${t.hasAttendDate && doc?.attend_date ? `<span style="font-size:11px;color:var(--text2)">${t.attendLabel}: ${doc.attend_date}</span>` : ''}
       ${t.hasNumber && doc?.doc_number ? `<span style="font-size:11px;color:var(--text2)">${t.numberLabel}: ${escHtml(doc.doc_number)}</span>` : ''}
-      ${doc ? `<span style="font-size:10px;color:var(--text3)">更新: ${(doc.updated_at||'').slice(0,10)}${doc.uploaded_by?` (${doc.uploaded_by})`:''}</span>` : ''}
+      ${doc ? `<span style="font-size:10px;color:var(--text3)">更新: ${(doc.updated_at||'').slice(0,10)}${doc.uploaded_by?` (${escHtml(doc.uploaded_by)})`:''}</span>` : ''}
       ${doc?.compressed_size_bytes ? `<span style="font-size:10px;color:var(--text3)" title="アップロード時に自動で軽量化されたファイルサイズ">📎 ${fmtBytes(doc.orig_size_bytes||doc.compressed_size_bytes)} → ${fmtBytes(doc.compressed_size_bytes)}</span>` : ''}
       <div style="flex:1"></div>
       ${doc?.file_path ? `<button class="btn sml" onclick="viewDriverDoc(${drvId},'${t.key}')">🔍 表示</button>` : ''}

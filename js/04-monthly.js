@@ -919,7 +919,7 @@ function renderMrCards() {
             <div class="av drv" style="width:24px;height:24px;font-size:10px">${escHtml((d.name||'').slice(-2))}</div>
             <div>
               <div style="font-size:12px;font-weight:500">
-                ${d.name}
+                ${escHtml(d.name)}
                 ${d.supplier_id?`<span style="font-size:10px;color:var(--text2)"> ID:${escHtml(d.supplier_id)}</span>`:''}
                 ${hasDiff?'<span style="font-size:10px;color:var(--amber-text);margin-left:6px">⚠ 差異あり</span>':''}
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
@@ -1032,7 +1032,7 @@ function renderMrCards() {
   if (diffWarnings.length) {
     diffEl.style.display = 'block';
     diffEl.innerHTML = `<div style="font-weight:500;margin-bottom:4px">⚠ 以下のドライバーで日報と支払明細書に差異があります：</div>` +
-      diffWarnings.map(w => `<div>・<b>${w.name}</b>: ${w.diffs[0]}${w.diffs.length>1?` 他${w.diffs.length-1}件`:''}</div>`).join('');
+      diffWarnings.map(w => `<div>・<b>${escHtml(w.name)}</b>: ${escHtml(w.diffs[0])}${w.diffs.length>1?` 他${w.diffs.length-1}件`:''}</div>`).join('');
   } else {
     diffEl.style.display = 'none';
   }

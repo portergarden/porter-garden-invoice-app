@@ -1433,8 +1433,8 @@ function renderDrv() {
   const docIssues = summarizeDocAlerts();
   if (da) {
     const bars = [];
-    if (unC.length) bars.push(`<div class="alert-bar">⚠ 未配車: ${unC.join('、')}</div>`);
-    if (docIssues.length) bars.push(`<div class="alert-bar">📄 書類期限に注意: ${docIssues.map(i=>`${i.drv.name}・${i.t.label}（${i.st.label}）`).join('、')} <button class="btn sml" style="margin-left:8px" onclick="openDocStatusM()">一覧を開く</button></div>`);
+    if (unC.length) bars.push(`<div class="alert-bar">⚠ 未配車: ${escHtml(unC.join('、'))}</div>`);
+    if (docIssues.length) bars.push(`<div class="alert-bar">📄 書類期限に注意: ${escHtml(docIssues.map(i=>`${i.drv.name}・${i.t.label}（${i.st.label}）`).join('、'))} <button class="btn sml" style="margin-left:8px" onclick="openDocStatusM()">一覧を開く</button></div>`);
     if (bars.length) { da.classList.remove('hide'); da.innerHTML = bars.join(''); }
     else da.classList.add('hide');
   }
@@ -1982,7 +1982,7 @@ function populateAggPayPartnerSel(groups) {
   const cur = sel.value;
   const companies = [...new Set(Object.values(groups||{}).map(g=>g.drv.company).filter(Boolean))].sort();
   sel.innerHTML = companies.length
-    ? companies.map(c=>`<option value="${c}">${c}</option>`).join('')
+    ? companies.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')
     : '<option value="">（該当する協力会社なし）</option>';
   if (companies.includes(cur)) sel.value = cur;
 }

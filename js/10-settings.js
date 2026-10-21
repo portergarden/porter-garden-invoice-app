@@ -1210,6 +1210,22 @@ DROP POLICY IF EXISTS "chat_files_storage_delete" ON storage.objects;
 CREATE POLICY "chat_files_storage_delete" ON storage.objects FOR DELETE TO authenticated USING (
   bucket_id = 'chat-files' AND "current_role"() = ANY(ARRAY['admin','editor'])
 );
+-- グループチャットの添付（grp<グループID>/ 配下）。サブクエリの中では name が chat_groups.name を指してしまうため、
+-- 保存先のパスは必ず objects.name と書く
+DROP POLICY IF EXISTS "chat_files_storage_group_select" ON storage.objects;
+CREATE POLICY "chat_files_storage_group_select" ON storage.objects FOR SELECT TO authenticated USING (
+  bucket_id = 'chat-files' AND (storage.foldername(objects.name))[1] ~ '^grp[0-9]+$'
+  AND ("current_role"() = ANY(ARRAY['admin','editor','viewer']) OR EXISTS (
+    SELECT 1 FROM public.chat_groups cg WHERE cg.id = substring((storage.foldername(objects.name))[1] FROM 4)::bigint
+      AND (SELECT u.driver_id FROM public.users u WHERE u.auth_uid = auth.uid()) = ANY (cg.driver_ids)))
+);
+DROP POLICY IF EXISTS "chat_files_storage_group_insert" ON storage.objects;
+CREATE POLICY "chat_files_storage_group_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (
+  bucket_id = 'chat-files' AND (storage.foldername(objects.name))[1] ~ '^grp[0-9]+$'
+  AND ("current_role"() = ANY(ARRAY['admin','editor']) OR EXISTS (
+    SELECT 1 FROM public.chat_groups cg WHERE cg.id = substring((storage.foldername(objects.name))[1] FROM 4)::bigint
+      AND (SELECT u.driver_id FROM public.users u WHERE u.auth_uid = auth.uid()) = ANY (cg.driver_ids)))
+);
 
 DROP POLICY IF EXISTS "driver_stmt_storage_select" ON storage.objects;
 CREATE POLICY "driver_stmt_storage_select" ON storage.objects FOR SELECT TO authenticated USING (
@@ -1534,12 +1550,12 @@ ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS car_type text;           -- �
 ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS car_lease_company text;
 
 CREATE OR REPLACE FUNCTION public.car_key(t text) RETURNS text
-LANGUAGE sql IMMUTABLE AS $$
+LANGUAGE sql IMMUTABLE SET search_path = public AS $
   SELECT regexp_replace(translate(coalesce(t,''), '０１２３４５６７８９•･·．.', '0123456789・・・・・'), '[\\s　]', '', 'g')
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_plate_like(t text) RETURNS boolean
-LANGUAGE sql IMMUTABLE AS $$
+LANGUAGE sql IMMUTABLE SET search_path = public AS $
   SELECT public.car_key(t) ~ '^[^0-9・]{1,5}[0-9][0-9A-Z]{2}[ぁ-ゖ]・{0,3}[0-9]{1,4}$'
 $$;
 
