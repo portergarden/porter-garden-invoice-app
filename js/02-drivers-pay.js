@@ -97,22 +97,35 @@ function vehicleUserDriver(car) {
   return d ? {drv: d, fromAssign: false} : null;
 }
 
-/* ドライバー登録で車番を足したとき、車両管理(vehicles)にも同じ車番を自動で作る。
-   車両管理を唯一の台帳にするため、登録の手間を二重にしないための処理。
-   種別は「未分類」で入り、車両管理の一覧に⚠付きで出るので、あとで分類してもらう。
-   失敗してもドライバー登録自体は成功扱いにする（台帳は後から取り込みボタンで揃えられる） */
-async function syncVehiclesFromDriverCars(cars) {
+/* ドライバー登録の車番は、DBのトリガー（drivers_ensure_vehicles）が車両管理(vehicles)にも自動で作る。
+   招待URLからの本人登録やユーザー管理での紐づけでも同じように入るよう、画面ではなくDB側で行っている。
+   ここでは作られた台帳を読み直し、登録画面で選んだ種別を「未分類」の車にだけ反映する。
+   失敗してもドライバー登録自体は成功扱いにする */
+async function syncVehiclesFromDriverCars(cars, type, leaseCompany) {
   if (!sb || !cars?.length) return;
-  const registered = new Set(vehicles.map(v => nm(v.car)));
-  const add = [...new Set(cars.filter(c => c && !c.includes('----') && isFullPlateNumber(c) && !registered.has(nm(c))))];
-  if (!add.length) return;
-  try {
-    const {data, error} = await sb.from('vehicles')
-      .insert(add.map(car => ({car, status:'active', vehicle_type:'unclassified', note:'ドライバー登録の車番から自動作成'})))
-      .select();
-    if (error) throw error;
-    vehicles.push(...(data||[]));
-  } catch(e) { console.warn('syncVehiclesFromDriverCars:', e.message); }
+  await loadVehicles();
+  if (!['company','brought','lease'].includes(type)) return;
+  const targets = vehicles.filter(v => v.vehicle_type === 'unclassified' && cars.some(c => carKey(c) === carKey(v.car)));
+  for (const v of targets) {
+    const upd = { vehicle_type: type, lease_company: type === 'lease' ? (leaseCompany || v.lease_company || null) : v.lease_company };
+    try {
+      const {error} = await sb.from('vehicles').update(upd).eq('id', v.id);
+      if (error) throw error;
+      Object.assign(v, upd);
+    } catch(e) { console.warn('syncVehiclesFromDriverCars:', e.message); }
+  }
+}
+// ドライバー登録から外した車番の「使用中」の記録を、昨日で終わらせる（今日から始まった記録はその日で終える）
+async function closeAssignmentsForRemovedCars(drvId, oldCars, newCars) {
+  const removed = (oldCars||[]).filter(c => !(newCars||[]).some(n => carKey(n) === carKey(c)));
+  if (!removed.length) return;
+  const yesterday = fmtLocalDate(new Date(Date.now() - 86400000));
+  for (const a of vehicleAssignments.filter(x => x.driver_id === drvId && !x.end_date && removed.some(c => carKey(c) === carKey(x.car)))) {
+    const end = a.start_date > yesterday ? a.start_date : yesterday;
+    const {error} = await sb.from('vehicle_assignments').update({end_date: end}).eq('id', a.id);
+    if (!error) a.end_date = end;
+  }
+  invalidateVehicleAssignIndex();
 }
 
 /* ドライバー登録で入力した車番を、車両管理の乗務履歴にも「使用開始」として記録する。
@@ -131,7 +144,7 @@ async function syncVehicleAssignmentsForDriver(driverId, cars, startDate) {
     if (open.some(a => a.driver_id === driverId)) continue;   // 既にこの人が使用中
     if (open.length) { skipped.push(car); continue; }         // 他の人が使用中
     add.push({car, driver_id: driverId, start_date: startDate, end_date: null,
-              daily_rate: null, note: 'ドライバー登録の使用開始日から自動作成'});
+              daily_rate: null, bill_to: 'driver', source: 'driver_reg', note: 'ドライバー登録の使用開始日から自動作成'});
   }
   if (!add.length) return {added: 0, skipped};
   try {
@@ -151,7 +164,7 @@ async function importUnregisteredCars() {
   if (!sb) return;
   const cars = getUnregisteredCarNumbers();
   if (!cars.length) { showT('取り込む車番はありません'); return; }
-  if (!confirm(`ドライバー登録にあって車両管理に無い車番 ${cars.length}台 を取り込みます。\n種別は「未分類」で登録されるので、あとで自社所有／持ち込み／リースに分類してください。\nよろしいですか？`)) return;
+  if (!confirm(`ドライバー登録にあって車両管理に無い車番 ${cars.length}台 を取り込みます。\n種別は「未分類」で登録されるので、あとで会社の車両／持ち込み／リース車両に分類してください。\nよろしいですか？`)) return;
   showLoad(true);
   try {
     const rows = cars.map(car => ({car, status:'active', vehicle_type:'unclassified', note:'ドライバー登録の車番から取り込み'}));
@@ -207,61 +220,102 @@ function populateVehicleLeaseFilter() {
   });
   const leaseNames = Object.keys(leaseGroups).sort((a,b)=>nm(a).localeCompare(nm(b),'ja'));
   sel.innerHTML = `<option value="">種別・リース会社: すべて（${vehicles.length}台）</option>`
-    + `<option value="company">自社所有（${companyCount}台）</option>`
+    + `<option value="company">会社の車両（${companyCount}台）</option>`
     + `<option value="brought">持ち込み（${broughtCount}台）</option>`
     + (unclassifiedCount ? `<option value="unclassified">⚠ 未分類（${unclassifiedCount}台）</option>` : '')
     + leaseNames.map(n=>`<option value="lease::${escHtml(n)}">${escHtml(n)}（${leaseGroups[n]}台）</option>`).join('');
   sel.value = [...sel.options].some(o=>o.value===cur) ? cur : '';
 }
 function vehicleTypeLabel(v) {
-  if (v.vehicle_type === 'lease') return 'リース';
+  if (v.vehicle_type === 'lease') return 'リース車両';
   if (v.vehicle_type === 'brought') return '持ち込み';
   if (v.vehicle_type === 'unclassified') return '未分類';
-  return '自社所有'; // 'company'、および旧データ'own'（未分離だった頃の値）はここに含める
+  return '会社の車両'; // 'company'、および旧データ'own'（未分離だった頃の値）はここに含める
 }
 
-/* ===== 日報×車両乗務履歴の不一致検知 =====
-   日報で実際に使われた車番のうち、その日を乗務履歴（vehicle_assignments）でカバーできていない
-   ものを検出する。自動では乗務履歴を作成しない（日額リース設定のある車だと、日報の入力ミスで
-   勝手に控除が発生してしまうため）。あくまで事務所が気づいて手動登録するための通知にとどめる。 */
-let vehicleMismatches = [];
-async function loadDailyReportVehicleMismatches() {
-  if (!sb) { vehicleMismatches = []; return; }
-  const since = fmtLocalDate(new Date(Date.now() - 60*86400000)); // 直近60日分のみ対象（重すぎず、実務上意味のある範囲）
+/* ===== 日報から入った乗務履歴の通知 =====
+   乗務履歴は日報を出すとDB側（record_vehicle_usage）で自動で記録される。
+   事務所に知らせるのは次の2つだけ。
+   ・普段と違う車（代車）の記録で、請求先がまだ決まっていないもの（決まるまでドライバーには請求しない）
+   ・直近の日報3回が続けて同じ「普段と違う車」のドライバー（普段の車番を変えるかどうか聞く） */
+const USUAL_CAR_CHANGE_DAYS = 3;
+let vehicleCarChangeHints = [];
+async function loadVehicleNotices() {
+  if (!sb) { vehicleCarChangeHints = []; return; }
+  await loadVehicleAssignments();
+  const since = fmtLocalDate(new Date(Date.now() - 30*86400000));
   try {
-    const { data, error } = await sb.from('daily_reports').select('car,date,drv_id').gte('date', since).not('drv_id', 'is', null);
+    const { data, error } = await sb.from('daily_reports').select('car,date,drv_id').gte('date', since).not('drv_id', 'is', null).order('date', {ascending:false});
     if (error) throw error;
-    const grouped = {};
+    const byDrv = new Map();
     (data||[]).forEach(r => {
-      if (!r.car || !r.date) return;
-      const d = driverIndexes().id.get(r.drv_id);
-      if (!d) return;
-      if ((d.cars||[]).some(c => nm(c)===nm(r.car))) return; // 恒久登録車両は対象外
-      const covered = (vehicleAssignments||[]).some(v => v.driver_id===d.id && nm(v.car)===nm(r.car) && v.start_date<=r.date && (!v.end_date || r.date<=v.end_date));
-      if (covered) return;
-      const k = `${nm(r.car)}__${d.id}`;
-      if (!grouped[k]) grouped[k] = { car:r.car, drvId:d.id, drvName:d.name, dates:[] };
-      grouped[k].dates.push(r.date);
+      if (!r.car) return;
+      if (!byDrv.has(r.drv_id)) byDrv.set(r.drv_id, []);
+      byDrv.get(r.drv_id).push(r);
     });
-    vehicleMismatches = Object.values(grouped).map(g => {
-      const dates = g.dates.sort();
-      return { ...g, count:dates.length, minDate:dates[0], maxDate:dates[dates.length-1] };
+    vehicleCarChangeHints = [];
+    byDrv.forEach((reports, drvId) => {
+      const d = driverIndexes().id.get(drvId);
+      if (!d || d.status === 'terminated') return;
+      const last = reports.slice(0, USUAL_CAR_CHANGE_DAYS);
+      if (last.length < USUAL_CAR_CHANGE_DAYS) return;
+      if (new Set(last.map(r => carKey(r.car))).size !== 1) return;
+      const car = last[0].car;
+      if ((d.cars||[]).some(c => carKey(c) === carKey(car))) return;
+      vehicleCarChangeHints.push({ drv: d, car, since: last[last.length-1].date });
     });
-  } catch(e) { console.warn('loadDailyReportVehicleMismatches:', e.message); vehicleMismatches = []; }
+  } catch(e) { console.warn('loadVehicleNotices:', e.message); vehicleCarChangeHints = []; }
 }
-function toggleVehicleMismatchList() {
-  const el = document.getElementById('vehicleMismatchList');
+const pendingBillAssignments = () => (vehicleAssignments||[]).filter(v => v.bill_to === 'pending')
+  .sort((a,b) => (a.start_date||'').localeCompare(b.start_date||''));
+function toggleVehicleNoticeList(id) {
+  const el = document.getElementById(id);
   if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
-// 不一致一覧から「乗務履歴に登録」を押した時、車両乗務履歴モーダルをその内容で開く
-function quickRegisterVehicleMismatch(car, drvId, minDate) {
-  openVehicleHistM(car);
-  const d = drvs.find(x=>x.id===drvId);
-  if (d) {
-    document.getElementById('vhDrvId').value = d.id;
-    document.getElementById('vhDrvText').value = q0DrvOverrideLabel(d);
-  }
-  document.getElementById('vhStart').value = minDate;
+// 通知から、その記録を車両カルテの編集欄に読み込んだ状態で開く
+function openPendingAssignment(id) {
+  const a = vehicleAssignments.find(x => x.id === id);
+  if (!a) return;
+  openVehicleHistM(a.car);
+  editVehicleAssignment(id);
+}
+/* 普段の車番を変える。ドライバー登録の車番を新しい車に置き換え、
+   前の車の使用中の記録は新しい車に乗り始めた前日で終わらせ、新しい車の記録は終わりのない記録にする。
+   請求先はそのまま残す（未確定なら通知に残るので、そこで決めてもらう） */
+async function changeUsualCar(drvId, car, since) {
+  const d = drvs.find(x => x.id === drvId);
+  if (!d) return;
+  const oldCars = (d.cars||[]).filter(c => carKey(c) !== carKey(car));
+  const prevEnd = fmtLocalDate(new Date(new Date(since).getTime() - 86400000));
+  if (!confirm(`${d.name} さんの普段の車番を\n「${oldCars.join('・') || '（なし）'}」から「${car}」に変えますか？\n\n` +
+    (oldCars.length ? `前の車の使用中の記録は ${prevEnd} で終わります。\n` : '') +
+    `${car} は ${since} からの使用として記録します。`)) return;
+  showLoad(true);
+  try {
+    const {error} = await sb.from('drivers').update({cars: [car]}).eq('id', d.id);
+    if (error) throw error;
+    d.cars = [car];
+    invalidateDriverIndexes();
+    for (const a of vehicleAssignments.filter(x => x.driver_id === d.id && !x.end_date && oldCars.some(c => carKey(c) === carKey(x.car)))) {
+      const end = a.start_date > prevEnd ? a.start_date : prevEnd;
+      const {error: e2} = await sb.from('vehicle_assignments').update({end_date: end}).eq('id', a.id);
+      if (!e2) a.end_date = end;
+    }
+    const cur = vehicleAssignments.filter(x => x.driver_id === d.id && carKey(x.car) === carKey(car) && (!x.end_date || x.end_date >= since))
+      .sort((a,b) => (a.start_date||'').localeCompare(b.start_date||''))[0];
+    if (cur) {
+      const {error: e3} = await sb.from('vehicle_assignments').update({end_date: null}).eq('id', cur.id);
+      if (!e3) cur.end_date = null;
+    }
+    invalidateVehicleAssignIndex();
+    addLog('普段の車番を変更', `${d.name}: ${oldCars.join('・') || '（なし）'} → ${car}`);
+    vehicleCarChangeHints = vehicleCarChangeHints.filter(h => h.drv.id !== d.id);
+    await loadVehicles();
+    renderVehicles();
+    renderDrv();
+    showT('普段の車番を変えました');
+  } catch(e) { showT('変更エラー: '+e.message, 'ter'); }
+  showLoad(false);
 }
 // 同じ車の別表記が二重登録されていないかの注意書き（地名だけ違う車番の組み合わせ）
 function vehicleVariantPanelHtml() {
@@ -284,19 +338,29 @@ function toggleVehicleVariantList() {
 function renderVehicleMismatchPanel() {
   const el = document.getElementById('vehicleMismatchArea');
   if (!el) return;
-  const variantHtml = vehicleVariantPanelHtml();
-  if (!vehicleMismatches.length) { el.innerHTML = variantHtml; return; }
-  const totalCnt = vehicleMismatches.length;
-  el.innerHTML = variantHtml + `
+  const canE = me && me.role !== 'viewer';
+  const box = (listId, head, rows) => `
     <div style="padding:8px 12px;margin-bottom:10px;background:var(--amber-bg);border:0.5px solid var(--amber-border);border-radius:var(--radius);font-size:11.5px;color:var(--amber-text)">
-      <span style="cursor:pointer" onclick="toggleVehicleMismatchList()">⚠ 乗務履歴の登録がない車番で日報が提出されています（${totalCnt}件・直近60日）（クリックで一覧表示）</span>
-      <div id="vehicleMismatchList" style="display:none;flex-direction:column;gap:4px;margin-top:8px">
-        ${vehicleMismatches.map(m => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:var(--radius);padding:5px 8px">
-          <span>🚙 ${escHtml(m.car)}　${escHtml(m.drvName)}　${m.minDate}${m.maxDate!==m.minDate?`〜${m.maxDate}`:''}（${m.count}日分）</span>
-          <button class="btn sml" onclick="quickRegisterVehicleMismatch('${escAttrJs(m.car)}',${m.drvId},'${escAttrJs(m.minDate)}')">乗務履歴に登録</button>
-        </div>`).join('')}
-      </div>
+      <span style="cursor:pointer" onclick="toggleVehicleNoticeList('${listId}')">${head}（クリックで一覧表示）</span>
+      <div id="${listId}" style="display:none;flex-direction:column;gap:4px;margin-top:8px">${rows}</div>
     </div>`;
+  const row = (text, btn) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:var(--radius);padding:5px 8px;flex-wrap:wrap"><span>${text}</span>${canE ? btn : ''}</div>`;
+  let html = vehicleVariantPanelHtml();
+  const pend = pendingBillAssignments();
+  if (pend.length) {
+    html += box('vehiclePendingList', `⚠ 普段と違う車（代車）の記録で、請求先が決まっていないものがあります（${pend.length}件）。決まるまでドライバーには請求しません`,
+      pend.map(a => {
+        const d = drvs.find(x => x.id === a.driver_id);
+        return row(`🚙 ${escHtml(a.car)}　${escHtml(d?.name || '（削除済みドライバー）')}　${a.start_date}${a.end_date && a.end_date !== a.start_date ? `〜${a.end_date}` : (a.end_date ? '' : '〜（使用中）')}`,
+          `<button class="btn sml" onclick="openPendingAssignment(${a.id})">請求先を決める</button>`);
+      }).join(''));
+  }
+  if (vehicleCarChangeHints.length) {
+    html += box('vehicleCarChangeList', `⚠ 日報で${USUAL_CAR_CHANGE_DAYS}回続けて、普段と違う車に乗っているドライバーがいます（${vehicleCarChangeHints.length}人）`,
+      vehicleCarChangeHints.map(h => row(`${escHtml(h.drv.name)}　普段: ${escHtml((h.drv.cars||[]).join('・') || '（未登録）')} → 最近: 🚙 ${escHtml(h.car)}（${h.since}〜）`,
+        `<button class="btn sml" onclick="changeUsualCar(${h.drv.id},'${escAttrJs(h.car)}','${escAttrJs(h.since)}')">普段の車番を変える</button>`)).join(''));
+  }
+  el.innerHTML = html;
 }
 function renderVehicles() {
   const listEl = document.getElementById('vehicleList');
@@ -313,6 +377,7 @@ function renderVehicles() {
     kpiEl.innerHTML = `
       <div class="kpi-card"><div class="kpi-label">登録車両数</div><div class="kpi-val">${active.length}台</div></div>
       <div class="kpi-card"><div class="kpi-label">種別が未分類</div><div class="kpi-val" style="color:${unclassified.length?'var(--amber-text)':'inherit'}">${unclassified.length}台</div></div>
+      <div class="kpi-card"><div class="kpi-label">代車の請求先 未確定</div><div class="kpi-val" style="color:${pendingBillAssignments().length?'var(--amber-text)':'inherit'}">${pendingBillAssignments().length}件</div></div>
       <div class="kpi-card"><div class="kpi-label">車検・保険 要確認</div><div class="kpi-val" style="color:${soonOrExpired.length?'var(--amber-text)':'inherit'}">${soonOrExpired.length}台</div></div>
       <div class="kpi-card"><div class="kpi-label">取り込み待ちの車番</div><div class="kpi-val" style="color:${unreg.length?'var(--amber-text)':'inherit'}">${unreg.length}台</div></div>
       <div class="kpi-card"><div class="kpi-label">廃車</div><div class="kpi-val">${vehicles.filter(v=>v.status==='scrapped').length}台</div></div>
@@ -366,7 +431,7 @@ function renderVehicles() {
       <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0;flex-wrap:wrap">
         <div style="width:125px;font-weight:600;font-size:13px;flex-shrink:0;overflow-wrap:break-word;word-break:break-word;">🚙 ${escHtml(v.car)}${scrapped?' <span class="bdg" style="background:var(--gray-bg);color:var(--gray-text)">廃車</span>':''}</div>
         <div style="width:100px;font-size:12px;flex-shrink:0;cursor:pointer;color:var(--blue)" onclick="event.stopPropagation();openVehicleHistM('${escAttrJs(v.car)}')" ondblclick="event.stopPropagation()" title="${drv?(user.fromAssign?'乗務履歴に登録された使用者\n':'ドライバー登録の担当車番から表示しています（乗務履歴は未登録）\n'):''}クリックで車両カルテの乗務履歴を開きます">${drv?escHtml(drv.name)+(user.fromAssign?'':'<span style="color:var(--text2)">*</span>'):'未割当'}</div>
-        <div style="width:60px;font-size:11px;flex-shrink:0;${v.vehicle_type==='unclassified'?'color:var(--amber-text);font-weight:600':'color:var(--text2)'}" title="${v.vehicle_type==='unclassified'?'ドライバーの書類提出から自動登録されたため種別が未確認です。編集して自社所有／持ち込み／リースのいずれかを選択してください':''}">${v.vehicle_type==='unclassified'?'⚠ ':''}${vehicleTypeLabel(v)}</div>
+        <div style="width:60px;font-size:11px;flex-shrink:0;${v.vehicle_type==='unclassified'?'color:var(--amber-text);font-weight:600':'color:var(--text2)'}" title="${v.vehicle_type==='unclassified'?'自動で登録されたため種別が未確認です。編集して会社の車両／持ち込み／リース車両のいずれかを選択してください':''}">${v.vehicle_type==='unclassified'?'⚠ ':''}${vehicleTypeLabel(v)}</div>
         <div style="width:115px;font-size:11px;flex-shrink:0;color:var(--text2);overflow-wrap:break-word;word-break:break-word;">${v.vehicle_type==='lease'?escHtml(v.lease_company||'（未設定）'):'—'}</div>
         ${!scrapped ? `
         <div style="width:110px;font-size:11px;flex-shrink:0;">${v.shaken_expiry||'—'} ${docStatusPill({expiry_date:v.shaken_expiry})}</div>
@@ -422,7 +487,10 @@ function openVehicleM(car) {
   document.getElementById('vType').value = 'company';
   populateVehicleLeaseSel('');
   document.getElementById('vLeaseCompanyWrap').style.display = 'none';
-  ['vDailyRate','vShakenExpiry','vJibaiExpiry','vNiniExpiry','vNote'].forEach(id => document.getElementById(id).value = '');
+  ['vDailyRate','vMonthlyRate','vShakenExpiry','vJibaiExpiry','vNiniExpiry','vNote'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('vRateType').value = 'daily';
+  document.getElementById('vProrate').checked = false;
+  onRateTypeChange('v');
   setVehicleHistSection(false);
   document.getElementById('mVehicle').classList.add('on');
 }
@@ -440,7 +508,11 @@ function editVehicle(id, focusHist) {
   document.getElementById('vType').value = (!v.vehicle_type || v.vehicle_type === 'own') ? 'company' : v.vehicle_type;
   populateVehicleLeaseSel(v.lease_company || '');
   document.getElementById('vLeaseCompanyWrap').style.display = v.vehicle_type==='lease' ? '' : 'none';
+  document.getElementById('vRateType').value = v.rate_type === 'monthly' ? 'monthly' : 'daily';
   document.getElementById('vDailyRate').value = v.daily_rate ?? '';
+  document.getElementById('vMonthlyRate').value = v.monthly_rate ?? '';
+  document.getElementById('vProrate').checked = !!v.prorate;
+  onRateTypeChange('v');
   document.getElementById('vShakenExpiry').value = v.shaken_expiry || '';
   document.getElementById('vJibaiExpiry').value = v.jibai_expiry || '';
   document.getElementById('vNiniExpiry').value = v.nini_expiry || '';
@@ -454,16 +526,73 @@ function setVehicleHistSection(on) {
   document.getElementById('vhSection').style.display = on ? '' : 'none';
   document.getElementById('vhSectionHint').style.display = on ? 'none' : '';
   if (!on) return;
+  document.getElementById('vhDrvList').innerHTML = activeDrvs().map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
+  resetVhForm();
+  renderVehicleHist();
+}
+// 料金の決め方（日額／月額）で入力欄を切り替える。prefix は車両カルテ'v'・乗務履歴'vh'
+function onRateTypeChange(p) {
+  const monthly = document.getElementById(p+'RateType').value === 'monthly';
+  document.getElementById(p+'DailyRateWrap').style.display = monthly ? 'none' : '';
+  document.getElementById(p+'MonthlyRateWrap').style.display = monthly ? '' : 'none';
+  document.getElementById(p+'ProrateWrap').style.display = monthly ? 'block' : 'none';
+}
+function onVhBillToChange() {
+  document.getElementById('vhBillCompanyWrap').style.display = document.getElementById('vhBillTo').value === 'lease' ? '' : 'none';
+}
+// 請求先のリース会社の候補（会社マスタのリース会社＋台帳で使われている会社名）
+function populateVhBillCompany(selected) {
+  const sel = document.getElementById('vhBillCompany');
+  const names = [...new Set([...leaseClients().map(c=>c.name), ...vehicles.map(v=>v.lease_company).filter(Boolean)])]
+    .sort((a,b)=>nm(a).localeCompare(nm(b),'ja'));
+  if (selected && !names.includes(selected)) names.push(selected);
+  sel.innerHTML = '<option value="">（選択してください）</option>' + names.map(n=>`<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+  sel.value = selected || '';
+}
+// 乗務履歴の入力欄を「新しい乗務を記録」の状態に戻す。料金はこの車の既定値を入れておく（変更可）
+function resetVhForm() {
+  const vMaster = vehicles.find(v => nm(v.car) === nm(vhCurrentCar||''));
+  document.getElementById('vhEditId').value = '';
+  document.getElementById('vhFormTitle').textContent = '新しい乗務を記録';
+  document.getElementById('vhSaveBtn').textContent = '＋ 記録する';
+  document.getElementById('vhCancelEditBtn').classList.add('hide');
   document.getElementById('vhDrvId').value = '';
   document.getElementById('vhDrvText').value = '';
   document.getElementById('vhStart').value = fmtLocalDate(new Date());
   document.getElementById('vhEnd').value = '';
-  // 車両に日額リース料が登録済みならデフォルト値として入れておく（変更可）
-  const vMaster = vehicles.find(v => nm(v.car) === nm(vhCurrentCar||''));
+  document.getElementById('vhBillTo').value = 'driver';
+  populateVhBillCompany(vMaster?.vehicle_type === 'lease' ? (vMaster.lease_company || '') : '');
+  onVhBillToChange();
+  document.getElementById('vhRateType').value = vMaster?.rate_type === 'monthly' ? 'monthly' : 'daily';
   document.getElementById('vhRate').value = vMaster?.daily_rate ?? '';
+  document.getElementById('vhMonthlyRate').value = vMaster?.monthly_rate ?? '';
+  document.getElementById('vhProrate').checked = !!vMaster?.prorate;
+  onRateTypeChange('vh');
   document.getElementById('vhNote').value = '';
-  document.getElementById('vhDrvList').innerHTML = activeDrvs().map(d=>`<option value="${escHtml(q0DrvOverrideLabel(d))}">`).join('');
-  renderVehicleHist();
+}
+// 履歴の✎から、その記録を入力欄に読み込んで直せるようにする（請求先・料金・期間）
+function editVehicleAssignment(id) {
+  const a = vehicleAssignments.find(x => x.id === id);
+  if (!a) return;
+  const d = drvs.find(x => x.id === a.driver_id);
+  document.getElementById('vhEditId').value = a.id;
+  document.getElementById('vhFormTitle').textContent = '記録を直す';
+  document.getElementById('vhSaveBtn').textContent = '更新する';
+  document.getElementById('vhCancelEditBtn').classList.remove('hide');
+  document.getElementById('vhDrvId').value = d ? d.id : '';
+  document.getElementById('vhDrvText').value = d ? q0DrvOverrideLabel(d) : '';
+  document.getElementById('vhStart').value = a.start_date || '';
+  document.getElementById('vhEnd').value = a.end_date || '';
+  document.getElementById('vhBillTo').value = a.bill_to || 'driver';
+  populateVhBillCompany(a.bill_company || '');
+  onVhBillToChange();
+  document.getElementById('vhRateType').value = a.rate_type === 'monthly' ? 'monthly' : 'daily';
+  document.getElementById('vhRate').value = a.daily_rate ?? '';
+  document.getElementById('vhMonthlyRate').value = a.monthly_rate ?? '';
+  document.getElementById('vhProrate').checked = !!a.prorate;
+  onRateTypeChange('vh');
+  document.getElementById('vhNote').value = a.note || '';
+  setTimeout(() => document.getElementById('vhFormTitle')?.scrollIntoView({behavior:'smooth', block:'center'}), 60);
 }
 // 車両側の車検・保険期限が(手動で)変わったら、現在この車を使っているドライバーの提出書類（既に提出済みの分のみ）の
 // 期限表示も合わせて更新する。ファイルの再アップロードは行わず、期限日付のみを同期する
@@ -541,7 +670,10 @@ async function saveVehicle() {
     status: document.getElementById('vStatus').value,
     vehicle_type: vType,
     lease_company: (vType === 'lease' && leaseCompanyVal && leaseCompanyVal !== '__new__') ? leaseCompanyVal : null,
+    rate_type: document.getElementById('vRateType').value === 'monthly' ? 'monthly' : 'daily',
     daily_rate: document.getElementById('vDailyRate').value === '' ? null : +document.getElementById('vDailyRate').value,
+    monthly_rate: document.getElementById('vMonthlyRate').value === '' ? null : +document.getElementById('vMonthlyRate').value,
+    prorate: document.getElementById('vProrate').checked,
     shaken_expiry: document.getElementById('vShakenExpiry').value || null,
     jibai_expiry: document.getElementById('vJibaiExpiry').value || null,
     nini_expiry: document.getElementById('vNiniExpiry').value || null,
@@ -724,10 +856,19 @@ function onVhDrvTextInput() {
   const match = drvs.find(d => q0DrvOverrideLabel(d) === val) || drvs.find(d => d.name === val);
   document.getElementById('vhDrvId').value = match ? match.id : '';
 }
-function vhDaysAndAmount(v) {
-  if (!v.end_date || !v.daily_rate) return null;
-  const days = Math.round((new Date(v.end_date) - new Date(v.start_date)) / 86400000) + 1;
-  return { days, amt: days * v.daily_rate };
+const VH_BILL_LABEL = { driver: 'ドライバーに請求', lease: 'リース会社に請求', none: '請求しない', pending: '請求先 未確定' };
+// 履歴1件の料金の書き方（日額は終わった記録の日数×日額まで出す）
+function vhRateLabel(v) {
+  if (v.rate_type === 'monthly') return v.monthly_rate ? `月額 ${yen(v.monthly_rate)}${v.prorate ? '（日割り）' : '（満額）'}` : '';
+  if (!v.daily_rate) return '';
+  if (!v.end_date) return `日額 ${yen(v.daily_rate)}`;
+  const days = dateSpanDays(v.start_date, v.end_date);
+  return `${days}日 × ${yen(v.daily_rate)} = ${yen(days * v.daily_rate)}`;
+}
+function vhBillBadge(v) {
+  const b = v.bill_to || 'driver';
+  const style = b === 'pending' ? 'background:var(--amber-bg);color:var(--amber-text)' : 'background:var(--gray-bg);color:var(--gray-text)';
+  return `<span class="bdg" style="${style}">${VH_BILL_LABEL[b] || b}${b === 'lease' && v.bill_company ? `：${escHtml(v.bill_company)}` : ''}</span>`;
 }
 function renderVehicleHist() {
   const list = vehicleAssignments.filter(v => nm(v.car) === nm(vhCurrentCar)).sort((a,b)=> (b.start_date||'').localeCompare(a.start_date||''));
@@ -736,7 +877,7 @@ function renderVehicleHist() {
   if (cur) {
     const d = drvs.find(x=>x.id===cur.driver_id);
     curArea.innerHTML = `<div style="padding:8px 10px;background:var(--blue-bg);border-radius:var(--radius);font-size:12.5px">
-      <b>現在の使用者:</b> ${d?escHtml(d.name):'（削除済みドライバー）'}　開始: ${cur.start_date}${cur.daily_rate?`　日額: ${yen(cur.daily_rate)}`:''}
+      <b>現在の使用者:</b> ${d?escHtml(d.name):'（削除済みドライバー）'}　開始: ${cur.start_date}${vhRateLabel(cur)?`　${vhRateLabel(cur)}`:''}
       <button class="btn sml" style="margin-left:8px" onclick="endVehicleAssignment(${cur.id})">終了する</button>
     </div>`;
   } else {
@@ -747,11 +888,10 @@ function renderVehicleHist() {
   histEl.innerHTML = list.map(v => {
     const d = drvs.find(x=>x.id===v.driver_id);
     const period = `${v.start_date}〜${v.end_date||'（使用中）'}`;
-    const calc = vhDaysAndAmount(v);
-    const amtLabel = calc ? `　${calc.days}日 × ${yen(v.daily_rate)} = ${yen(calc.amt)}` : '';
+    const amtLabel = vhRateLabel(v) ? `　${vhRateLabel(v)}` : '';
     return `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:5px 0;border-bottom:0.5px solid var(--border);font-size:12px">
-      <div>${d?escHtml(d.name):'（削除済みドライバー）'}<div style="font-size:10.5px;color:var(--text2)">${period}${amtLabel}${v.note?`　${escHtml(v.note)}`:''}</div></div>
-      <button class="ibtn" onclick="deleteVehicleAssignment(${v.id})" title="削除">🗑</button>
+      <div>${d?escHtml(d.name):'（削除済みドライバー）'} ${vhBillBadge(v)}<div style="font-size:10.5px;color:var(--text2)">${period}${amtLabel}${v.note?`　${escHtml(v.note)}`:''}</div></div>
+      <div style="display:flex;gap:1px;flex-shrink:0"><button class="ibtn" onclick="editVehicleAssignment(${v.id})" title="直す（請求先・料金・期間）">✎</button><button class="ibtn" onclick="deleteVehicleAssignment(${v.id})" title="削除">🗑</button></div>
     </div>`;
   }).join('');
 }
@@ -762,27 +902,44 @@ async function addVehicleAssignment() {
   if (!startDate) { alert('開始日を入力してください'); return; }
   const endDate = document.getElementById('vhEnd').value || null;
   if (endDate && endDate < startDate) { alert('終了日は開始日より後の日付にしてください'); return; }
-  const rateVal = document.getElementById('vhRate').value;
-  const dailyRate = rateVal === '' ? null : +rateVal;
-  const note = document.getElementById('vhNote').value.trim();
+  const num = id => { const s = document.getElementById(id).value; return s === '' ? null : +s; };
+  const billTo = document.getElementById('vhBillTo').value;
+  const billCompany = billTo === 'lease' ? (document.getElementById('vhBillCompany').value || null) : null;
+  if (billTo === 'lease' && !billCompany) { alert('請求するリース会社を選んでください'); return; }
+  const fields = {
+    driver_id: driverId, start_date: startDate, end_date: endDate,
+    rate_type: document.getElementById('vhRateType').value === 'monthly' ? 'monthly' : 'daily',
+    daily_rate: num('vhRate'), monthly_rate: num('vhMonthlyRate'),
+    prorate: document.getElementById('vhProrate').checked,
+    bill_to: billTo, bill_company: billCompany,
+    note: document.getElementById('vhNote').value.trim(),
+  };
+  const editId = +document.getElementById('vhEditId').value || null;
   showLoad(true);
   try {
-    // 同じ車番で使用中(end_date未設定)の記録が既にあれば、新しい開始日の前日で自動的に終了させる（引き継ぎ）
-    const openOnes = vehicleAssignments.filter(v => nm(v.car)===nm(vhCurrentCar) && !v.end_date);
-    for (const o of openOnes) {
-      const prevEnd = fmtLocalDate(new Date(new Date(startDate).getTime() - 86400000));
-      const {error: uErr} = await sb.from('vehicle_assignments').update({end_date: prevEnd}).eq('id', o.id);
-      if (!uErr) o.end_date = prevEnd;
+    if (editId) {
+      const {data, error} = await sb.from('vehicle_assignments').update(fields).eq('id', editId).select().single();
+      if (error) throw error;
+      const idx = vehicleAssignments.findIndex(x => x.id === editId);
+      if (idx >= 0) vehicleAssignments[idx] = data;
+      invalidateVehicleAssignIndex();
+      addLog('車両乗務履歴の修正', `${vhCurrentCar} ${drvs.find(d=>d.id===driverId)?.name||''}（${startDate}〜${endDate||''}・${VH_BILL_LABEL[billTo]||billTo}）`);
+    } else {
+      // 同じ車番で使用中(end_date未設定)の記録が既にあれば、新しい開始日の前日で自動的に終了させる（引き継ぎ）
+      const openOnes = vehicleAssignments.filter(v => nm(v.car)===nm(vhCurrentCar) && !v.end_date);
+      for (const o of openOnes) {
+        const prevEnd = fmtLocalDate(new Date(new Date(startDate).getTime() - 86400000));
+        const {error: uErr} = await sb.from('vehicle_assignments').update({end_date: prevEnd}).eq('id', o.id);
+        if (!uErr) o.end_date = prevEnd;
+      }
+      // 終了日まで分かっている場合（短期の貸出予定など）は、その場で終了済みとして記録できる
+      const {data, error} = await sb.from('vehicle_assignments').insert({car: vhCurrentCar, ...fields}).select().single();
+      if (error) throw error;
+      vehicleAssignments.push(data);
+      invalidateVehicleAssignIndex();
+      addLog('車両乗務履歴登録', `${vhCurrentCar} → ${drvs.find(d=>d.id===driverId)?.name||''}（${startDate}〜${endDate||''}）`);
     }
-    // 終了日まで分かっている場合（短期の貸出予定など）は、その場で終了済みとして記録できる
-    const {data, error} = await sb.from('vehicle_assignments').insert({car: vhCurrentCar, driver_id: driverId, start_date: startDate, end_date: endDate, daily_rate: dailyRate, note}).select().single();
-    if (error) throw error;
-    vehicleAssignments.push(data);
-    invalidateVehicleAssignIndex();
-    addLog('車両乗務履歴登録', `${vhCurrentCar} → ${drvs.find(d=>d.id===driverId)?.name||''}（${startDate}〜${endDate||''}）`);
-    document.getElementById('vhDrvId').value=''; document.getElementById('vhDrvText').value='';
-    document.getElementById('vhEnd').value='';
-    document.getElementById('vhRate').value=''; document.getElementById('vhNote').value='';
+    resetVhForm();
     renderVehicleHist();
     renderVehicles(); // 背後の車両一覧「現在の使用者」列も即座に更新する
     showT('記録しました');
@@ -810,7 +967,7 @@ async function endVehicleAssignment(id) {
     renderVehicles(); // 使用者が「なし」に変わるため車両一覧も更新する
     // 日額リース料は支払集計(runAggPay)・支払明細書作成時にvehicleRentalForPeriod()が
     // この乗務履歴から対象期間分を自動計算するため、ここで控除を確定登録する必要はない
-    showT(vhDaysAndAmount(v) ? '終了しました（対象期間の支払集計に日額リース料が自動反映されます）' : '終了しました');
+    showT(vhRateLabel(v) && billsDriver(v) ? '終了しました（対象期間の支払集計に車両代が自動反映されます）' : '終了しました');
   } catch(e) { showT('更新エラー: '+e.message, 'ter'); }
   showLoad(false);
 }
@@ -850,33 +1007,93 @@ function otherItemsForPeriod(drv, from, to) {
   const lease = drv ? vehicleRentalForPeriod(drv.id, from, to) : {total:0, items:[]};
   const items = [
     ...((drv?.other_deductions)||[]).map(od => ({name: od.name||'', amount: Number(od.amount)||0})),
-    ...lease.items.map(it => ({name: `代車リース代（${it.car} ${it.from}〜${it.to}）`, amount: -Math.abs(it.amt)})),
+    ...lease.items.map(it => ({name: `${it.monthly ? '車両リース代' : '代車リース代'}（${it.car} ${it.from}〜${it.to}${it.monthly ? (it.prorate ? '・月額日割り' : '・月額') : ''}）`, amount: -Math.abs(it.amt)})),
   ];
   return { items, total: items.reduce((s,it)=>s+it.amount, 0), overridden: false, lease };
 }
 
-// 車両乗務履歴（日額設定のある代車の貸し出し記録）から、指定した支払集計期間に重なる日数分の
-// リース料を自動計算する。ドライバーが今も使用中（end_date未設定）の場合は「今日まで」を仮の終了日として概算する。
-// 「終了する」操作を待たずに、対象期間に含まれる日数分がそのまま支払集計・支払明細書に反映される。
-function vehicleRentalForPeriod(driverId, from, to) {
+const dateSpanDays = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000) + 1;
+/* 乗務履歴1件の、集計期間 [from, to] にかかる料金。
+   日額は重なった日数 × 日額。月額は集計期間を1か月分とみなし、期間に1日でも重なれば満額、
+   「日割り」にした記録だけ 月額 × 重なった日数 ÷ 集計期間の日数 にする（月をまたぐ集計期間でも二重に取らない）。
+   使用中（end_date未設定）の記録は今日までの分で概算する */
+function assignmentCharge(v, from, to) {
   const todayStr = fmtLocalDate(new Date());
   const periodFrom = from || '0000-01-01';
   const periodTo = to || todayStr;
+  const assignEnd = v.end_date || todayStr;
+  const overlapFrom = v.start_date > periodFrom ? v.start_date : periodFrom;
+  const overlapTo = assignEnd < periodTo ? assignEnd : periodTo;
+  if (overlapFrom > overlapTo) return null;
+  const days = dateSpanDays(overlapFrom, overlapTo);
+  if (days <= 0) return null;
+  const base = { car: v.car, days, ongoing: !v.end_date, from: overlapFrom, to: overlapTo };
+  if (v.rate_type === 'monthly') {
+    if (!v.monthly_rate) return null;
+    if (!v.prorate) return { ...base, monthly: true, prorate: false, rate: v.monthly_rate, amt: v.monthly_rate };
+    // 集計期間が指定されていないときは、その月の日数で割る
+    const periodDays = (from && to) ? dateSpanDays(from, to)
+      : new Date(+overlapTo.slice(0,4), +overlapTo.slice(5,7), 0).getDate();
+    return { ...base, monthly: true, prorate: true, rate: v.monthly_rate, amt: Math.round(v.monthly_rate * Math.min(days, periodDays) / periodDays) };
+  }
+  if (!v.daily_rate) return null;
+  return { ...base, monthly: false, rate: v.daily_rate, amt: days * v.daily_rate };
+}
+// 請求先がドライバーの記録だけをドライバーの控除にする。
+// 「未確定」（日報から自動で入った代車）・「リース会社」・「請求しない」は控除に入れない
+const billsDriver = v => !v.bill_to || v.bill_to === 'driver';
+
+// 車両乗務履歴から、指定した支払集計期間にかかる車両代を自動計算する（支払集計・支払明細書の「その他の項目」）。
+// 「終了する」操作を待たずに、対象期間に含まれる分がそのまま反映される。
+function vehicleRentalForPeriod(driverId, from, to) {
   let total = 0;
   const items = [];
   (vehicleAssignments||[]).forEach(v => {
-    if (v.driver_id !== driverId || !v.daily_rate) return;
-    const assignEnd = v.end_date || todayStr; // 使用中は今日までの分を概算計上する
-    const overlapFrom = v.start_date > periodFrom ? v.start_date : periodFrom;
-    const overlapTo = assignEnd < periodTo ? assignEnd : periodTo;
-    if (overlapFrom > overlapTo) return; // この期間と重ならない
-    const days = Math.round((new Date(overlapTo) - new Date(overlapFrom)) / 86400000) + 1;
-    if (days <= 0) return;
-    const amt = days * v.daily_rate;
-    total += amt;
-    items.push({ car: v.car, days, rate: v.daily_rate, amt, ongoing: !v.end_date, from: overlapFrom, to: overlapTo });
+    if (v.driver_id !== driverId || !billsDriver(v)) return;
+    const c = assignmentCharge(v, from, to);
+    if (!c) return;
+    total += c.amt;
+    items.push(c);
   });
   return { total, items };
+}
+
+// リース会社へ請求する分（リース会社の代車が無く、こちらの車を貸した記録）を会社ごとにまとめる
+function leaseBillingForPeriod(from, to) {
+  const groups = new Map();
+  (vehicleAssignments||[]).forEach(v => {
+    if (v.bill_to !== 'lease') return;
+    const c = assignmentCharge(v, from, to);
+    if (!c) return;
+    const name = v.bill_company || '（リース会社未設定）';
+    if (!groups.has(name)) groups.set(name, { name, total: 0, items: [] });
+    const g = groups.get(name);
+    g.total += c.amt;
+    g.items.push({ ...c, drv: drvs.find(d => d.id === v.driver_id)?.name || '' });
+  });
+  return [...groups.values()].sort((a,b) => nm(a.name).localeCompare(nm(b.name), 'ja'));
+}
+function openLeaseBillingM() {
+  const now = new Date();
+  const f = document.getElementById('lbFrom'), t = document.getElementById('lbTo');
+  if (!f.value) f.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  if (!t.value) t.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth()+1, 0));
+  renderLeaseBilling();
+  document.getElementById('mLeaseBill').classList.add('on');
+}
+function renderLeaseBilling() {
+  const from = document.getElementById('lbFrom').value, to = document.getElementById('lbTo').value;
+  const el = document.getElementById('lbList');
+  if (!from || !to || from > to) { el.innerHTML = '<div style="font-size:12px;color:var(--text2)">期間を指定してください</div>'; return; }
+  const groups = leaseBillingForPeriod(from, to);
+  if (!groups.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:12px 0">この期間にリース会社へ請求する記録はありません</div>'; return; }
+  el.innerHTML = groups.map(g => `<div class="card" style="padding:9px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-weight:600;font-size:13px"><span>${escHtml(g.name)}</span><span>${yen(g.total)}</span></div>
+      ${g.items.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--text2);margin-top:4px;flex-wrap:wrap">
+        <span>🚙 ${escHtml(it.car)}　${escHtml(it.drv)}　${it.from}〜${it.to}${it.ongoing ? '（使用中・今日まで）' : ''}</span>
+        <span>${it.monthly ? `月額${it.prorate ? '日割り' : ''} ${yen(it.rate)}` : `${it.days}日 × ${yen(it.rate)}`} = ${yen(it.amt)}</span>
+      </div>`).join('')}
+    </div>`).join('');
 }
 async function deleteVehicleAssignment(id) {
   if (!confirm('この履歴を削除しますか？')) return;

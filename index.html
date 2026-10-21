@@ -1050,6 +1050,7 @@ try {
         </select>
       </div>
       <div style="display:flex;gap:6px">
+        <button class="btn" onclick="openLeaseBillingM()" title="リース会社の代車が無く、こちらの車を貸した分を会社ごとにまとめます">リース会社への請求</button>
         <button class="btn hide" id="bImportCars" onclick="importUnregisteredCars()" title="ドライバー登録にあって車両管理に無い車番をまとめて登録します">↓ 未登録の車番を取り込む</button>
         <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
       </div>
@@ -1363,6 +1364,16 @@ try {
               <option value="">選択</option>
             </select>
             <input type="text" id="drCarCustom" placeholder="車両番号を入力" style="display:none;margin-top:4px" onchange="prefillOdoStart(this.value.trim());prefillStartLoc()">
+            <div id="drCarTypeWrap" style="display:none;margin-top:4px">
+              <select id="drCarType" onchange="onDrCarTypeChange()">
+                <option value="">車の種別を選択</option>
+                <option value="brought">持ち込み（自分・協力会社の車）</option>
+                <option value="company">会社の車両</option>
+                <option value="lease">リース車両</option>
+              </select>
+              <input type="text" id="drCarLease" placeholder="リース会社名" style="display:none;margin-top:4px">
+            </div>
+            <div id="drCarHint" style="display:none;font-size:10.5px;color:var(--amber-text);margin-top:3px">普段と違う車です。代車として記録されます。</div>
           </div>
         </div>
         <div class="fld"><label>運転者名</label>
@@ -2659,6 +2670,15 @@ try {
         <div id="cTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
         <div style="display:flex;gap:5px"><input type="text" id="dCi" placeholder="例: 品川300あ1234" style="flex:1" onkeydown="if(event.key==='Enter'){addTag();event.preventDefault()}"><button class="btn" onclick="addTag()">＋ 追加</button></div>
       </div>
+      <div class="fld"><label>車の種別（車両管理の台帳に反映）</label>
+        <select id="dCarType" style="width:100%">
+          <option value="">未分類のまま（あとで車両管理で決める）</option>
+          <option value="brought">持ち込み（ドライバー・協力会社の所有）</option>
+          <option value="company">会社の車両（自社所有）</option>
+          <option value="lease">リース車両（リース会社から借用）</option>
+        </select>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">※ 担当車番は車両管理の台帳にも自動で入ります。ここで選んだ種別は、台帳でまだ未分類の車にだけ反映します。</div>
+      </div>
       <div class="fld"><label>車両の使用開始日（任意・車両管理の乗務履歴に記録します）</label>
         <input type="date" id="dCarStart">
         <div style="font-size:10px;color:var(--text2);margin-top:2px">※ 上の車番のうち、まだ誰も使用していないものを「この日から使用開始」として車両管理に記録します。<br>
@@ -2939,9 +2959,9 @@ try {
         <div class="fld"><label>種別</label>
           <select id="vType" style="width:100%" onchange="onVehicleTypeChange()">
             <option value="unclassified" disabled>未分類（要確認）</option>
-            <option value="company">自社所有</option>
-            <option value="brought">持ち込み（ドライバー所有）</option>
-            <option value="lease">リース</option>
+            <option value="brought">持ち込み（ドライバー・協力会社の所有）</option>
+            <option value="company">会社の車両（自社所有）</option>
+            <option value="lease">リース車両（リース会社から借用）</option>
           </select>
         </div>
       </div>
@@ -2949,7 +2969,16 @@ try {
         <label>リース会社</label>
         <select id="vLeaseCompany" style="width:100%" onchange="onVehicleLeaseSelChange()"></select>
       </div>
-      <div class="fld"><label>日額リース料（円・任意。自社の代車として貸す場合）</label><input type="number" id="vDailyRate" placeholder="例: 1500" style="width:100%"></div>
+      <div style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px">
+        <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">貸すときの料金（任意）</div>
+        <div style="font-size:10.5px;color:var(--text2);margin-bottom:6px">代車として貸したとき、乗務履歴に最初から入る料金です。記録ごとに変えられます。</div>
+        <div class="g2">
+          <div class="fld"><label>料金の決め方</label><select id="vRateType" onchange="onRateTypeChange('v')" style="width:100%"><option value="daily">日額</option><option value="monthly">月額</option></select></div>
+          <div class="fld" id="vDailyRateWrap"><label>日額（円）</label><input type="number" id="vDailyRate" placeholder="例: 1500" style="width:100%"></div>
+          <div class="fld" id="vMonthlyRateWrap" style="display:none"><label>月額（円）</label><input type="number" id="vMonthlyRate" placeholder="例: 30000" style="width:100%"></div>
+        </div>
+        <label id="vProrateWrap" style="display:none;font-size:12px"><input type="checkbox" id="vProrate"> 集計期間の途中から・途中までの分は日割りにする（チェックなしは満額）</label>
+      </div>
 
       <div style="border-top:0.5px solid var(--border2);margin-top:12px;padding-top:10px">
         <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">車検・保険の期限</div>
@@ -2968,10 +2997,11 @@ try {
       <!-- 使用者・乗務履歴。車番が確定している（＝保存済みの）車両でだけ操作できる -->
       <div id="vhSection" style="border-top:0.5px solid var(--border);margin-top:14px;padding-top:12px">
         <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:2px">使用者・乗務履歴</div>
-        <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">この車を過去〜現在誰が使用したかを記録します。受注入力・請求明細の自動判定（車番→ドライバー）には影響しません。車番とドライバーの紐付け自体はドライバー登録で管理してください。</div>
+        <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">日報を出すと自動で記録されます。普段と違う車（代車）は請求先「未確定」で入るので、✎で請求先を決めてください。請求明細の車番→ドライバーの判定にも、この履歴が日付ごとに使われます。</div>
         <div id="vhCurrentArea" style="margin-bottom:12px"></div>
         <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px">
-          <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">新しい乗務を記録</div>
+          <input type="hidden" id="vhEditId">
+          <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px" id="vhFormTitle">新しい乗務を記録</div>
           <div class="fld"><label>ドライバー</label>
             <input type="hidden" id="vhDrvId">
             <input type="text" id="vhDrvText" list="vhDrvList" placeholder="ドライバー名を入力…（候補から選択）" autocomplete="off" oninput="onVhDrvTextInput()" style="width:100%">
@@ -2982,10 +3012,25 @@ try {
             <div class="fld"><label>終了日（任意・分かっていれば）</label><input type="date" id="vhEnd" style="width:100%"></div>
           </div>
           <div class="g2">
-            <div class="fld"><label>日額リース料（円・任意）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
-            <div class="fld"><label>備考（任意）</label><input type="text" id="vhNote" style="width:100%"></div>
+            <div class="fld"><label>請求先</label>
+              <select id="vhBillTo" onchange="onVhBillToChange()" style="width:100%">
+                <option value="driver">ドライバー（支払明細で控除）</option>
+                <option value="lease">リース会社</option>
+                <option value="none">請求しない</option>
+                <option value="pending">未確定</option>
+              </select>
+            </div>
+            <div class="fld" id="vhBillCompanyWrap" style="display:none"><label>請求するリース会社</label><select id="vhBillCompany" style="width:100%"></select></div>
           </div>
-          <button class="btn pri sml" onclick="addVehicleAssignment()">＋ 記録する</button>
+          <div class="g2">
+            <div class="fld"><label>料金の決め方</label><select id="vhRateType" onchange="onRateTypeChange('vh')" style="width:100%"><option value="daily">日額</option><option value="monthly">月額</option></select></div>
+            <div class="fld" id="vhDailyRateWrap"><label>日額（円・任意）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
+            <div class="fld" id="vhMonthlyRateWrap" style="display:none"><label>月額（円・任意）</label><input type="number" id="vhMonthlyRate" placeholder="例: 30000" style="width:100%"></div>
+          </div>
+          <label id="vhProrateWrap" style="display:none;font-size:12px;margin-bottom:6px"><input type="checkbox" id="vhProrate"> 集計期間の途中から・途中までの分は日割りにする（チェックなしは満額）</label>
+          <div class="fld"><label>備考（任意）</label><input type="text" id="vhNote" style="width:100%"></div>
+          <button class="btn pri sml" id="vhSaveBtn" onclick="addVehicleAssignment()">＋ 記録する</button>
+          <button class="btn sml hide" id="vhCancelEditBtn" onclick="resetVhForm()">編集をやめる</button>
         </div>
         <div style="margin-top:12px">
           <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">履歴</div>
@@ -2996,6 +3041,20 @@ try {
         使用者・乗務履歴は、この車両を保存してから記録できます。
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: リース会社への請求（請求先「リース会社」の乗務履歴を会社ごとに集計） -->
+<div class="overlay" id="mLeaseBill">
+  <div class="modal" style="width:620px;max-width:96vw">
+    <div class="mh">リース会社への請求 <button class="ibtn" onclick="closeM('mLeaseBill')">✕</button></div>
+    <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
+      <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">リース会社の代車が無く、こちらの車を貸した記録（乗務履歴の請求先が「リース会社」）を会社ごとにまとめます。月額は期間を1か月分として計算します。</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <input type="date" id="lbFrom" onchange="renderLeaseBilling()"> 〜 <input type="date" id="lbTo" onchange="renderLeaseBilling()">
+      </div>
+      <div id="lbList"></div>
     </div>
   </div>
 </div>
@@ -3285,9 +3344,9 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=573b4bd1"></script>
+<script src="js/01-core.js?v=1783293e"></script>
 
-<script src="js/02-drivers-pay.js?v=44a09500"></script>
+<script src="js/02-drivers-pay.js?v=f5936d02"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
@@ -3340,7 +3399,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=bc36a34d"></script>
+<script src="js/03-dashboard-daily.js?v=fb092539"></script>
 
 
 <script src="js/04-monthly.js?v=9bc028b1"></script>
@@ -3361,7 +3420,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=88e43106"></script>
+<script src="js/10-settings.js?v=d194fd35"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

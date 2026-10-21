@@ -2602,6 +2602,11 @@ async function initDailyForm(reportId=null) {
   }
   carCustom.style.display = 'none';
   carCustom.value = '';
+  document.getElementById('drCarTypeWrap').style.display = 'none';
+  document.getElementById('drCarType').value = '';
+  document.getElementById('drCarLease').value = '';
+  document.getElementById('drCarLease').style.display = 'none';
+  document.getElementById('drCarHint').style.display = 'none';
 
   // 取引先（名前で候補表示・手入力可能なdatalist方式）。
   // ドライバーはclientsテーブルを直接読めない（RLSで他社情報を遮断済み）ため、
@@ -2625,6 +2630,11 @@ async function initDailyForm(reportId=null) {
         carSel.value = '__custom__';
         carCustom.style.display = 'block';
         carCustom.value = r.car;
+        document.getElementById('drCarTypeWrap').style.display = 'block';
+        document.getElementById('drCarType').value = r.car_type || '';
+        document.getElementById('drCarLease').value = r.car_lease_company || '';
+        onDrCarTypeChange();
+        document.getElementById('drCarHint').style.display = 'block';
       } else {
         carSel.value = r.car || '';
       }
@@ -2777,6 +2787,12 @@ function onDrCarChange() {
     const showCustom = carSel.value === '__custom__';
     carCustom.style.display = showCustom ? 'block' : 'none';
     if (showCustom) carCustom.focus(); else carCustom.value = '';
+    document.getElementById('drCarTypeWrap').style.display = showCustom ? 'block' : 'none';
+    if (!showCustom) { document.getElementById('drCarType').value = ''; onDrCarTypeChange(); }
+    // 普段の車（ドライバー登録の車番）以外は代車として乗務履歴に入ることを知らせる
+    const ownCars = me.driver_data?.cars || [];
+    const unusual = carSel.value && (showCustom || !ownCars.some(c => nm(c) === nm(carSel.value)));
+    document.getElementById('drCarHint').style.display = unusual ? 'block' : 'none';
   } else {
     const opt = carSel.options[carSel.selectedIndex];
     document.getElementById('drName').value = opt ? (opt.dataset.name||'') : '';
@@ -2785,6 +2801,13 @@ function onDrCarChange() {
   if (carSel.value && carSel.value !== '__custom__') prefillOdoStart(carSel.value);
   // 管理者の代理入力では車番からドライバーが決まるため、出発地点もここで引き継ぐ
   if (me?.role !== 'driver') { prefillStartLoc(); checkDrSameDay(); }
+}
+
+function onDrCarTypeChange() {
+  const lease = document.getElementById('drCarType').value === 'lease';
+  const el = document.getElementById('drCarLease');
+  el.style.display = lease ? 'block' : 'none';
+  if (!lease) el.value = '';
 }
 
 function checkAlc(input, warnId) {
@@ -3441,6 +3464,8 @@ function validateDrStep(step) {
       const chk = checkNewCarPlate(car);
       if (!chk.ok) return chk.msg;
       const el = document.getElementById('drCarCustom'); if (el) el.value = chk.value;
+      // 手入力の車は、車両管理の台帳に入るときの種別を本人に選んでもらう
+      if (!v('drCarType')) return '車の種別（持ち込み・会社の車両・リース車両）を選んでください';
     }
     if (!v('drTenkoExecutor')) return '点呼執行者を入力してください（点呼記録簿の必須項目です）';
     if (v('drTenkoMethod') !== 'face' && !v('drTenkoMethodNote')) return '対面以外の点呼は、具体的な方法の記録が必要です';
@@ -3717,7 +3742,7 @@ async function submitDailyReport() {
   if (car && !carFromDropdown) {
     const knownCars = (me?.role === 'driver') ? (me.driver_data?.cars || []) : drvs.flatMap(d => d.cars || []);
     if (!knownCars.some(c => nm(c) === nm(car))) {
-      if (!confirm(`⚠ 車番「${car}」は登録車両と一致しませんでした（代車など）。このまま提出しますか？`)) return;
+      if (!confirm(`⚠ 車番「${car}」は普段の車（登録車両）と違います。\n代車としてこの日の使用が記録されます。このまま提出しますか？`)) return;
     }
   }
 
@@ -3735,9 +3760,13 @@ async function submitDailyReport() {
     return;
   }
 
+  // 手入力の車は本人が選んだ種別を一緒に送る。DB側（record_vehicle_usage）が台帳の未分類の車に反映する
+  const customCar = document.getElementById('drCar').value === '__custom__';
   const obj = {
     date,
     car,
+    car_type: customCar ? (document.getElementById('drCarType').value || null) : null,
+    car_lease_company: customCar && document.getElementById('drCarType').value === 'lease' ? (document.getElementById('drCarLease').value.trim() || null) : null,
     drv_id: resolvedDrvId,
     driver_name: document.getElementById('drName').value || '',
     start_time: startTime,

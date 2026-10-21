@@ -1474,6 +1474,183 @@ REVOKE EXECUTE ON FUNCTION public.set_my_month_defaults(jsonb) FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION public.set_my_month_defaults(jsonb) TO authenticated;
 
 -- ============================================================
+-- 車両台帳・乗務履歴の自動連動（2026-10-21）
+--   ・ドライバーの車番が増えたら（管理画面・招待URLの本人登録・ユーザー管理での紐づけ）台帳にも作る
+--   ・日報を出すと、その日その人がその車に乗ったことを乗務履歴に反映する
+--     普段の車＝終わりのない記録を1本。普段と違う車＝代車として日付つきで記録し、請求先「未確定」で入れる
+--   ・料金は日額／月額（満額・日割り）、請求先はドライバー／リース会社／請求しない／未確定
+-- ============================================================
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rate_type text NOT NULL DEFAULT 'daily';   -- 'daily' | 'monthly'
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS monthly_rate int;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS prorate boolean NOT NULL DEFAULT false;    -- 月額を集計期間の途中分だけ日割りにする
+ALTER TABLE vehicle_assignments ADD COLUMN IF NOT EXISTS rate_type text NOT NULL DEFAULT 'daily';
+ALTER TABLE vehicle_assignments ADD COLUMN IF NOT EXISTS monthly_rate int;
+ALTER TABLE vehicle_assignments ADD COLUMN IF NOT EXISTS prorate boolean NOT NULL DEFAULT false;
+ALTER TABLE vehicle_assignments ADD COLUMN IF NOT EXISTS bill_to text NOT NULL DEFAULT 'driver'; -- 'driver' | 'lease' | 'none' | 'pending'
+ALTER TABLE vehicle_assignments ADD COLUMN IF NOT EXISTS bill_company text;                     -- bill_to='lease' の請求先リース会社
+ALTER TABLE vehicle_assignments ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual';  -- 'manual' | 'daily_report' | 'driver_reg'
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS car_type text;           -- 手入力の車で本人が選んだ種別
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS car_lease_company text;
+
+CREATE OR REPLACE FUNCTION public.car_key(t text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT regexp_replace(translate(coalesce(t,''), '０１２３４５６７８９•･·．.', '0123456789・・・・・'), '[\\s　]', '', 'g')
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_plate_like(t text) RETURNS boolean
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT public.car_key(t) ~ '^[^0-9・]{1,5}[0-9][0-9A-Z]{2}[ぁ-ゖ]・{0,3}[0-9]{1,4}$'
+$$;
+
+CREATE OR REPLACE FUNCTION public.ensure_vehicle(p_car text, p_type text DEFAULT NULL, p_lease text DEFAULT NULL, p_note text DEFAULT '')
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE
+  v public.vehicles%rowtype;
+  t text := CASE WHEN p_type IN ('company','brought','lease') THEN p_type END;
+  new_id bigint;
+BEGIN
+  IF p_car IS NULL OR NOT public.is_plate_like(p_car) THEN RETURN NULL; END IF;
+  SELECT * INTO v FROM public.vehicles WHERE public.car_key(car) = public.car_key(p_car) ORDER BY id LIMIT 1;
+  IF v.id IS NULL THEN
+    INSERT INTO public.vehicles (car, status, vehicle_type, lease_company, note)
+    VALUES (public.car_key(p_car), 'active', coalesce(t, 'unclassified'),
+            CASE WHEN t = 'lease' THEN nullif(trim(coalesce(p_lease,'')), '') END, coalesce(p_note,''))
+    ON CONFLICT (car) DO NOTHING
+    RETURNING id INTO new_id;
+    RETURN new_id;
+  END IF;
+  -- 種別が未確認の車だけ、申告された種別で埋める（確定済みの種別は上書きしない）
+  IF t IS NOT NULL AND v.vehicle_type = 'unclassified' THEN
+    UPDATE public.vehicles
+       SET vehicle_type = t,
+           lease_company = CASE WHEN t = 'lease' THEN coalesce(nullif(trim(coalesce(p_lease,'')), ''), lease_company) ELSE lease_company END
+     WHERE id = v.id;
+  END IF;
+  RETURN v.id;
+END;
+$function$;
+
+-- 日報1枚ぶんの「その日その人がその車に乗った」を乗務履歴に反映する。
+-- 普段の車（ドライバー登録の車番）は終わりのない記録を1本だけ持ち、日報がその前の日付なら開始日を前へ延ばす。
+-- それ以外の車は代車として日付つきで記録し、3日以内の空きなら前後の記録につなげる。
+-- 代車は請求先「未確定」で入り、事務所が決めるまでドライバーには請求しない
+CREATE OR REPLACE FUNCTION public.record_vehicle_usage(p_drv int, p_car text, p_date date, p_type text DEFAULT NULL, p_lease text DEFAULT NULL)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE
+  k text;
+  v public.vehicles%rowtype;
+  a public.vehicle_assignments%rowtype;
+  usual boolean;
+  car_txt text;
+BEGIN
+  IF p_drv IS NULL OR p_date IS NULL OR coalesce(trim(p_car),'') = '' THEN RETURN; END IF;
+  k := public.car_key(p_car);
+  IF k LIKE '%--%' THEN RETURN; END IF;
+  PERFORM public.ensure_vehicle(p_car, p_type, p_lease, '日報の車番から自動作成');
+  SELECT * INTO v FROM public.vehicles WHERE public.car_key(car) = k ORDER BY id LIMIT 1;
+  car_txt := coalesce(v.car, trim(p_car));
+  usual := EXISTS (SELECT 1 FROM public.drivers d, unnest(d.cars) c WHERE d.id = p_drv AND public.car_key(c) = k);
+
+  IF EXISTS (SELECT 1 FROM public.vehicle_assignments x
+              WHERE x.driver_id = p_drv AND public.car_key(x.car) = k
+                AND x.start_date <= p_date AND (x.end_date IS NULL OR x.end_date >= p_date)) THEN
+    RETURN;
+  END IF;
+
+  IF usual THEN
+    SELECT * INTO a FROM public.vehicle_assignments x
+     WHERE x.driver_id = p_drv AND public.car_key(x.car) = k AND x.end_date IS NULL
+     ORDER BY x.start_date LIMIT 1;
+    IF a.id IS NOT NULL THEN
+      UPDATE public.vehicle_assignments SET start_date = p_date WHERE id = a.id;
+      RETURN;
+    END IF;
+  END IF;
+
+  SELECT * INTO a FROM public.vehicle_assignments x
+   WHERE x.driver_id = p_drv AND public.car_key(x.car) = k
+     AND x.end_date IS NOT NULL AND x.end_date BETWEEN p_date - 3 AND p_date - 1
+   ORDER BY x.end_date DESC LIMIT 1;
+  IF a.id IS NOT NULL THEN
+    UPDATE public.vehicle_assignments SET end_date = p_date WHERE id = a.id;
+    RETURN;
+  END IF;
+  SELECT * INTO a FROM public.vehicle_assignments x
+   WHERE x.driver_id = p_drv AND public.car_key(x.car) = k
+     AND x.start_date BETWEEN p_date + 1 AND p_date + 3
+   ORDER BY x.start_date LIMIT 1;
+  IF a.id IS NOT NULL THEN
+    UPDATE public.vehicle_assignments SET start_date = p_date WHERE id = a.id;
+    RETURN;
+  END IF;
+
+  IF usual THEN
+    INSERT INTO public.vehicle_assignments (car, driver_id, start_date, end_date, bill_to, source, note)
+    VALUES (car_txt, p_drv, p_date, NULL, 'driver', 'daily_report', '日報から自動作成（普段の車）');
+  ELSE
+    INSERT INTO public.vehicle_assignments (car, driver_id, start_date, end_date, rate_type, daily_rate, monthly_rate, prorate, bill_to, source, note)
+    VALUES (car_txt, p_drv, p_date, p_date, coalesce(v.rate_type,'daily'), v.daily_rate, v.monthly_rate, coalesce(v.prorate,false),
+            'pending', 'daily_report', '日報から自動作成（代車）');
+  END IF;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.trg_daily_report_vehicle_usage() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.car IS NOT DISTINCT FROM OLD.car AND NEW.date IS NOT DISTINCT FROM OLD.date
+     AND NEW.drv_id IS NOT DISTINCT FROM OLD.drv_id AND NEW.car_type IS NOT DISTINCT FROM OLD.car_type THEN
+    RETURN NEW;
+  END IF;
+  PERFORM public.record_vehicle_usage(NEW.drv_id, NEW.car, NEW.date, NEW.car_type, NEW.car_lease_company);
+  RETURN NEW;
+END;
+$function$;
+DROP TRIGGER IF EXISTS daily_reports_vehicle_usage ON daily_reports;
+CREATE TRIGGER daily_reports_vehicle_usage AFTER INSERT OR UPDATE ON daily_reports
+  FOR EACH ROW EXECUTE FUNCTION public.trg_daily_report_vehicle_usage();
+
+-- ドライバーの車番が増えたら（管理画面・招待URLからの本人登録のどちらでも）車両台帳にも作る
+CREATE OR REPLACE FUNCTION public.trg_drivers_ensure_vehicles() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE c text;
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.cars IS NOT DISTINCT FROM OLD.cars THEN RETURN NEW; END IF;
+  IF NEW.status = 'terminated' THEN RETURN NEW; END IF;
+  FOREACH c IN ARRAY coalesce(NEW.cars, '{}') LOOP
+    PERFORM public.ensure_vehicle(c, NULL, NULL, 'ドライバー登録の車番から自動作成');
+  END LOOP;
+  RETURN NEW;
+END;
+$function$;
+DROP TRIGGER IF EXISTS drivers_ensure_vehicles ON drivers;
+CREATE TRIGGER drivers_ensure_vehicles AFTER INSERT OR UPDATE OF cars ON drivers
+  FOR EACH ROW EXECUTE FUNCTION public.trg_drivers_ensure_vehicles();
+
+-- ユーザー管理でドライバーに紐づけたときも、そのドライバーの車番を台帳に入れる
+CREATE OR REPLACE FUNCTION public.trg_users_ensure_vehicles() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE c text;
+BEGIN
+  IF NEW.driver_id IS NULL THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND NEW.driver_id IS NOT DISTINCT FROM OLD.driver_id THEN RETURN NEW; END IF;
+  FOR c IN SELECT unnest(cars) FROM public.drivers WHERE id = NEW.driver_id AND status IS DISTINCT FROM 'terminated' LOOP
+    PERFORM public.ensure_vehicle(c, NULL, NULL, 'ドライバー登録の車番から自動作成');
+  END LOOP;
+  RETURN NEW;
+END;
+$function$;
+DROP TRIGGER IF EXISTS users_ensure_vehicles ON users;
+CREATE TRIGGER users_ensure_vehicles AFTER INSERT OR UPDATE OF driver_id ON users
+  FOR EACH ROW EXECUTE FUNCTION public.trg_users_ensure_vehicles();
+
+REVOKE ALL ON FUNCTION public.ensure_vehicle(text, text, text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.record_vehicle_usage(int, text, date, text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_daily_report_vehicle_usage() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_drivers_ensure_vehicles() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_users_ensure_vehicles() FROM PUBLIC, anon, authenticated;
+
+-- ============================================================
 -- 5. 最初のadminユーザー登録（1回だけ手動実行）
 --    事前にDashboard > Authenticationで管理者用アカウントを作成し、
 --    そのUUID（Auth users一覧のUIDカラム）を下記 'ここにauth_uid' に貼り替えて実行してください
