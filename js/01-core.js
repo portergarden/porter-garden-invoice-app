@@ -2722,7 +2722,7 @@ async function saveDrv(){
   let savedDrvId = eDrvId;   // 新規登録のときは挿入後に採番されたidを入れる
   showLoad(true);
   try{
-    if(eDrvId!==null){const prevCars=drvs.find(x=>x.id===eDrvId)?.cars||[];const{data,error}=await sb.from('drivers').update(obj).eq('id',eDrvId).select().single();if(error)throw error;const idx=drvs.findIndex(x=>x.id===eDrvId);if(idx>=0)drvs[idx]=data;invalidateDriverIndexes();addLog('ドライバー編集',name);await closeAssignmentsForRemovedCars(eDrvId,prevCars,pendTags);}
+    if(eDrvId!==null){const{data,error}=await sb.from('drivers').update(obj).eq('id',eDrvId).select().single();if(error)throw error;const idx=drvs.findIndex(x=>x.id===eDrvId);if(idx>=0)drvs[idx]=data;invalidateDriverIndexes();addLog('ドライバー編集',name);await loadVehicleAssignments();}
     else{
       obj.line_link_code=genDriverLinkCode(); // LINE通知の連携コードは新規登録時に発行
       const{data,error}=await sb.from('drivers').insert(obj).select().single();if(error)throw error;drvs.push(data);savedDrvId=data.id;invalidateDriverIndexes();addLog('ドライバー追加',name);
@@ -3759,6 +3759,7 @@ async function checkDriverInviteToken(token){
     document.getElementById('diName').value = '';
     document.getElementById('diTel').value = '';
     document.getElementById('diCi').value = '';
+    document.getElementById('diCarType').value = '';document.getElementById('diCarLease').value = '';document.getElementById('diCarLease').style.display = 'none';
     document.getElementById('diPartner').value = '';
     renderTags();
     document.getElementById('driverInviteForm').style.display = 'block';
@@ -3795,6 +3796,9 @@ async function submitDriverSelfRegistration(){
   if (!name) { errEl.textContent = 'お名前を入力してください'; return; }
   if (!tel) { errEl.textContent = '電話番号を入力してください'; return; }
   if (!pendTags.length) { errEl.textContent = '担当車番を1台以上追加してください'; return; }
+  const carType = document.getElementById('diCarType').value;
+  if (!carType) { errEl.textContent = '車の種別（持ち込み・ポーターガーデンの車・リース車）を選んでください'; return; }
+  const carLease = carType === 'lease' ? document.getElementById('diCarLease').value.trim() : '';
   // 入力された車番が既に登録済みでないか確認する（入力ミス防止）。
   // 誰に登録されているかは本人には見せず、車番が使用済みであることだけを伝える。
   // 1台を交代で使う場合は正しい入力なので、続行できるようにする
@@ -3827,7 +3831,7 @@ async function submitDriverSelfRegistration(){
   }
   showLoad(true);
   try{
-    const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel, p_cars: pendTags, p_partner_name: partner||null });
+    const { data, error } = await sb.rpc('submit_driver_registration', { p_token: currentInviteToken, p_name: name, p_tel: tel, p_cars: pendTags, p_partner_name: partner||null, p_car_type: carType, p_car_lease: carLease||null });
     if (error) throw error;
     // 電話番号または氏名が既存ドライバーと一致した場合、新規登録せず車番だけ既存レコードに追記している（二重登録防止）
     const row = Array.isArray(data) ? data[0] : data;

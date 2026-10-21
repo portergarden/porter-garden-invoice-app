@@ -126,6 +126,15 @@ try {
           <div id="diTags" style="display:flex;flex-wrap:wrap;gap:4px;min-height:24px;padding:4px;border:0.5px solid var(--border2);border-radius:var(--radius);margin-bottom:4px"></div>
           <div style="display:flex;gap:5px"><input type="text" id="diCi" placeholder="例: 品川300あ1234" style="flex:1" onkeydown="if(event.key==='Enter'){addTag('di');event.preventDefault()}"><button class="btn" onclick="addTag('di')">＋ 追加</button></div>
         </div>
+        <div class="fld"><label>その車はどれにあたりますか？ <span style="color:var(--red)">*</span></label>
+          <select id="diCarType" onchange="document.getElementById('diCarLease').style.display=this.value==='lease'?'block':'none'">
+            <option value="">選択してください</option>
+            <option value="brought">自分・自分の会社の車（持ち込み）</option>
+            <option value="company">ポーターガーデンの車</option>
+            <option value="lease">リース会社から借りている車</option>
+          </select>
+          <input type="text" id="diCarLease" placeholder="リース会社名" style="display:none;margin-top:4px">
+        </div>
         <div class="fld" style="position:relative">
           <label>所属協力会社（任意。自社所属の場合は空欄）</label>
           <input type="text" id="diPartner" placeholder="会社名を入力（2文字以上で候補表示）" autocomplete="off" oninput="onDiPartnerInput()" onblur="setTimeout(hideDiPartnerSuggestions,150)">
@@ -3344,9 +3353,9 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=1783293e"></script>
+<script src="js/01-core.js?v=dccb7dc7"></script>
 
-<script src="js/02-drivers-pay.js?v=f5936d02"></script>
+<script src="js/02-drivers-pay.js?v=4f787098"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
@@ -3420,7 +3429,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=d194fd35"></script>
+<script src="js/10-settings.js?v=1387119c"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

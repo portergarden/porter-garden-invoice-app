@@ -115,18 +115,6 @@ async function syncVehiclesFromDriverCars(cars, type, leaseCompany) {
     } catch(e) { console.warn('syncVehiclesFromDriverCars:', e.message); }
   }
 }
-// ドライバー登録から外した車番の「使用中」の記録を、昨日で終わらせる（今日から始まった記録はその日で終える）
-async function closeAssignmentsForRemovedCars(drvId, oldCars, newCars) {
-  const removed = (oldCars||[]).filter(c => !(newCars||[]).some(n => carKey(n) === carKey(c)));
-  if (!removed.length) return;
-  const yesterday = fmtLocalDate(new Date(Date.now() - 86400000));
-  for (const a of vehicleAssignments.filter(x => x.driver_id === drvId && !x.end_date && removed.some(c => carKey(c) === carKey(x.car)))) {
-    const end = a.start_date > yesterday ? a.start_date : yesterday;
-    const {error} = await sb.from('vehicle_assignments').update({end_date: end}).eq('id', a.id);
-    if (!error) a.end_date = end;
-  }
-  invalidateVehicleAssignIndex();
-}
 
 /* ドライバー登録で入力した車番を、車両管理の乗務履歴にも「使用開始」として記録する。
    これまでは車両台帳に車番が作られるだけで、誰がいつから乗っているかは

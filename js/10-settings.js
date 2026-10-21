@@ -663,8 +663,11 @@ $function$;
 -- 協力会社名が入力された場合は、既存を探して無ければ clients に kind='supplier' で作成して紐づける
 -- （会社番号(client_no)も自動採番する。協力会社は取引先マスタへ統合済みで、
 --   partner_companies には作らない）
+-- p_car_type / p_car_lease: 本人が選んだ車の種別（台帳でまだ未分類の車にだけ反映）。旧い5引数の版は消す（残すと呼び出しが曖昧になる）
+DROP FUNCTION IF EXISTS public.submit_driver_registration(text, text, text, text[], text);
 CREATE OR REPLACE FUNCTION public.submit_driver_registration(
-  p_token text, p_name text, p_tel text, p_cars text[], p_partner_name text DEFAULT NULL)
+  p_token text, p_name text, p_tel text, p_cars text[], p_partner_name text DEFAULT NULL,
+  p_car_type text DEFAULT NULL, p_car_lease text DEFAULT NULL)
 RETURNS TABLE(driver_id integer, merged boolean)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
 DECLARE
@@ -708,15 +711,15 @@ BEGIN
     SELECT * INTO v_existing FROM public.drivers WHERE tel = v_tel LIMIT 1;
     IF v_existing.id IS NULL THEN
       SELECT * INTO v_existing FROM public.drivers
-        WHERE regexp_replace(name, '\s', '', 'g') = regexp_replace(trim(p_name), '\s', '', 'g') LIMIT 1;
+        WHERE regexp_replace(name, '\\s', '', 'g') = regexp_replace(trim(p_name), '\\s', '', 'g') LIMIT 1;
     END IF;
   END IF;
 
   IF v_existing.id IS NOT NULL THEN
     v_merged_cars := coalesce(v_existing.cars, '{}');
     FOR v_car IN SELECT unnest(v_cars_clean) LOOP
-      IF NOT (regexp_replace(v_car, '\s', '', 'g') = ANY(
-           SELECT regexp_replace(x, '\s', '', 'g') FROM unnest(v_merged_cars) x)) THEN
+      IF NOT (regexp_replace(v_car, '\\s', '', 'g') = ANY(
+           SELECT regexp_replace(x, '\\s', '', 'g') FROM unnest(v_merged_cars) x)) THEN
         v_merged_cars := array_append(v_merged_cars, v_car);
       END IF;
     END LOOP;
@@ -727,22 +730,26 @@ BEGIN
     UPDATE public.driver_invites
        SET used_at = now(), driver_id = v_existing.id, created_new = false
      WHERE id = v_row.id;
+    -- 台帳は drivers のトリガーが作る。本人が選んだ種別は、台帳でまだ未分類の車にだけ反映する
+    FOREACH v_car IN ARRAY v_cars_clean LOOP
+      PERFORM public.ensure_vehicle(v_car, p_car_type, p_car_lease, 'ドライバー登録の車番から自動作成');
+    END LOOP;
     RETURN QUERY SELECT v_existing.id, true;
   ELSE
     SELECT COALESCE(MAX(supplier_id::int), 0) + 1 INTO v_next_supplier_id
-      FROM public.drivers WHERE supplier_id ~ '^\d+$';
+      FROM public.drivers WHERE supplier_id ~ '^\\d+$';
 
     v_company_id := NULL;
     v_partner_name := nullif(trim(coalesce(p_partner_name,'')),'');
     IF v_partner_name IS NOT NULL THEN
       -- 空白を無視して同名の会社を探す（「有限会社　小山運送」と「有限会社小山運送」を同じ会社とみなす）
       SELECT id INTO v_company_id FROM public.clients
-        WHERE regexp_replace(name, '\s', '', 'g') = regexp_replace(v_partner_name, '\s', '', 'g') LIMIT 1;
+        WHERE regexp_replace(name, '\\s', '', 'g') = regexp_replace(v_partner_name, '\\s', '', 'g') LIMIT 1;
       IF v_company_id IS NULL THEN
         LOOP
           v_attempt := v_attempt + 1;
           SELECT COALESCE(MAX(client_no::int), 0) + 1 INTO v_next_client_no
-            FROM public.clients WHERE client_no ~ '^\d+$';
+            FROM public.clients WHERE client_no ~ '^\\d+$';
           BEGIN
             INSERT INTO public.clients (name, client_no, kind)
             VALUES (v_partner_name, v_next_client_no::text, 'supplier') RETURNING id INTO v_company_id;
@@ -764,6 +771,9 @@ BEGIN
     UPDATE public.driver_invites
        SET used_at = now(), driver_id = v_new_driver_id, created_new = true
      WHERE id = v_row.id;
+    FOREACH v_car IN ARRAY v_cars_clean LOOP
+      PERFORM public.ensure_vehicle(v_car, p_car_type, p_car_lease, 'ドライバー登録の車番から自動作成');
+    END LOOP;
     RETURN QUERY SELECT v_new_driver_id, false;
   END IF;
 END;
@@ -789,7 +799,7 @@ BEGIN
     CONTINUE WHEN v_car IS NULL OR length(trim(v_car)) = 0;
     IF EXISTS (
       SELECT 1 FROM public.drivers d, unnest(d.cars) c
-      WHERE regexp_replace(c, '\s', '', 'g') = regexp_replace(trim(v_car), '\s', '', 'g')
+      WHERE regexp_replace(c, '\\s', '', 'g') = regexp_replace(trim(v_car), '\\s', '', 'g')
     ) THEN
       v_dups := array_append(v_dups, trim(v_car));
     END IF;
@@ -799,7 +809,7 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.check_driver_invite(text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.submit_driver_registration(text, text, text, text[], text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_driver_registration(text, text, text, text[], text, text, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.check_cars_registered(text, text[]) TO anon, authenticated;
 
 -- ============================================================
@@ -1421,12 +1431,12 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM driver_invites WHERE token = p_token AND used_at IS NULL AND expires_at >= now()
   ) THEN RETURN; END IF;
-  v_q := lower(regexp_replace(btrim(coalesce(p_query,'')), '\s', '', 'g'));
+  v_q := lower(regexp_replace(btrim(coalesce(p_query,'')), '\\s', '', 'g'));
   IF length(v_q) < 2 THEN RETURN; END IF;
   RETURN QUERY
     SELECT c.name FROM clients c
      WHERE c.kind IN ('supplier','branch')   -- 所属先になりうるのは協力会社と自社支店だけ
-       AND strpos(lower(regexp_replace(c.name, '\s', '', 'g')), v_q) > 0
+       AND strpos(lower(regexp_replace(c.name, '\\s', '', 'g')), v_q) > 0
      ORDER BY c.name LIMIT 20;
 END;
 $function$;
@@ -1610,12 +1620,40 @@ DROP TRIGGER IF EXISTS daily_reports_vehicle_usage ON daily_reports;
 CREATE TRIGGER daily_reports_vehicle_usage AFTER INSERT OR UPDATE ON daily_reports
   FOR EACH ROW EXECUTE FUNCTION public.trg_daily_report_vehicle_usage();
 
--- ドライバーの車番が増えたら（管理画面・招待URLからの本人登録のどちらでも）車両台帳にも作る
+-- 車番を外した・解約したとき: 使用中の記録を閉じ、誰も持たない「未確認の自動登録車」は台帳から外す
+CREATE OR REPLACE FUNCTION public.release_driver_cars(p_drv int, p_cars text[]) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE c text; k text;
+BEGIN
+  FOREACH c IN ARRAY coalesce(p_cars, '{}') LOOP
+    k := public.car_key(c);
+    UPDATE public.vehicle_assignments SET end_date = greatest(start_date, current_date - 1)
+     WHERE driver_id = p_drv AND public.car_key(car) = k AND end_date IS NULL;
+    IF NOT EXISTS (SELECT 1 FROM public.drivers d, unnest(d.cars) x
+                    WHERE d.status IS DISTINCT FROM 'terminated' AND public.car_key(x) = k)
+       AND NOT EXISTS (SELECT 1 FROM public.vehicle_assignments a WHERE public.car_key(a.car) = k AND a.end_date IS NULL) THEN
+      DELETE FROM public.vehicles WHERE public.car_key(car) = k AND vehicle_type = 'unclassified';
+    END IF;
+  END LOOP;
+END;
+$function$;
+
+-- ドライバーの車番が増えたら（管理画面・招待URLからの本人登録のどちらでも）車両台帳にも作る。
+-- 車番を外した・解約したときは release_driver_cars で後始末をする
 CREATE OR REPLACE FUNCTION public.trg_drivers_ensure_vehicles() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
-DECLARE c text;
+DECLARE c text; removed text[];
 BEGIN
-  IF TG_OP = 'UPDATE' AND NEW.cars IS NOT DISTINCT FROM OLD.cars THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.cars IS NOT DISTINCT FROM OLD.cars AND NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
+    IF NEW.status = 'terminated' AND OLD.status IS DISTINCT FROM 'terminated' THEN
+      removed := coalesce(OLD.cars, '{}') || coalesce(NEW.cars, '{}');
+    ELSE
+      SELECT array_agg(x) INTO removed FROM unnest(coalesce(OLD.cars, '{}')) x
+       WHERE public.car_key(x) NOT IN (SELECT public.car_key(y) FROM unnest(coalesce(NEW.cars, '{}')) y);
+    END IF;
+    PERFORM public.release_driver_cars(NEW.id, removed);
+  END IF;
   IF NEW.status = 'terminated' THEN RETURN NEW; END IF;
   FOREACH c IN ARRAY coalesce(NEW.cars, '{}') LOOP
     PERFORM public.ensure_vehicle(c, NULL, NULL, 'ドライバー登録の車番から自動作成');
@@ -1624,8 +1662,50 @@ BEGIN
 END;
 $function$;
 DROP TRIGGER IF EXISTS drivers_ensure_vehicles ON drivers;
-CREATE TRIGGER drivers_ensure_vehicles AFTER INSERT OR UPDATE OF cars ON drivers
+CREATE TRIGGER drivers_ensure_vehicles AFTER INSERT OR UPDATE OF cars, status ON drivers
   FOR EACH ROW EXECUTE FUNCTION public.trg_drivers_ensure_vehicles();
+
+-- 日報を消した・日付や車番を直したとき: 日報由来の乗務履歴の端を縮める（途中の日は触らない）
+CREATE OR REPLACE FUNCTION public.shrink_vehicle_usage(p_drv int, p_car text, p_date date) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+DECLARE k text; a public.vehicle_assignments%rowtype; nd date;
+BEGIN
+  IF p_drv IS NULL OR p_date IS NULL OR p_car IS NULL THEN RETURN; END IF;
+  k := public.car_key(p_car);
+  IF EXISTS (SELECT 1 FROM public.daily_reports r WHERE r.drv_id = p_drv AND public.car_key(r.car) = k AND r.date = p_date) THEN RETURN; END IF;
+  FOR a IN SELECT * FROM public.vehicle_assignments x
+            WHERE x.driver_id = p_drv AND public.car_key(x.car) = k AND x.source = 'daily_report'
+              AND (x.start_date = p_date OR x.end_date = p_date) LOOP
+    IF a.start_date = p_date THEN
+      SELECT min(r.date) INTO nd FROM public.daily_reports r
+       WHERE r.drv_id = p_drv AND public.car_key(r.car) = k AND r.date > p_date AND (a.end_date IS NULL OR r.date <= a.end_date);
+      IF nd IS NULL THEN DELETE FROM public.vehicle_assignments WHERE id = a.id;
+      ELSE UPDATE public.vehicle_assignments SET start_date = nd WHERE id = a.id; END IF;
+    ELSE
+      SELECT max(r.date) INTO nd FROM public.daily_reports r
+       WHERE r.drv_id = p_drv AND public.car_key(r.car) = k AND r.date < p_date AND r.date >= a.start_date;
+      IF nd IS NULL THEN DELETE FROM public.vehicle_assignments WHERE id = a.id;
+      ELSE UPDATE public.vehicle_assignments SET end_date = nd WHERE id = a.id; END IF;
+    END IF;
+  END LOOP;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.trg_daily_report_vehicle_shrink() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $function$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.car IS NOT DISTINCT FROM OLD.car AND NEW.date IS NOT DISTINCT FROM OLD.date
+     AND NEW.drv_id IS NOT DISTINCT FROM OLD.drv_id THEN RETURN NEW; END IF;
+  PERFORM public.shrink_vehicle_usage(OLD.drv_id, OLD.car, OLD.date);
+  RETURN NULL;
+END;
+$function$;
+DROP TRIGGER IF EXISTS daily_reports_vehicle_shrink ON daily_reports;
+CREATE TRIGGER daily_reports_vehicle_shrink AFTER UPDATE OR DELETE ON daily_reports
+  FOR EACH ROW EXECUTE FUNCTION public.trg_daily_report_vehicle_shrink();
+REVOKE ALL ON FUNCTION public.release_driver_cars(int, text[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.shrink_vehicle_usage(int, text, date) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_daily_report_vehicle_shrink() FROM PUBLIC, anon, authenticated;
 
 -- ユーザー管理でドライバーに紐づけたときも、そのドライバーの車番を台帳に入れる
 CREATE OR REPLACE FUNCTION public.trg_users_ensure_vehicles() RETURNS trigger
