@@ -129,9 +129,9 @@ try {
         <div class="fld"><label>その車はどれにあたりますか？ <span style="color:var(--red)">*</span></label>
           <select id="diCarType" onchange="document.getElementById('diCarLease').style.display=this.value==='lease'?'block':'none'">
             <option value="">選択してください</option>
-            <option value="brought">自分・自分の会社の車（持ち込み）</option>
-            <option value="company">ポーターガーデンの車</option>
-            <option value="lease">リース会社から借りている車</option>
+            <option value="brought">持ち込み（ドライバー・協力会社の所有）</option>
+            <option value="company">会社の車両（ポーターガーデンの所有）</option>
+            <option value="lease">リース車両（リース会社から借用）</option>
           </select>
           <input type="text" id="diCarLease" placeholder="リース会社名" style="display:none;margin-top:4px">
         </div>
@@ -1377,9 +1377,9 @@ try {
             <div id="drCarTypeWrap" style="display:none;margin-top:4px">
               <select id="drCarType" onchange="onDrCarTypeChange()">
                 <option value="">車の種別を選択</option>
-                <option value="brought">持ち込み（自分・協力会社の車）</option>
-                <option value="company">会社の車両</option>
-                <option value="lease">リース車両</option>
+                <option value="brought">持ち込み（ドライバー・協力会社の所有）</option>
+                <option value="company">会社の車両（ポーターガーデンの所有）</option>
+                <option value="lease">リース車両（リース会社から借用）</option>
               </select>
               <input type="text" id="drCarLease" placeholder="リース会社名" style="display:none;margin-top:4px">
             </div>
@@ -2684,7 +2684,7 @@ try {
         <select id="dCarType" style="width:100%">
           <option value="">未分類のまま（あとで車両管理で決める）</option>
           <option value="brought">持ち込み（ドライバー・協力会社の所有）</option>
-          <option value="company">会社の車両（自社所有）</option>
+          <option value="company">会社の車両（ポーターガーデンの所有）</option>
           <option value="lease">リース車両（リース会社から借用）</option>
         </select>
         <div style="font-size:10px;color:var(--text2);margin-top:2px">※ 担当車番は車両管理の台帳にも自動で入ります。ここで選んだ種別は、台帳でまだ未分類の車にだけ反映します。</div>
@@ -2972,7 +2972,7 @@ try {
           <select id="vType" style="width:100%" onchange="onVehicleTypeChange()">
             <option value="unclassified" disabled>未分類（要確認）</option>
             <option value="brought">持ち込み（ドライバー・協力会社の所有）</option>
-            <option value="company">会社の車両（自社所有）</option>
+            <option value="company">会社の車両（ポーターガーデンの所有）</option>
             <option value="lease">リース車両（リース会社から借用）</option>
           </select>
         </div>
@@ -3379,7 +3379,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=58e12570"></script>
+<script src="js/01-core.js?v=a52d7063"></script>
 
 <script src="js/02-drivers-pay.js?v=ea2e68b9"></script>
 

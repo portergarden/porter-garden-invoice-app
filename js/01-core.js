@@ -3809,7 +3809,7 @@ async function submitDriverSelfRegistration(){
   if (!tel) { errEl.textContent = '電話番号を入力してください'; return; }
   if (!pendTags.length) { errEl.textContent = '担当車番を1台以上追加してください'; return; }
   const carType = document.getElementById('diCarType').value;
-  if (!carType) { errEl.textContent = '車の種別（持ち込み・ポーターガーデンの車・リース車）を選んでください'; return; }
+  if (!carType) { errEl.textContent = '車の種別（持ち込み・会社の車両・リース車両）を選んでください'; return; }
   const carLease = carType === 'lease' ? document.getElementById('diCarLease').value.trim() : '';
   // 入力された車番が既に登録済みでないか確認する（入力ミス防止）。
   // 誰に登録されているかは本人には見せず、車番が使用済みであることだけを伝える。
