@@ -1860,9 +1860,13 @@ async function bulkExportPayExcelStacked() {
    確定するとPromiseが {name, cli}（cli=一致した協力会社レコード。詳細自動記載用）または null（宛先なし）で
    解決し、キャンセル時は undefined で解決する */
 let _kanAteResolve = null;
-function openKanAte(suggested) {
+let _kanAteOpenWin = false; // trueなら「この宛先で発行」を押した瞬間にPDF用のタブを開く
+let _kanAteWin = null;
+function openKanAte(suggested, openWin) {
   return new Promise(resolve => {
     _kanAteResolve = resolve;
+    _kanAteOpenWin = !!openWin;
+    _kanAteWin = null;
     const dl = document.getElementById('kanAteList');
     dl.innerHTML = clients.map(c=>`<option value="${escHtml(c.name)}">`).join('');
     document.getElementById('kanAteInput').value = suggested||'';
@@ -1891,11 +1895,14 @@ function updateKanAteInfo() {
 function confirmKanAte() {
   const name = document.getElementById('kanAteInput').value.trim();
   document.getElementById('mKanAte').classList.remove('on');
+  // クリックの処理の中で開く（後から開くとブラウザにポップアップとして止められる）
+  if (_kanAteOpenWin) { _kanAteWin = window.open('','_blank'); _kanAteOpenWin = false; }
   const resolve = _kanAteResolve; _kanAteResolve = null;
   if (resolve) resolve(name ? { name, cli: findKanAteClient() } : null);
 }
 function closeKanAte() {
   document.getElementById('mKanAte').classList.remove('on');
+  _kanAteOpenWin = false;
   const resolve = _kanAteResolve; _kanAteResolve = null;
   if (resolve) resolve(undefined);
 }
@@ -2158,18 +2165,15 @@ async function bulkCreatePaySlipPdfWithCover() {
   if (!groups.length) { alert('対象データがありません'); return; }
   const companies = [...new Set(groups.map(rows => recDrv(rows[0])?.company).filter(Boolean))];
   const suggested = companies.length === 1 ? companies[0] : '';
-  // クリック直後（ユーザー操作の一連の流れ）でなくなってからwindow.open()すると、
-  // ブラウザにポップアップとしてブロックされる（宛先確定モーダルでの入力待ちをawaitで
-  // 挟んだ後に開くと発生。「ポップアップがブロックされました」報告の原因だった）。
-  // そのためクリック時に空タブを先に開いておく。ただし先に開くと新規タブへフォーカスが
-  // 移ってしまい、宛先モーダルが元のタブに隠れたまま気付かれず応答待ちで止まって見える
-  // （実質「発行できない」ように見える）ため、開いた直後に元のタブへフォーカスを戻し、
-  // 宛先確定後にその開いたタブへ内容を書き込んで表に出す
-  const win = window.open('','_blank');
+  // PDFのタブは、宛先モーダルの「この宛先で発行」を押した瞬間に開く（confirmKanAte内）。
+  // 以前は最初のクリックで空タブを先に開き、元のタブへフォーカスを戻していたが、
+  // Edgeなどではフォーカスが戻らず、真っ白な about:blank のタブだけが表に残って
+  // 宛先モーダルが裏で待ったまま「発行できない」ように見えていた。
+  // ボタンを押した瞬間に開けばポップアップとしてブロックもされない
+  const addressee = await openKanAte(suggested, true);
+  const win = _kanAteWin; _kanAteWin = null;
+  if (addressee === undefined) return;
   if (!win) { alert('ポップアップがブロックされました。ブラウザのポップアップ許可設定をご確認ください'); return; }
-  window.focus();
-  const addressee = await openKanAte(suggested);
-  if (addressee === undefined) { win.close(); return; }
   if (!writeStatementWindow(win, () => buildStatementHtmlMultiWithCover('payment', groups, addressee))) return;
   win.focus();
   addLog('PDF出力', `支払明細書（鑑形式） 選択${checked.length}件${addressee?' 宛て:'+addressee.name:''}`);

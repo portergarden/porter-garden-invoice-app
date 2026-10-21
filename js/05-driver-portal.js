@@ -3323,8 +3323,15 @@ function writeStatementWindow(win, htmlBuilderFn) {
     win.document.close();
     return true;
   } catch(e) {
-    try { win.close(); } catch(_) {}
-    alert('PDFの作成に失敗しました: ' + (e && e.message ? e.message : e));
+    const msg = e && e.message ? e.message : String(e);
+    // 開いたタブを閉じると、表に出ていたのが白紙のタブで理由が分からないまま消える。
+    // 開いたタブ自体に理由を書いて残し、元の画面にも知らせる
+    try {
+      win.document.open();
+      win.document.write(`<!DOCTYPE html><meta charset="UTF-8"><title>PDFの作成に失敗しました</title><div style="font-family:sans-serif;padding:24px;line-height:1.8"><b>PDFの作成に失敗しました</b><br>${escHtml(msg)}<br><span style="color:#666;font-size:13px">このタブを閉じて、元の画面で再度お試しください。続く場合はこの文面を管理者に伝えてください。</span></div>`);
+      win.document.close();
+    } catch(_) { try { win.close(); } catch(__) {} }
+    alert('PDFの作成に失敗しました: ' + msg);
     console.error('PDF生成エラー:', e);
     return false;
   }
