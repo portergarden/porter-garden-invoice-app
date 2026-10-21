@@ -142,7 +142,7 @@ function getSlipMapping() {
 // pg6マッピング設定をSupabaseに保存（cli_idは'slip_generic'として保存）
 async function saveSlipMapping() {
   const m = getSlipMapping();
-  const name = prompt('このマッピング設定の名前を入力してください（例: 日通、佐川等）:');
+  const name = prompt('このマッピング設定の名前を入力してください（例: 〇〇運輸、△△急便など）:');
   if (!name) return;
   showLoad(true);
   try {

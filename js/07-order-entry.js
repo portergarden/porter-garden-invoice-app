@@ -147,7 +147,7 @@ function applyTemplate() {
 }
 
 async function saveAsTemplate() {
-  const name = prompt('テンプレート名を入力してください（例: ヤマト定期_田中）:');
+  const name = prompt('テンプレート名を入力してください（例: 〇〇定期_山田）:');
   if (!name) return;
   const t = {
     name,

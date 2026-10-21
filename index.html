@@ -1475,12 +1475,12 @@ try {
             <div style="font-size:10px;color:var(--text2);margin-top:2px">②の業務前点呼時刻と入れ合います</div>
           </div>
           <div class="fld"><label>出発地点（業務を始めた場所） <span style="color:var(--red)">*</span></label>
-            <input type="text" id="drStartLoc" placeholder="例: 自宅 ／ 仙台営業所">
+            <input type="text" id="drStartLoc" placeholder="例: 自宅 ／ 〇〇営業所">
             <div id="drStartLocHint" style="font-size:10px;color:var(--text2);margin-top:2px"></div>
           </div>
         </div>
         <div class="fld"><label>出発時のメーター（km・任意）</label>
-          <input type="number" id="drOdoStart" placeholder="例: 45230" min="0" step="1" oninput="onDrOdoChange()">
+          <input type="number" id="drOdoStart" placeholder="例: 12345" min="0" step="1" oninput="onDrOdoChange()">
           <div id="drOdoStartHint" style="font-size:10px;color:var(--text2);margin-top:2px">車のメーターの数字をそのまま入れてください。帰着時にも入れると走行距離が自動で計算されます</div>
         </div>
 
@@ -1575,13 +1575,13 @@ try {
           </div>
           <!-- 運行ごとのメーター（任意）。両方入れると下のチャーター欄の距離（km）を自動で計算する。次の運行の開始には前の運行の終了を入れておく -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="fld"><label>開始時のメーター（km・任意）</label><input type="number" id="drTripOdoStart" placeholder="例: 45230" min="0" step="1" oninput="onDrTripOdoChange()"></div>
-            <div class="fld"><label>終了時のメーター（km・任意）</label><input type="number" id="drTripOdoEnd" placeholder="例: 45267" min="0" step="1" oninput="onDrTripOdoChange()"></div>
+            <div class="fld"><label>開始時のメーター（km・任意）</label><input type="number" id="drTripOdoStart" placeholder="例: 12345" min="0" step="1" oninput="onDrTripOdoChange()"></div>
+            <div class="fld"><label>終了時のメーター（km・任意）</label><input type="number" id="drTripOdoEnd" placeholder="例: 12380" min="0" step="1" oninput="onDrTripOdoChange()"></div>
           </div>
           <div id="drTripOdoHint" style="font-size:10px;color:var(--text2);margin:-4px 0 6px">メーターを両方入れると、この運行の距離（km）が自動で入ります</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="fld"><label>積込・出発の場所</label><input type="text" id="drTripStartLoc" placeholder="例: 〇〇センター"></div>
-            <div class="fld"><label>納品・到着の場所</label><input type="text" id="drTripEndLoc" placeholder="例: 郡山センター ／ 配達エリア"></div>
+            <div class="fld"><label>納品・到着の場所</label><input type="text" id="drTripEndLoc" placeholder="例: △△センター ／ 配達エリア"></div>
           </div>
           <!-- 数量は業務の種類ごとに分けている。以前は「その他」が受け皿になり、
                何の数か分からなくなっていた -->
@@ -1607,7 +1607,7 @@ try {
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
                 <div class="fld"><label>件数（件）</label><input type="number" id="drQtyCharter" placeholder="0" min="0"></div>
                 <div class="fld"><label>個数（個）</label><input type="number" id="drQtyCharterPcs" placeholder="0" min="0"></div>
-                <div class="fld"><label>距離（km）</label><input type="number" id="drTripKm" placeholder="例: 37" min="0" step="0.1" title="距離で料金が決まる運行のときに入れてください。その日の運行が1件だけなら、帰着時の走行距離をそのまま使います"></div>
+                <div class="fld"><label>距離（km）</label><input type="number" id="drTripKm" placeholder="例: 35" min="0" step="0.1" title="距離で料金が決まる運行のときに入れてください。その日の運行が1件だけなら、帰着時の走行距離をそのまま使います"></div>
               </div>
             </div>
           </div>
@@ -1693,7 +1693,7 @@ try {
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px"><input type="checkbox" id="drHandoverFlag" onchange="toggleDrHandoverFields()"> 途中で別の人に業務を交替した</label>
         <div id="drHandoverFields" style="display:none;background:var(--bg2);border-radius:var(--radius);padding:8px;margin-bottom:10px">
           <div style="font-size:10px;color:var(--text2);margin-bottom:6px">交替した場合は、その地点と日時を残す必要があります（業務の記録の法定項目）。</div>
-          <div class="fld"><label>交替した相手</label><input type="text" id="drHandoverDriver" placeholder="例: 佐藤 太郎"></div>
+          <div class="fld"><label>交替した相手</label><input type="text" id="drHandoverDriver" placeholder="例: 山田 太郎"></div>
           <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:8px">
             <div class="fld"><label>交替した地点</label><input type="text" id="drHandoverLocation" placeholder="例: 〇〇センター"></div>
             <div class="fld"><label>交替した時刻</label><input type="time" id="drHandoverTime"></div>
@@ -1708,11 +1708,11 @@ try {
             <div style="font-size:10px;color:var(--text2);margin-top:2px">⑨の業務後点呼時刻と入れ合います</div>
           </div>
           <div class="fld"><label>帰着地点（業務を終えた場所） <span style="color:var(--red)">*</span></label>
-            <input type="text" id="drEndLoc" placeholder="例: 自宅 ／ 仙台営業所">
+            <input type="text" id="drEndLoc" placeholder="例: 自宅 ／ 〇〇営業所">
           </div>
         </div>
         <div class="fld"><label>帰着時のメーター（km・任意）</label>
-          <input type="number" id="drOdoEnd" placeholder="例: 45572" min="0" step="1" oninput="onDrOdoChange()">
+          <input type="number" id="drOdoEnd" placeholder="例: 12650" min="0" step="1" oninput="onDrOdoChange()">
         </div>
         <div class="fld"><label>走行距離（1日の合計・km） <span style="color:var(--red)">*</span></label>
           <input type="number" id="drKm" placeholder="0" min="0" step="0.1">
@@ -1739,7 +1739,7 @@ try {
           </div>
         </div>
         <div class="fld"><label>自動車・道路及び運行の状況（任意）</label>
-          <input type="text" id="drRouteReport" placeholder="例: 国道4号で渋滞。車両に異常なし">
+          <input type="text" id="drRouteReport" placeholder="例: 国道〇号で渋滞。車両に異常なし">
         </div>
         <div class="fld"><label>交替運転者への通告（任意）</label>
           <input type="text" id="drHandoverNote" placeholder="交替する運転者がいる場合に記録します">
@@ -1950,7 +1950,7 @@ try {
 <div class="overlay" id="mChatGroup">
   <div class="modal" style="width:520px;max-width:95vw">
     <div class="mh" id="mChatGroupH">新規グループ作成 <button class="ibtn" onclick="closeM('mChatGroup')">✕</button></div>
-    <div class="fld"><label>グループ名</label><input type="text" id="chatGroupNameInput" placeholder="例: 仙台チーム連絡"></div>
+    <div class="fld"><label>グループ名</label><input type="text" id="chatGroupNameInput" placeholder="例: 〇〇チーム連絡"></div>
     <div class="fld"><label>参加ドライバー</label>
       <div id="chatGroupDrvList" style="max-height:180px;overflow-y:auto;border:0.5px solid var(--border2);border-radius:var(--radius);padding:8px;display:flex;flex-direction:column;gap:4px"></div>
     </div>
@@ -2723,10 +2723,10 @@ try {
     <div class="mtab-panel" data-tab="pay">
       <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">支払明細書の控除設定（このドライバー固有）</div>
       <div class="g2">
-        <div class="fld"><label>業務手数料率（%）</label><input type="number" id="dFeeRate" placeholder="例: -15" step="0.1" title="運賃に対する手数料率。マイナスで控除"></div>
-        <div class="fld"><label>事務手数料（円）</label><input type="number" id="dAdminFee" placeholder="例: -10000" step="1"></div>
+        <div class="fld"><label>業務手数料率（%）</label><input type="number" id="dFeeRate" placeholder="例: -12" step="0.1" title="運賃に対する手数料率。マイナスで控除"></div>
+        <div class="fld"><label>事務手数料（円）</label><input type="number" id="dAdminFee" placeholder="例: -8000" step="1"></div>
       </div>
-      <div class="fld"><label>車両リース代（円・毎月。控除はマイナスで入力）</label><input type="number" id="dVehRental" placeholder="例: -30000" step="1">
+      <div class="fld"><label>車両リース代（円・毎月。控除はマイナスで入力）</label><input type="number" id="dVehRental" placeholder="例: -20000" step="1">
         <label style="font-size:12px;display:block;margin-top:4px"><input type="checkbox" id="dVehProrate"> 乗り始めた月・車を返した月は、乗っていた日数で日割りにする</label>
         <div style="font-size:10px;color:var(--text2);margin-top:2px">※ 車両代はここだけで決めます（車両カルテには料金はありません）。日割りの日数は、車両管理の乗務履歴から数えます。</div></div>
       <div class="fld"><label>リース会社（任意・車両代の支払先を集計する際に使用）</label><select id="dLeaseCompany" onchange="onLeaseCompanySelChange()"><option value="">（未設定）</option></select></div>
@@ -2762,7 +2762,7 @@ try {
         <div id="dOtherDeductions" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px"></div>
         <div style="display:flex;gap:5px">
           <input type="text" id="dOtherName" placeholder="名称（例: 保険料）" style="flex:2">
-          <input type="number" id="dOtherAmt" placeholder="金額（例: -5000）" step="1" style="flex:1">
+          <input type="number" id="dOtherAmt" placeholder="金額（例: -4000）" step="1" style="flex:1">
           <button class="btn" onclick="addOtherDeduction()">＋ 追加</button>
         </div>
       </div>
@@ -2928,11 +2928,11 @@ try {
           </select>
         </div>
         <div class="fld"><label>支払日（任意）</label>
-          <input type="text" id="cPayOutDay" list="dayPresetsList" placeholder="例: 末日 / 25（空欄可）" style="width:100%">
+          <input type="text" id="cPayOutDay" list="dayPresetsList" placeholder="例: 末日 / 27（空欄可）" style="width:100%">
         </div>
       </div>
       <div class="g2">
-        <div class="fld"><label>支払手数料率（%・任意）</label><input type="number" id="cPayOutFeeRate" placeholder="例: -7.5" step="0.1" title="この会社への支払から差し引く手数料の割合"></div>
+        <div class="fld"><label>支払手数料率（%・任意）</label><input type="number" id="cPayOutFeeRate" placeholder="例: -8" step="0.1" title="この会社への支払から差し引く手数料の割合"></div>
         <div class="fld"><label>振込先（任意）</label><input type="text" id="cBank" placeholder="例: 〇〇銀行 〇〇支店 普 1234567"></div>
       </div>
       <div style="border-top:0.5px solid var(--border2);margin:12px 0 0;padding-top:10px">
@@ -2976,7 +2976,7 @@ try {
     <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
 
       <div style="font-size:11.5px;color:var(--text2);font-weight:600;margin-bottom:6px">基本</div>
-      <div class="fld"><label>車番</label><input type="text" id="vCar" list="vCarSuggestList" placeholder="例: 仙台480れ141（ドライバー登録済みの車番は候補に出ます）" style="width:100%"><datalist id="vCarSuggestList"></datalist></div>
+      <div class="fld"><label>車番</label><input type="text" id="vCar" list="vCarSuggestList" placeholder="例: 仙台480れ1234（ドライバー登録済みの車番は候補に出ます）" style="width:100%"><datalist id="vCarSuggestList"></datalist></div>
       <div class="g2">
         <div class="fld"><label>状態</label>
           <select id="vStatus" style="width:100%">
@@ -3043,8 +3043,8 @@ try {
           </div>
           <div class="g2">
             <div class="fld"><label>料金の決め方</label><select id="vhRateType" onchange="onRateTypeChange('vh')" style="width:100%"><option value="daily">日額</option><option value="monthly">月額</option></select></div>
-            <div class="fld" id="vhDailyRateWrap"><label>日額（円・任意）</label><input type="number" id="vhRate" placeholder="例: 1500" style="width:100%"></div>
-            <div class="fld" id="vhMonthlyRateWrap" style="display:none"><label>月額（円・任意）</label><input type="number" id="vhMonthlyRate" placeholder="例: 30000" style="width:100%"></div>
+            <div class="fld" id="vhDailyRateWrap"><label>日額（円・任意）</label><input type="number" id="vhRate" placeholder="例: 1200" style="width:100%"></div>
+            <div class="fld" id="vhMonthlyRateWrap" style="display:none"><label>月額（円・任意）</label><input type="number" id="vhMonthlyRate" placeholder="例: 25000" style="width:100%"></div>
           </div>
           <label id="vhProrateWrap" style="display:none;font-size:12px;margin-bottom:6px"><input type="checkbox" id="vhProrate"> 集計期間の途中から・途中までの分は日割りにする（チェックなしは満額）</label>
           <div class="fld"><label>備考（任意）</label><input type="text" id="vhNote" style="width:100%"></div>
@@ -3075,7 +3075,7 @@ try {
         <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">読み替えを追加</div>
         <div class="fld"><label>取引先</label><select id="caCli" style="width:100%"></select></div>
         <div class="g2">
-          <div class="fld"><label>CSVに載ってくる車番</label><input type="text" id="caWrong" placeholder="例: 宮城480れ1657" style="width:100%"></div>
+          <div class="fld"><label>CSVに載ってくる車番</label><input type="text" id="caWrong" placeholder="例: 宮城480れ5678" style="width:100%"></div>
           <div class="fld"><label>実際の車番</label><select id="caCorrect" style="width:100%"></select></div>
         </div>
         <button class="btn pri sml" onclick="addCarAliasFromForm()">＋ 追加</button>
@@ -3089,10 +3089,10 @@ try {
   <div class="modal" style="width:520px;max-width:96vw">
     <div class="mh">車番の一括置換 <button class="ibtn" onclick="closeM('mCarRename')">✕</button></div>
     <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
-      <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">取り込み済みの請求・日報・乗務履歴・ドライバー登録・車両台帳の車番を、まとめて正しい表記に書き換えます（例: 仙台480れ2618 → 宮城480れ2618）。先に件数を確認してから実行できます。</div>
+      <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">取り込み済みの請求・日報・乗務履歴・ドライバー登録・車両台帳の車番を、まとめて正しい表記に書き換えます（例: 仙台480れ1234 → 宮城480れ1234）。先に件数を確認してから実行できます。</div>
       <div class="g2">
-        <div class="fld"><label>直す前の車番</label><input type="text" id="crOld" placeholder="例: 仙台480れ2618" style="width:100%"></div>
-        <div class="fld"><label>正しい車番</label><input type="text" id="crNew" placeholder="例: 宮城480れ2618" style="width:100%"></div>
+        <div class="fld"><label>直す前の車番</label><input type="text" id="crOld" placeholder="例: 仙台480れ1234" style="width:100%"></div>
+        <div class="fld"><label>正しい車番</label><input type="text" id="crNew" placeholder="例: 宮城480れ1234" style="width:100%"></div>
       </div>
       <button class="btn sml" onclick="previewCarRename()">件数を確認</button>
       <div id="crResult" style="font-size:12px"></div>
@@ -3156,7 +3156,7 @@ try {
       <div id="payAdjList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
       <div style="display:flex;gap:5px;margin-bottom:10px">
         <input type="text" id="payAdjName" placeholder="名称（例: 代車リース代）" style="flex:2">
-        <input type="number" id="payAdjAmt" placeholder="金額（控除は -5000）" step="1" style="flex:1">
+        <input type="number" id="payAdjAmt" placeholder="金額（控除は -4000）" step="1" style="flex:1">
         <button class="btn" onclick="addPayAdjItem()">＋ 追加</button>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;border-top:0.5px solid var(--border2);padding-top:9px;font-size:12px">
@@ -3269,7 +3269,7 @@ try {
 <div class="overlay" id="mPt">
   <div class="modal" style="width:440px">
     <div class="mh" id="mPtH">タスクを追加 <button class="ibtn" onclick="closeM('mPt')">✕</button></div>
-    <div class="fld"><label>タスク名</label><input type="text" id="ptTitle" placeholder="例: 仙台支店 請求書の内容確認"></div>
+    <div class="fld"><label>タスク名</label><input type="text" id="ptTitle" placeholder="例: 〇〇支店 請求書の内容確認"></div>
     <div class="g2">
       <div class="fld"><label>担当者</label><select id="ptAssignee" style="width:100%"></select></div>
       <div class="fld"><label>依頼者</label><select id="ptRequester" style="width:100%"></select></div>
@@ -3412,9 +3412,9 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=3da99a6f"></script>
+<script src="js/01-core.js?v=03818df4"></script>
 
-<script src="js/02-drivers-pay.js?v=3aed316c"></script>
+<script src="js/02-drivers-pay.js?v=ffd385ed"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
@@ -3467,7 +3467,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=b51fbf49"></script>
+<script src="js/03-dashboard-daily.js?v=aac9a94a"></script>
 
 
 <script src="js/04-monthly.js?v=e1fcf12b"></script>
@@ -3477,18 +3477,18 @@ try {
 
 
 
-<script src="js/06-schedules.js?v=11a82047"></script>
+<script src="js/06-schedules.js?v=632a7c51"></script>
 
 
-<script src="js/07-order-entry.js?v=75ec0de7"></script>
+<script src="js/07-order-entry.js?v=1e603a46"></script>
 
 
 <script src="js/08-templates.js?v=40a7203e"></script>
 
 
-<script src="js/09-analysis.js?v=e92203c5"></script>
+<script src="js/09-analysis.js?v=57be85cd"></script>
 
-<script src="js/10-settings.js?v=e4406b22"></script>
+<script src="js/10-settings.js?v=c6161cba"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

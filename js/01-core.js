@@ -405,34 +405,34 @@ const carKey=s=>nm(s).replace(/[•･]/g,'・');
 // 行ごとにdrvs.find()の線形探索を繰り返す(O(件数×ドライバー数))のを避け、体感速度を上げるため
 let _carDriverIndex = null, _idDriverIndex = null, _tailDrvIndex = null, _tailCarIndex = null;
 function invalidateDriverIndexes() { _carDriverIndex = null; _idDriverIndex = null; _tailDrvIndex = null; _tailCarIndex = null; }
-// フル表記車番（例: 仙台480あ2224）の末尾の一連指定番号（1〜4桁）を取り出す。
-// コムトラック等から取り込む実績は略式番号（2224）だけのことがあるため、突き合わせに使う
+// フル表記車番（例: 仙台480あ1234）の末尾の一連指定番号（1〜4桁）を取り出す。
+// コムトラック等から取り込む実績は略式番号（1234）だけのことがあるため、突き合わせに使う
 const carTailNumber = car => { const m = nm(car).match(/(\d{1,4})$/); return m ? m[1] : null; };
 // 解約済みドライバーを除いた一覧。今後の選択・新規登録が不要な画面（月報・カレンダー・各種プルダウン等）で使う
 function activeDrvs() { return drvs.filter(d => d.status !== 'terminated'); }
 /* 新しく登録する車番の形を確かめる。
    空白が入っていたり、分類番号（480など）が抜けていたりすると、請求・日報の車番と突き合わなくなる。
    形: 地名 ＋ 分類番号（3桁。例 480／30A）＋ ひらがな1字 ＋ 一連番号（1〜4桁。足りない桁は「・」でもよい）
-   例: 仙台480れ1936 ／ 宮城480り・882
+   例: 仙台480れ1234 ／ 宮城480り・567
    全角の数字・英字・中黒は半角などにそろえた値を返す。既に登録済みの車番には使わない（新規登録だけ） */
 function checkNewCarPlate(raw) {
   const s0 = String(raw ?? '');
-  if (/[\s\u3000]/.test(s0.trim()) ) return { ok:false, msg:'車番に空白が入っています。詰めて入力してください（例: 仙台480れ1936）' };
+  if (/[\s\u3000]/.test(s0.trim()) ) return { ok:false, msg:'車番に空白が入っています。詰めて入力してください（例: 仙台480れ1234）' };
   const v = s0.trim()
     .replace(/[０-９Ａ-Ｚａ-ｚ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
     .replace(/[•･·．.]/g, '・')
     .toUpperCase();
   if (!v) return { ok:false, msg:'車番を入力してください' };
-  if (/^\d+$/.test(v)) return { ok:false, msg:'番号だけでは登録できません。地名・分類番号・ひらがなも入れてください（例: 仙台480れ1936）' };
+  if (/^\d+$/.test(v)) return { ok:false, msg:'番号だけでは登録できません。地名・分類番号・ひらがなも入れてください（例: 仙台480れ1234）' };
   if (/-{2,}|ー{2,}|_{2,}/.test(v)) return { ok:false, msg:'番号が「----」のままです。ナンバープレートの番号を入れてください' };
   const m = v.match(/^([\u4E00-\u9FFF\u3041-\u3096\u30A1-\u30FA]{1,5}?)(\d[\dA-Z]{0,2})([\u3041-\u3096])(・{0,3})(\d{1,4})$/);
   if (!m) {
-    // 「仙台れ1362」のように分類番号だけが抜けている形は、そのことをはっきり伝える
+    // 「仙台れ1234」のように分類番号だけが抜けている形は、そのことをはっきり伝える
     const g = v.match(/^([一-鿿ぁ-ゖァ-ヺ]{1,5}?)([ぁ-ゖ])(・{0,3})(\d{1,4})$/);
-    if (g) return { ok:false, msg:`分類番号（480など3桁）が抜けています。「${g[1]}」と「${g[2]}」の間に入れてください（例: 仙台480れ1936）` };
-    return { ok:false, msg:'車番の形が正しくありません。「地名＋分類番号＋ひらがな＋番号」で入れてください（例: 仙台480れ1936）' };
+    if (g) return { ok:false, msg:`分類番号（480など3桁）が抜けています。「${g[1]}」と「${g[2]}」の間に入れてください（例: 仙台480れ1234）` };
+    return { ok:false, msg:'車番の形が正しくありません。「地名＋分類番号＋ひらがな＋番号」で入れてください（例: 仙台480れ1234）' };
   }
-  if (m[2].length < 3) return { ok:false, msg:`分類番号（480など3桁）が抜けているようです。「${m[1]}」の後ろに入れてください（例: 仙台480れ1936）` };
+  if (m[2].length < 3) return { ok:false, msg:`分類番号（480など3桁）が抜けているようです。「${m[1]}」の後ろに入れてください（例: 仙台480れ1234）` };
   if (m[4].length + m[5].length > 4) return { ok:false, msg:'番号が5桁以上になっています。ナンバープレートの番号（4桁まで）を確かめてください' };
   return { ok:true, value: v };
 }
@@ -613,20 +613,20 @@ const bySupplierId = (a, b) => {
    これを使わずに lkC() だけで引くと、ドライバーの画面では稼働先が常に空になる。 */
 const lkCliAny = id => (id ? (lkC(id) || (driverClientNames||[]).find(c=>c.id===id) || null) : null);
 // コムトラック等の「車番＋氏名」が1セルに入った値を車番と氏名に分ける。
-// 帳票によって「8467 大沼凌」のようにスペース区切りのものと、「9117山本健太郎」のように
+// 帳票によって「1234 山田太郎」のようにスペース区切りのものと、「9999山田太郎」のように
 // 区切りが無いものが混在するため、スペースだけに頼らず車番の形からも切り出す。
 // （スペース無しの場合に全体を車番とみなしてしまい、どのドライバーにも照合できず
 //   仕入先IDが請求書Noにフォールバックしてしまう不具合があったため）
 function splitCarInfoCell(carVal) {
   const s = String(carVal || '').trim();
   if (!s) return { carNum: '', drvName: '' };
-  // ① スペース区切りがあればそれを優先（例:「8467 大沼凌」「仙台480り9567 佐藤」）
+  // ① スペース区切りがあればそれを優先（例:「1234 山田太郎」「仙台480り5678 鈴木」）
   const sp = s.match(/^([^\s　]+)[\s　]+(.*)$/);
   if (sp) return { carNum: sp[1], drvName: sp[2].trim() };
-  // ② 区切り無しでフル表記車番が先頭にある場合（例:「仙台480り9117山本健太郎」）
+  // ② 区切り無しでフル表記車番が先頭にある場合（例:「仙台480り9999山田太郎」）
   const full = s.match(/^(\D{1,5}\d{1,3}[ぁ-んァ-ヶ]\d{1,4})(.+)$/);
   if (full) return { carNum: full[1], drvName: full[2].trim() };
-  // ③ 区切り無しで略式車番（数字）が先頭にある場合（例:「9117山本健太郎」）
+  // ③ 区切り無しで略式車番（数字）が先頭にある場合（例:「9999山田太郎」）
   const lead = s.match(/^(\d{1,4})(\D.*)$/);
   if (lead) return { carNum: lead[1], drvName: lead[2].trim() };
   return { carNum: s, drvName: '' };
@@ -668,8 +668,8 @@ const KANJI_VARIANTS = {'﨑':'崎','嵜':'崎','髙':'高','濵':'浜','濱':'�
 const nmv = s => nm(s).replace(/[﨑嵜髙濵濱邊邉齋齊斉冨廣惠槇瀨德栁眞曾]/g, c => KANJI_VARIANTS[c] || c);
 const isCorpName = s => /株式会社|有限会社|合同会社|（株）|\(株\)/.test(s || '');
 // 支払明細書の宛名からドライバーを特定する。
-// 宛名は「大沼　凌」だけでなく「グリーンドライブ株式会社（中野　圭）」「D-FORS株式会社　工藤将真」
-// 「杉浦　芙美子(岩手支社)Logi TreX」のように会社名・支社名が併記されることがあるため、
+// 宛名は「山田　太郎」だけでなく「〇〇運送株式会社（鈴木　一郎）」「△△株式会社　田中次郎」
+// 「佐藤　花子(〇〇支社)□□物流」のように会社名・支社名が併記されることがあるため、
 // 登録名が宛名に含まれるドライバーを探し、会社名より個人名を優先する。
 // 車番は同じ番号が複数人に登録されていたり実際の乗務車両と食い違ったりするのに対し、
 // 宛名は明細書1枚につき1人で確実なため、取込時のドライバー特定はこちらを最優先にする
@@ -751,7 +751,7 @@ function lkDByAssign(car, date) {
 const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkDByAssign(r.car, r.date) || lkD(r.car) || aliasDrv(r);
 // 取引先ID・ドライバーIDの新規登録時の自動採番（既存の最大値+1。数値以外は無視）
 function nextIdFor(list, field) {
-  // 「147-3」のような枝番つきIDは本体の147として数える（枝番ぶんで採番が飛ばないように）
+  // 「100-2」のような枝番つきIDは本体の100として数える（枝番ぶんで採番が飛ばないように）
   const nums = list.map(x => parseInt(String(x[field]||'').split('-')[0], 10)).filter(n => !isNaN(n));
   return nums.length ? String(Math.max(...nums) + 1) : '1';
 }
@@ -2957,10 +2957,10 @@ function drvPayScheduleLabel(d) {
   return partner ? partnerPayOutLabel(partner)+'(協)' : payCycleLabel(d.pay_month_offset, d.pay_day);
 }
 /* ===== 取引先の親子（本社⇄支店・営業所）の自動判定 =====
-   「佐川急便株式会社　仙台南営業所」「第一貨物　仙台南支店」のように、支店ごとに1件ずつ
+   「〇〇急便株式会社　△△営業所」「□□貨物　△△支店」のように、支店ごとに1件ずつ
    登録されている取引先を、会社名の一致で親子にまとめる。
    判定は法人格（株式会社など）と空白・中黒を除いた「会社名キー」で行い、
-   ひらがな→カタカナ・英字大文字化まで寄せて「タイへイ／タイヘイ」の表記ゆれも拾う。 */
+   ひらがな→カタカナ・英字大文字化まで寄せて「まるまる／マルマル」の表記ゆれも拾う。 */
 const CLI_CORP_TOKENS = ['株式会社','有限会社','合同会社','合資会社','（株）','(株)','（有）','(有)','㈱','㈲'];
 const CLI_SEP_RE = /[\s・･,，.。]/;
 // 共通の頭がこの文字数以上あるものだけ同じ会社とみなす。
@@ -2989,7 +2989,7 @@ function cliCorpKey(name) { return cliCorpKeyMap(name).key; }
 function lcpLen(a, b) { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; }
 
 /* 親会社名の候補を、その取引先の元の表記から切り出す。
-   「佐川急便株式会社　白石店」で頭が4文字（佐川急便）なら「佐川急便株式会社」を返す */
+   「〇〇急便株式会社　△△店」で頭が4文字（〇〇急便）なら「〇〇急便株式会社」を返す */
 function cliParentNameGuess(c, headLen) {
   const m = cliCorpKeyMap(c.name);
   if (m.key.length <= headLen) return c.name;
@@ -2998,9 +2998,9 @@ function cliParentNameGuess(c, headLen) {
 }
 
 /* 共通の頭を、全員に共通する区切り位置まで短くする。
-   「第一貨物　仙台東支店」「第一貨物　仙台南支店」は頭が「第一貨物仙台」まで伸びてしまうが、
-   全員が「第一貨物」の後ろで区切れるため、そこまで戻して会社名として正しくする。
-   区切り位置が取れない（K.ismのように区切りが無い）場合は共通部分をそのまま使う */
+   「□□貨物　〇〇東支店」「□□貨物　〇〇南支店」は頭が「□□貨物〇〇」まで伸びてしまうが、
+   全員が「□□貨物」の後ろで区切れるため、そこまで戻して会社名として正しくする。
+   区切り位置が取れない（英字の社名などで区切りが無い）場合は共通部分をそのまま使う */
 function cliShrinkHead(members, lcp) {
   let best = 0;
   const cutSets = members.map(c => new Set(cliCorpKeyMap(c.name).cuts));
@@ -3012,8 +3012,8 @@ function cliShrinkHead(members, lcp) {
 
 /* 親子候補を洗い出す。
    会社名キーの共通の頭でまとめ、キーがちょうどその頭と一致する取引先があればそれを親にする
-   （「タイヘイ株式会社」があるなら支店はその子）。無ければ親会社のレコードを新しく作る
-   （「佐川急便株式会社」は未登録なので新規に作る）。既に親が付いている取引先は触らない。 */
+   （「□□株式会社」があるなら支店はその子）。無ければ親会社のレコードを新しく作る
+   （「〇〇急便株式会社」が未登録なら新規に作る）。既に親が付いている取引先は触らない。 */
 function detectClientParentGroups() {
   const keyed = clients.filter(c => !c.parent_id)
     .map(c => ({c, key: cliCorpKey(c.name)}))
@@ -4343,9 +4343,9 @@ function parseSeikyuCsv(lines){
   }
 }
 /* 数字だけの車番（CSVの略式番号）を、ドライバー登録のフル表記の車番に置き換える。
-   例: '1754' → '仙台480れ1754' が登録されていればそれを返す。
+   例: '5678' → '仙台480れ5678' が登録されていればそれを返す。
    突き合わせるのはナンバーの番号部分（ひらがなの後ろの数字。「・」は除く）がまるごと同じものだけ。
-   以前は「末尾がその数字で終わるか」で見ていたため、756 が 仙台480り7756 に化けていた。
+   以前は「末尾がその数字で終わるか」で見ていたため、678 が 仙台480り5678 に化けていた。
    当てはまる車番が無い・2台以上ある場合は置き換えず、数字のまま返す（未登録として目に付くように） */
 function resolveCar(car){
   if(!/^\d+$/.test(car))return car;

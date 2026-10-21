@@ -37,7 +37,7 @@ function drvPay(d) {
     bank: d.bank || p.bank || null,
     invoice_no: d.invoice_no || p.invoice_no || null,
     // 手数料率: ドライバー個別が0（未設定扱い）のときのみ協力会社の支払手数料率を使う。
-    // 協力会社側は%単位（例:-5）、ドライバー側は割合（例:-0.05）のため換算する
+    // 協力会社側は%単位（例:-8）、ドライバー側は割合（例:-0.08）のため換算する
     fee_rate: (!d.fee_rate && p.pay_out_fee_rate) ? p.pay_out_fee_rate / 100 : d.fee_rate,
   };
 }

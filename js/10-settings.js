@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS clients (
   zip text, address text,
   pay_month_offset int DEFAULT 1, pay_day text DEFAULT 'end',
   invoice_no text,
-  client_no text UNIQUE,  -- 表示・並び替え用の会社ID。支店は「親ID-枝番」（例: 147-3）で持つ
+  client_no text UNIQUE,  -- 表示・並び替え用の会社ID。支店は「親ID-枝番」（例: 100-2）で持つ
   send_method text, -- 請求書の既定の送付方式（タスク管理タブで毎月の既定値として使う）
   name_kana text,   -- 会社名の読み（アイウエオ順の並び替え用）。未入力なら名称から自動生成した読みを使う
   -- ここから下は、旧 partner_companies（協力会社管理）を統合したときに合流した項目。

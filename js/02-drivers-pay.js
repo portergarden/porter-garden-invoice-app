@@ -74,11 +74,11 @@ function getUnregisteredCarNumbers() {
 }
 
 /* 同じ車の表記ゆれと思われる組み合わせ（分類記号＋かな＋一連番号が同じで、地名だけ違う）。
-   「仙台480れ2618」と「宮城480れ2618」のような重複登録に気づけるように一覧へ出す */
+   「仙台480れ1234」と「宮城480れ1234」のような重複登録に気づけるように一覧へ出す */
 function vehiclePlateVariants() {
   const bySig = new Map();
   (vehicles||[]).forEach(v => {
-    const m = nm(v.car).match(/(\d{1,3}[^\d]{1,2}\d{1,4})$/);   // 末尾の「480れ2618」部分
+    const m = nm(v.car).match(/(\d{1,3}[^\d]{1,2}\d{1,4})$/);   // 末尾の「480れ1234」部分
     if (!m) return;
     const sig = m[1];
     if (!bySig.has(sig)) bySig.set(sig, []);
@@ -1212,7 +1212,7 @@ async function deleteCarAlias(id) {
 }
 
 /* ===== 車番の一括置換（取り込み済みの請求・日報・ドライバー登録・車両台帳・乗務履歴をまとめて直す） =====
-   「仙台480れ2618」と「宮城480れ2618」のように地名だけ違う表記ゆれや、打ち間違いを一度に直す。
+   「仙台480れ1234」と「宮城480れ1234」のように地名だけ違う表記ゆれや、打ち間違いを一度に直す。
    読み替えとは別で、請求データの車番そのものを書き換える。 */
 const carTailOf = car => (carKey(car).match(/(\d{1,4})$/) || [])[1] || null;
 async function scanCarUsage(oldCar) {
@@ -1294,7 +1294,7 @@ async function applyCarRename() {
 
 /* CSV取り込み時の自動補正。車両台帳（とドライバー登録）に無い車番でも、
    「分類番号・ひらがな・番号」が同じ登録済みの車が1台だけあれば、地名の違いは表記ゆれとみなして登録済みの表記に直す。
-   例: CSVが「仙台480れ2618」で、台帳に「宮城480れ2618」だけある → 宮城に直して取り込む。
+   例: CSVが「仙台480れ1234」で、台帳に「宮城480れ1234」だけある → 宮城に直して取り込む。
    台帳にその表記の車がある場合や、候補が2台以上ある場合は何もしない。直した内容を返す */
 function fixCsvCarRegions() {
   const tailOf = c => (carKey(c).match(/^[一-鿿ぁ-ゖァ-ヺ]{1,5}?(\d[\dA-Z]{0,2}[ぁ-ゖ].*)$/) || [])[1] || null;
@@ -1318,7 +1318,7 @@ function fixCsvCarRegions() {
 // --- CSV取り込み時の確認 ---
 let carConfirmItems = [];
 /* 取り込む行のうち、ドライバーが決まらない車番を集める。
-   候補は「ナンバーの番号部分が同じ、稼働中ドライバーの登録車番」（例: 宮城480れ1657 → 仙台480れ1657）。 */
+   候補は「ナンバーの番号部分が同じ、稼働中ドライバーの登録車番」（例: 宮城480れ5678 → 仙台480れ5678）。 */
 function csvUnresolvedCars() {
   const byCar = new Map();
   parsedCsv.forEach((r, i) => {
@@ -2232,7 +2232,7 @@ async function slipLoad(file, appendMode=false) {
       if (paymentDate && !globalPaymentDate) globalPaymentDate = paymentDate;
 
       // 宛名（B列の「〜様」「〜御中」の行）を取り出す。この明細書1枚分のドライバー特定に使う。
-      // 宛名が長いと2行に折り返されることがあるため（例:「石原」＋「宏美 （名古屋支社）　様」）、
+      // 宛名が長いと2行に折り返されることがあるため（例:「山田」＋「太郎 （〇〇支社）　様」）、
       // 直前行に数字が含まれない＝住所・電話番号・登録番号ではない場合だけ連結する
       let addressee = '';
       let addrRow = -1;

@@ -584,7 +584,7 @@ const kanaNeedsFix = k => /[一-鿿]/.test(k || '');
 const clientKanaKey = c => (c.name_kana && c.name_kana.trim()) ? autoKana(c.name_kana) : autoKana(c.name);
 // 取引先IDは「1, 10, 100, 11」のようにゼロ埋めされていないため、数値として比較する
 // （文字列比較だと 1→10→100→11 の順になり、会社一覧の並びと食い違う）
-/* 会社IDは「147」（親・単独）と「147-3」（親147の3番目の支店）の2つの形をとる。
+/* 会社IDは「100」（親・単独）と「100-2」（親100の2番目の支店）の2つの形をとる。
    本体番号→枝番の順で比べ、親を必ず支店より先に並べる。
    英字混在・未設定のIDは数値IDの後ろにまとめる */
 function parseClientNo(no) {
@@ -1040,7 +1040,7 @@ function cliRootId(cliId) {
   return c ? c.id : cliId;
 }
 function cliHasChildren(cliId) { return clients.some(c => c.parent_id === cliId); }
-// 支店行は自分の名称（「仙台支店」など）しか持たないため、親会社名で検索してもヒットするよう
+// 支店行は自分の名称（「〇〇支店」など）しか持たないため、親会社名で検索してもヒットするよう
 // 検索用の文字列は「親会社名＋自分の名称」を連結したものにする
 function cliSearchName(c) {
   if (!c) return '';
