@@ -1059,6 +1059,7 @@ try {
         </select>
       </div>
       <div style="display:flex;gap:6px">
+        <button class="btn" onclick="openCarAliasM()" title="取引先のCSVの車番が間違っているとき、実際の車として扱う設定です">車番の読み替え</button>
         <button class="btn" onclick="openLeaseBillingM()" title="リース会社の代車が無く、こちらの車を貸した分を会社ごとにまとめます">リース会社への請求</button>
         <button class="btn hide" id="bImportCars" onclick="importUnregisteredCars()" title="ドライバー登録にあって車両管理に無い車番をまとめて登録します">↓ 未登録の車番を取り込む</button>
         <button class="btn pri hide" id="bAddVehicle" onclick="openVehicleM()">＋ 車両追加</button>
@@ -3054,6 +3055,38 @@ try {
   </div>
 </div>
 
+<!-- モーダル: 車番の読み替え（取引先のCSVの車番が誤っているとき、実際の車として扱う） -->
+<div class="overlay" id="mCarAlias">
+  <div class="modal" style="width:620px;max-width:96vw">
+    <div class="mh">車番の読み替え <button class="ibtn" onclick="closeM('mCarAlias')">✕</button></div>
+    <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
+      <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">取引先のCSVに載ってくる車番が間違っている・実在しないとき、「この取引先のこの車番は、この車として扱う」を登録します。請求の車番は書き換えず、どのドライバーの売上にするかの判定にだけ使います。</div>
+      <div id="caList" style="margin-bottom:12px"></div>
+      <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px">
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px">読み替えを追加</div>
+        <div class="fld"><label>取引先</label><select id="caCli" style="width:100%"></select></div>
+        <div class="g2">
+          <div class="fld"><label>CSVに載ってくる車番</label><input type="text" id="caWrong" placeholder="例: 宮城480れ1657" style="width:100%"></div>
+          <div class="fld"><label>実際の車番</label><select id="caCorrect" style="width:100%"></select></div>
+        </div>
+        <button class="btn pri sml" onclick="addCarAliasFromForm()">＋ 追加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル: CSV取り込み前の確認（ドライバーが決まらない車番） -->
+<div class="overlay" id="mCarConfirm">
+  <div class="modal" style="width:620px;max-width:96vw">
+    <div class="mh">配車先が分からない車番があります <button class="ibtn" onclick="closeM('mCarConfirm')">✕</button></div>
+    <div style="padding:12px 14px;max-height:78vh;overflow-y:auto">
+      <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px">登録されているどのドライバーにも結びつかない車番です。誰の車かを選ぶと、その人の売上として取り込みます。選ばなければ未配車のまま取り込みます。</div>
+      <div id="ccList"></div>
+      <div class="mfoot"><button class="btn" onclick="closeM('mCarConfirm')">戻る</button><button class="btn pri" onclick="applyCarConfirmAndImport()">この内容で取り込む</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- モーダル: リース会社への請求（請求先「リース会社」の乗務履歴を会社ごとに集計） -->
 <div class="overlay" id="mLeaseBill">
   <div class="modal" style="width:620px;max-width:96vw">
@@ -3353,9 +3386,9 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=dccb7dc7"></script>
+<script src="js/01-core.js?v=92b9791c"></script>
 
-<script src="js/02-drivers-pay.js?v=4f787098"></script>
+<script src="js/02-drivers-pay.js?v=35fca71c"></script>
 
 <!-- 支払明細書 保存/読み込みモーダル -->
 <div id="mSlipSave" class="overlay">
@@ -3429,7 +3462,7 @@ try {
 
 <script src="js/09-analysis.js?v=e92203c5"></script>
 
-<script src="js/10-settings.js?v=1387119c"></script>
+<script src="js/10-settings.js?v=47e44b7f"></script>
 <script src="js/11-push.js?v=1d92ea5f"></script>
 </body>
 </html>

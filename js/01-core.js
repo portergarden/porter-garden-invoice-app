@@ -337,7 +337,7 @@ async function loadAll(){
   }catch(e){showT('データ読み込みエラー: '+e.message,'ter');}
   showLoad(false);
   // 個別読込（テーブル未作成でもloadAll全体を止めない）
-  await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments(), loadVehicles(), loadPayAdjustments()]);
+  await Promise.all([loadSched(), loadTemplates(), loadMappings(), loadVehicleAssignments(), loadVehicles(), loadPayAdjustments(), loadCarAliases()]);
 }
 let logRoleFilter = 'staff';
 async function loadLogs(){
@@ -688,7 +688,8 @@ function lkDByAssign(car, date) {
 }
 // 同じ車両を複数人で稼働することがあるため、次の優先順位で判定する:
 // ① レコードのdrv_id（受注入力での手動選択）② 車両乗務履歴（代車・乗り換え）③ drivers.carsの登録車番
-const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkDByAssign(r.car, r.date) || lkD(r.car);
+// ④取引先のCSVの車番が誤っている場合の読み替え（car_aliases。車番の読み替え画面で登録）
+const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkDByAssign(r.car, r.date) || lkD(r.car) || aliasDrv(r);
 // 取引先ID・ドライバーIDの新規登録時の自動採番（既存の最大値+1。数値以外は無視）
 function nextIdFor(list, field) {
   // 「147-3」のような枝番つきIDは本体の147として数える（枝番ぶんで採番が飛ばないように）
@@ -4225,9 +4226,14 @@ function parseStandardCsv(lines){
   });
 }
 
-async function importCsv(){
+async function importCsv(carsChecked){
   const noCliCount = parsedCsv.filter(r=>!r.cli).length;
-  if (noCliCount && !confirm(`${noCliCount}件は取引先が未設定のまま取り込まれます。よろしいですか？\n（先に「反映先の取引先」を選択すると全件に反映されます）`)) return;
+  if (!carsChecked && noCliCount && !confirm(`${noCliCount}件は取引先が未設定のまま取り込まれます。よろしいですか？\n（先に「反映先の取引先」を選択すると全件に反映されます）`)) return;
+  // ドライバーが決まらない車番があれば、取り込む前に確認する（誰の車か選ぶ／今後も読み替える／未配車のまま）
+  if (!carsChecked) {
+    const unresolved = csvUnresolvedCars();
+    if (unresolved.length) { openCarConfirmM(unresolved); return; }
+  }
   showLoad(true);
   try{
     const inserts=parsedCsv.map(r=>({...r,st:0}));

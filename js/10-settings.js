@@ -1483,6 +1483,17 @@ END; $function$;
 REVOKE EXECUTE ON FUNCTION public.set_my_month_defaults(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_my_month_defaults(jsonb) TO authenticated;
 
+-- 車番の読み替え。取引先のCSVに載ってくる車番が間違っている・実在しないとき、
+-- 「この取引先のこの車番は、この車として扱う」を残す（請求の車番は書き換えず、ドライバーの判定にだけ使う）
+CREATE TABLE IF NOT EXISTS car_aliases (
+  id bigserial PRIMARY KEY,
+  cli_id bigint NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  wrong_car text NOT NULL,     -- 取引先のCSVに載ってくる車番（そのままの表記）
+  correct_car text NOT NULL,   -- 実際の車番（ドライバー登録の表記）
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- ============================================================
 -- 車両台帳・乗務履歴の自動連動（2026-10-21）
 --   ・ドライバーの車番が増えたら（管理画面・招待URLの本人登録・ユーザー管理での紐づけ）台帳にも作る
@@ -1706,6 +1717,19 @@ CREATE TRIGGER daily_reports_vehicle_shrink AFTER UPDATE OR DELETE ON daily_repo
 REVOKE ALL ON FUNCTION public.release_driver_cars(int, text[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.shrink_vehicle_usage(int, text, date) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.trg_daily_report_vehicle_shrink() FROM PUBLIC, anon, authenticated;
+
+-- car_aliases は car_key() を使うので、関数の定義より後ろに置く
+CREATE UNIQUE INDEX IF NOT EXISTS car_aliases_cli_wrong_idx ON car_aliases (cli_id, public.car_key(wrong_car));
+ALTER TABLE car_aliases ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "car_aliases_select" ON car_aliases;
+CREATE POLICY "car_aliases_select" ON car_aliases FOR SELECT TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor','viewer']));
+DROP POLICY IF EXISTS "car_aliases_insert" ON car_aliases;
+CREATE POLICY "car_aliases_insert" ON car_aliases FOR INSERT TO authenticated WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "car_aliases_update" ON car_aliases;
+CREATE POLICY "car_aliases_update" ON car_aliases FOR UPDATE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor'])) WITH CHECK ("current_role"() = ANY(ARRAY['admin','editor']));
+DROP POLICY IF EXISTS "car_aliases_delete" ON car_aliases;
+CREATE POLICY "car_aliases_delete" ON car_aliases FOR DELETE TO authenticated USING ("current_role"() = ANY(ARRAY['admin','editor']));
+REVOKE ALL ON car_aliases FROM anon;
 
 -- ユーザー管理でドライバーに紐づけたときも、そのドライバーの車番を台帳に入れる
 CREATE OR REPLACE FUNCTION public.trg_users_ensure_vehicles() RETURNS trigger

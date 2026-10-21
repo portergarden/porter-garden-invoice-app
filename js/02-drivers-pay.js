@@ -1061,6 +1061,187 @@ function leaseBillingForPeriod(from, to) {
   });
   return [...groups.values()].sort((a,b) => nm(a.name).localeCompare(nm(b.name), 'ja'));
 }
+/* ===== 車番の読み替え（取引先のCSVの車番が間違っている・実在しないとき） =====
+   「この取引先の、この車番は、この車として扱う」を残す。請求の車番は書き換えず、ドライバーの判定にだけ使う。
+   CSV取り込みで配車先が分からない車番が出たときに確認して決められる（importCsv → openCarConfirmM）。 */
+let carAliases = [];
+let _aliasIdx = null;
+async function loadCarAliases() {
+  if (!sb) return;
+  try {
+    const {data, error} = await fetchAllRows(() => sb.from('car_aliases').select('*').order('id'));
+    if (error) {
+      if (/does not exist|relation/.test(error.message)) return;
+      throw error;
+    }
+    carAliases = data || [];
+    _aliasIdx = null;
+  } catch(e) { console.warn('loadCarAliases:', e.message); }
+}
+function carAliasIndex() {
+  if (!_aliasIdx) {
+    _aliasIdx = new Map();
+    carAliases.forEach(a => _aliasIdx.set(a.cli_id + '|' + carKey(a.wrong_car), a.correct_car));
+  }
+  return _aliasIdx;
+}
+function carAliasFor(car, cli) {
+  if (!car || cli == null) return null;
+  return carAliasIndex().get(cli + '|' + carKey(car)) || null;
+}
+// 請求1件の車番に読み替えがあれば、読み替え先の車番からドライバーを引く（recDrv の最後の手段）
+function aliasDrv(r) {
+  const a = carAliasFor(r.car, r.cli);
+  return a ? (lkDByAssign(a, r.date) || lkD(a) || null) : null;
+}
+// 読み替えを登録したとき、同じ取引先・同じ車番でまだドライバーが決まっていない請求にもドライバーを付ける
+async function stampAliasedInvoices(cli, wrongCar, drvId) {
+  const ids = recs.filter(r => r.cli == cli && r.drv_id == null && carKey(r.car) === carKey(wrongCar)).map(r => r.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    const part = ids.slice(i, i + 200);
+    const {error} = await sb.from('invoices').update({drv_id: drvId}).in('id', part);
+    if (error) throw error;
+  }
+  recs.forEach(r => { if (ids.includes(r.id)) r.drv_id = drvId; });
+  return ids.length;
+}
+async function saveCarAlias(cli, wrongCar, correctCar) {
+  const {data, error} = await sb.from('car_aliases').insert({cli_id: cli, wrong_car: wrongCar, correct_car: correctCar}).select().single();
+  if (error) throw error;
+  carAliases.push(data);
+  _aliasIdx = null;
+  const drv = lkD(correctCar);
+  return drv ? await stampAliasedInvoices(cli, wrongCar, drv.id) : 0;
+}
+
+// --- 管理画面 ---
+function openCarAliasM() {
+  const sel = document.getElementById('caCli');
+  sel.innerHTML = '<option value="">取引先を選択</option>' + clients.filter(c => c.kind !== 'supplier' && c.kind !== 'lease')
+    .sort((a,b) => nm(a.name).localeCompare(nm(b.name), 'ja')).map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+  const cars = [...new Set(drvs.filter(d => d.status !== 'terminated').flatMap(d => (d.cars||[]).filter(isFullPlateNumber)))].sort();
+  document.getElementById('caCorrect').innerHTML = '<option value="">実際の車番を選択</option>' + cars.map(c => {
+    const d = lkD(c);
+    return `<option value="${escHtml(c)}">${escHtml(c)}${d ? '（' + escHtml(d.name) + '）' : ''}</option>`;
+  }).join('');
+  document.getElementById('caWrong').value = '';
+  renderCarAliases();
+  document.getElementById('mCarAlias').classList.add('on');
+}
+function renderCarAliases() {
+  const el = document.getElementById('caList');
+  const canE = me && me.role !== 'viewer';
+  if (!carAliases.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:8px 0">読み替えはまだありません</div>'; return; }
+  el.innerHTML = carAliases.map(a => {
+    const d = lkD(a.correct_car);
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--border);font-size:12px">
+      <div><b>${escHtml(clients.find(c => c.id === a.cli_id)?.name || '（取引先不明）')}</b>　${escHtml(a.wrong_car)} → ${escHtml(a.correct_car)}${d ? `（${escHtml(d.name)}）` : ''}${a.note ? `<div style="font-size:10.5px;color:var(--text2)">${escHtml(a.note)}</div>` : ''}</div>
+      ${canE ? `<button class="ibtn" onclick="deleteCarAlias(${a.id})" title="読み替えをやめる">🗑</button>` : ''}
+    </div>`;
+  }).join('');
+}
+async function addCarAliasFromForm() {
+  const cli = +document.getElementById('caCli').value || null;
+  const wrong = document.getElementById('caWrong').value.trim();
+  const correct = document.getElementById('caCorrect').value;
+  if (!cli || !wrong || !correct) { alert('取引先・CSVの車番・実際の車番を選んでください'); return; }
+  if (carKey(wrong) === carKey(correct)) { alert('同じ車番どうしは読み替えられません'); return; }
+  showLoad(true);
+  try {
+    const n = await saveCarAlias(cli, wrong, correct);
+    addLog('車番の読み替えを登録', `${clients.find(c => c.id === cli)?.name || ''}: ${wrong} → ${correct}`);
+    document.getElementById('caWrong').value = '';
+    renderCarAliases();
+    renderInv?.();
+    showT(`登録しました${n ? `（既存の請求${n}件にドライバーを付けました）` : ''}`);
+  } catch(e) { showT(e.code === '23505' ? 'この取引先のこの車番は、すでに読み替えが登録されています' : '登録エラー: ' + e.message, 'ter'); }
+  showLoad(false);
+}
+async function deleteCarAlias(id) {
+  const a = carAliases.find(x => x.id === id); if (!a) return;
+  if (!confirm(`「${a.wrong_car} → ${a.correct_car}」の読み替えをやめますか？\nすでにドライバーを付けた請求は、そのまま残ります。`)) return;
+  const {error} = await sb.from('car_aliases').delete().eq('id', id);
+  if (error) { showT('削除エラー: ' + error.message, 'ter'); return; }
+  carAliases = carAliases.filter(x => x.id !== id);
+  _aliasIdx = null;
+  renderCarAliases();
+  showT('読み替えをやめました');
+}
+
+// --- CSV取り込み時の確認 ---
+let carConfirmItems = [];
+/* 取り込む行のうち、ドライバーが決まらない車番を集める。
+   候補は「ナンバーの番号部分が同じ、稼働中ドライバーの登録車番」（例: 宮城480れ1657 → 仙台480れ1657）。 */
+function csvUnresolvedCars() {
+  const byCar = new Map();
+  parsedCsv.forEach((r, i) => {
+    if (!r.car || r.drv_id != null) return;
+    if (lkDByAssign(r.car, r.date) || lkD(r.car) || aliasDrv(r)) return;
+    const k = carKey(r.car);
+    if (!byCar.has(k)) byCar.set(k, {car: r.car, cli: r.cli || null, rows: [], first: r.date, last: r.date});
+    const g = byCar.get(k);
+    g.rows.push(i);
+    if (r.date < g.first) g.first = r.date;
+    if (r.date > g.last) g.last = r.date;
+  });
+  return [...byCar.values()].map(g => {
+    const m = carKey(g.car).match(/(\d{1,4})$/);
+    const want = m ? String(+m[1]) : null;
+    const cands = [];
+    if (want) drvs.forEach(d => {
+      if (d.status === 'terminated') return;
+      (d.cars||[]).forEach(c => {
+        if (!isFullPlateNumber(c) || carKey(c) === carKey(g.car)) return;
+        const mc = carKey(c).match(/(\d{1,4})$/);
+        if (mc && String(+mc[1]) === want && !cands.some(x => carKey(x.car) === carKey(c))) cands.push({car: c, name: d.name});
+      });
+    });
+    return {...g, cands};
+  });
+}
+function openCarConfirmM(items) {
+  carConfirmItems = items;
+  document.getElementById('ccList').innerHTML = items.map((it, n) => `<div class="card" style="padding:9px 12px;margin-bottom:8px">
+      <div style="font-weight:600;font-size:13px">🚙 ${escHtml(it.car)}　<span style="font-weight:400;font-size:11.5px;color:var(--text2)">${it.rows.length}件（${it.first}${it.last !== it.first ? '〜' + it.last : ''}）</span></div>
+      <div class="g2" style="margin-top:6px">
+        <div class="fld"><label>この車番は誰の車ですか？</label>
+          <select id="ccPick${n}" style="width:100%">
+            <option value="">未配車のまま取り込む</option>
+            ${it.cands.map(c => `<option value="${escHtml(c.car)}" ${it.cands.length === 1 ? 'selected' : ''}>${escHtml(c.car)}（${escHtml(c.name)}）</option>`).join('')}
+          </select></div>
+        <div class="fld"><label>次回から</label>
+          <select id="ccScope${n}" style="width:100%">
+            <option value="forever" ${it.cli ? '' : 'disabled'}>この取引先ではいつも読み替える</option>
+            <option value="once" ${it.cli ? '' : 'selected'}>今回の取り込みだけ</option>
+          </select></div>
+      </div>
+      ${it.cands.length ? '' : '<div style="font-size:10.5px;color:var(--text2)">同じ番号の登録車番が見つかりません。ドライバー登録を確認してください。</div>'}
+    </div>`).join('');
+  document.getElementById('mCarConfirm').classList.add('on');
+}
+async function applyCarConfirmAndImport() {
+  showLoad(true);
+  try {
+    for (let n = 0; n < carConfirmItems.length; n++) {
+      const it = carConfirmItems[n];
+      const pick = document.getElementById('ccPick' + n).value;
+      if (!pick) continue;
+      const drv = lkD(pick);
+      if (!drv) continue;
+      it.rows.forEach(i => { parsedCsv[i].drv_id = drv.id; });
+      if (document.getElementById('ccScope' + n).value === 'forever' && it.cli) {
+        try {
+          await saveCarAlias(it.cli, it.car, pick);
+          addLog('車番の読み替えを登録', `${clients.find(c => c.id === it.cli)?.name || ''}: ${it.car} → ${pick}（CSV取り込み時）`);
+        } catch(e) { if (e.code !== '23505') throw e; }
+      }
+    }
+  } catch(e) { showLoad(false); showT('読み替えの登録エラー: ' + e.message, 'ter'); return; }
+  showLoad(false);
+  closeM('mCarConfirm');
+  importCsv(true);
+}
+
 function openLeaseBillingM() {
   const now = new Date();
   const f = document.getElementById('lbFrom'), t = document.getElementById('lbTo');
