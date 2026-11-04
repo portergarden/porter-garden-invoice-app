@@ -2318,7 +2318,7 @@ async function loadBoard(markSeen) {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('board_posts').select('*').order('created_at', {ascending:false}).order('id', {ascending:false}));
     if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) {
+      if (isMissingSchemaError(error)) {
         const el = document.getElementById('boardList');
         if (el) el.innerHTML = '<div style="padding:16px;color:var(--amber-text);font-size:12px">⚠ board_postsテーブルが未作成です。<br>月次締めページのバックアップからSQLを確認できます。<button class="btn sml" style="margin-top:6px" onclick="showBoardSql()">SQL確認</button></div>';
         return;

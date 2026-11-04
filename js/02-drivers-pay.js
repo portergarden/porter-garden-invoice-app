@@ -32,7 +32,7 @@ async function loadVehicles() {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('vehicles').select('*').order('car').order('id'));
     if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) return;
+      if (isMissingSchemaError(error)) return;
       throw error;
     }
     vehicles = data || [];
@@ -695,7 +695,7 @@ async function saveVehicle() {
     refreshPayAggIfVisible(); // 支払明細書作成タブから開いた場合、その場で集計テーブルにも反映する
     showT('保存しました');
   } catch(e) {
-    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+    if (isMissingSchemaError(e)) {
       showT('⚠ vehiclesテーブルが未作成です。セットアップページのSQLを確認してください','twa');
     } else { showT('保存エラー: '+e.message, 'ter'); }
   }
@@ -734,7 +734,7 @@ async function loadVehicleAssignments() {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('vehicle_assignments').select('*').order('start_date', {ascending:false}).order('id', {ascending:false}));
     if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) return;
+      if (isMissingSchemaError(error)) return;
       throw error;
     }
     vehicleAssignments = data || [];
@@ -941,7 +941,7 @@ async function addVehicleAssignment() {
     refreshPayAggIfVisible(); // 支払明細書作成の「代車の請求先が未確定」から開いた場合、集計にもすぐ反映する
     showT('記録しました');
   } catch(e) {
-    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+    if (isMissingSchemaError(e)) {
       showT('⚠ vehicle_assignmentsテーブルが未作成です。セットアップページのSQLを確認してください','twa');
     } else { showT('登録エラー: '+e.message, 'ter'); }
   }
@@ -980,7 +980,7 @@ async function loadPayAdjustments() {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('pay_adjustments').select('*').order('id'));
     if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) return;
+      if (isMissingSchemaError(error)) return;
       throw error;
     }
     payAdjustments = data || [];
@@ -1114,7 +1114,7 @@ async function loadCarAliases() {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('car_aliases').select('*').order('id'));
     if (error) {
-      if (/does not exist|relation/.test(error.message)) return;
+      if (isMissingSchemaError(error)) return;
       throw error;
     }
     carAliases = data || [];

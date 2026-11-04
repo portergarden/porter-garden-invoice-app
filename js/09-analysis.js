@@ -306,7 +306,7 @@ async function addPriceItem(cliId) {
     document.getElementById('pmUnit').value='';
     openPriceMasterModal(cliId); // 再描画
   } catch(e) {
-    if (e.message.includes('does not exist')||e.message.includes('relation')) showPriceMasterSql();
+    if (isMissingSchemaError(e)) showPriceMasterSql();
     else showT('エラー: '+e.message,'ter');
   }
   showLoad(false);

@@ -71,7 +71,7 @@ async function loadClientRates(force) {
   if (!sb || (clientRatesLoaded && !force)) return;
   try {
     const {data, error} = await fetchAllRows(() => sb.from('client_rates').select('*'));
-    if (error) { if (/does not exist|relation/.test(error.message)) { clientRates = {}; clientRatesLoaded = true; return; } throw error; }
+    if (error) { if (isMissingSchemaError(error)) { clientRates = {}; clientRatesLoaded = true; return; } throw error; }
     clientRates = {};
     (data || []).forEach(r => { clientRates[r.cli_id] = { rules: Array.isArray(r.rules) ? r.rules : [], note: r.note || '' }; });
     clientRatesLoaded = true;

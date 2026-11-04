@@ -15,7 +15,7 @@ async function loadTemplates() {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('input_templates').select('*').order('name').order('id'));
     if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) {
+      if (isMissingSchemaError(error)) {
         // localStorageの旧データを移行
         const old = JSON.parse(localStorage.getItem('pg_templates')||'[]');
         if (old.length) {
@@ -64,7 +64,7 @@ async function loadMappings() {
   try {
     const {data, error} = await fetchAllRows(() => sb.from('file_mappings').select('*').order('id'));
     if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) {
+      if (isMissingSchemaError(error)) {
         // localStorageの旧データを移行
         const old = JSON.parse(localStorage.getItem('pg_file_mappings')||'{}');
         if (Object.keys(old).length) {

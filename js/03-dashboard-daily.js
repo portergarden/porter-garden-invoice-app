@@ -196,7 +196,7 @@ async function loadStaffSchedules() {
   if (!sb) return;
   try {
     const {data, error} = await fetchAllRows(() => sb.from('staff_schedules').select('*').order('date').order('id'));
-    if (error) { if (error.message.includes('does not exist')||error.message.includes('relation')) return; throw error; }
+    if (error) { if (isMissingSchemaError(error)) return; throw error; }
     staffSchedules = data || [];
   } catch(e) { console.warn('loadStaffSchedules:', e.message); }
 }
@@ -695,7 +695,7 @@ async function loadBillingProgress() {
   try {
     const {data, error} = await sb.from('billing_progress').select('*').eq('month', month);
     if (error) {
-      if (error.message.includes('does not exist')||error.message.includes('relation')) { billingProgress=[]; return; }
+      if (isMissingSchemaError(error)) { billingProgress=[]; return; }
       throw error;
     }
     billingProgress = data || [];
@@ -1204,7 +1204,7 @@ async function loadPersonalTasks() {
   if (!sb) return;
   try {
     const {data, error} = await fetchAllRows(() => sb.from('tasks').select('*').order('due_date', {nullsFirst:false}).order('id'));
-    if (error) { if (/does not exist|relation/.test(error.message)) { personalTasks=[]; return; } throw error; }
+    if (error) { if (isMissingSchemaError(error)) { personalTasks=[]; return; } throw error; }
     personalTasks = data || [];
     await ptGenerateDueRepeats();   // 毎月繰り返すタスクの当月分をここで作る
   } catch(e) { console.warn('loadPersonalTasks:', e.message); personalTasks = []; }
@@ -1748,7 +1748,7 @@ async function loadDriverProgress() {
   if (!sb) return;
   try {
     const {data, error} = await sb.from('driver_progress').select('*').eq('month', dpCurrentMonth());
-    if (error) { if (/does not exist|relation/.test(error.message)) { driverProgress=[]; return; } throw error; }
+    if (error) { if (isMissingSchemaError(error)) { driverProgress=[]; return; } throw error; }
     driverProgress = data || [];
   } catch(e) { console.warn('loadDriverProgress:', e.message); driverProgress = []; }
 }
@@ -3572,6 +3572,13 @@ async function prefillStartLoc() {
   } catch(e) { console.warn('prefillStartLoc:', e.message); }
 }
 
+// 出発・帰着のメーターが逆転していないか。データベースも同じ条件で保存を断るので、提出前に日本語で知らせる
+function drOdoError() {
+  const a = document.getElementById('drOdoStart').value;
+  const b = document.getElementById('drOdoEnd').value;
+  if (a === '' || b === '' || +b >= +a) return '';
+  return `帰着時のメーター（${b}）が出発時のメーター（${a}）より小さくなっています。数字を直してください。出発時のメーターは「業務前点呼」にあります。分からないときは空欄でも提出できます`;
+}
 // メーターを両方入れたら走行距離を自動で入れる
 function onDrOdoChange() {
   const a = document.getElementById('drOdoStart').value;
@@ -3594,6 +3601,7 @@ function renderDrSummary() {
   el.innerHTML = `<div style="font-weight:600;margin-bottom:4px">提出内容の確認</div>
     <div>${escHtml(v('drD'))}　${escHtml(v('drCar')==='__custom__'?v('drCarCustom'):v('drCar'))}　${escHtml(v('drName'))}</div>
     <div>業務 ${escHtml(v('drStart'))}〜${escHtml(v('drEnd'))||'（未入力）'}　走行 ${escHtml(v('drKm'))||'—'}km</div>
+    ${drOdoError() ? `<div style="color:var(--red)">⚠ ${escHtml(drOdoError())}</div>` : ''}
     <div>運行 ${trips}件${names.length?`（${escHtml(names.join('、'))}）`:''}　休憩 ${pendDrRests.length}回</div>
     <div>アルコール 前 ${escHtml(v('drAlcBefore'))||'—'} ／ 後 ${escHtml(v('drAlcAfter'))||'（未入力）'} mg/L</div>`;
 }
@@ -3700,6 +3708,13 @@ async function submitDailyReport() {
       goDrStep(st);
       return;
     }
+  }
+  const odoErr = drOdoError();
+  if (odoErr) {
+    resultEl.textContent = '⚠ ' + odoErr;
+    resultEl.style.color = 'var(--red)';
+    document.getElementById('drOdoEnd')?.focus();
+    return;
   }
   if (!km || isNaN(+km)) { resultEl.textContent = '⚠ 走行距離を入力してください'; resultEl.style.color='var(--red)'; return; }
   if (!startTime || !endTime) { resultEl.textContent = '⚠ 業務開始時刻・業務終了時刻は必須です'; resultEl.style.color='var(--red)'; return; }
@@ -3862,7 +3877,7 @@ async function submitDailyReport() {
     setTimeout(() => showDailyList(), 1200);
   } catch(e) {
     // テーブル未作成の場合のガイド
-    if (e.message && (e.message.includes('does not exist') || e.message.includes('relation'))) {
+    if (isMissingSchemaError(e)) {
       resultEl.innerHTML = `⚠ <b>daily_reportsテーブルが未作成です</b><br>管理者はセットアップタブのSQLをSupabaseで実行してください`;
       resultEl.style.color='var(--red)';
       showDailyTableSql();
@@ -3906,7 +3921,7 @@ async function loadDailyReports() {
     };
     const {data, error} = await fetchAllRows(build);
     if (error) {
-      if (error.message.includes('does not exist') || error.message.includes('relation')) {
+      if (isMissingSchemaError(error)) {
         document.getElementById('dailyListBody').innerHTML =
           `<div style="padding:20px;color:var(--amber-text);font-size:12px">
             ⚠ daily_reportsテーブルが未作成です。<br>

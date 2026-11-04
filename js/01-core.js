@@ -398,6 +398,10 @@ const typeLabel=t=>(TYPE_META[t]||TYPE_META.other).label;
 const typeShort=t=>(TYPE_META[t]||TYPE_META.other).short;
 const typeBadge=t=>(TYPE_META[t]||TYPE_META.other).badge;
 const nm=s=>(s||'').replace(/\s/g,'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+/* テーブルや列が本番に無いときのエラーか。
+   単語 'relation' では判定しない。制約違反の「new row for relation ... violates check constraint」にも
+   含まれるため、入力の誤りが「テーブルが未作成です」と誤って案内されていた */
+const isMissingSchemaError = e => !!e?.message && (e.message.includes('does not exist') || e.message.includes('Could not find'));
 // 車番どうしが同じかを見るための形（空白・全角に加えて「•」「･」と「・」の違いもそろえる）
 const carKey=s=>nm(s).replace(/[•･]/g,'・');
 // 車番→ドライバー・ID→ドライバーの索引（drvsが変わるたびinvalidateDriverIndexes()でnullに戻し、

@@ -176,7 +176,7 @@ async function saveAsTemplate() {
     addLog('テンプレート保存', name);
     showT(msg, msgCls);
   } catch(e) {
-    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+    if (isMissingSchemaError(e)) {
       showTemplateSql();
     } else { showT('エラー: '+e.message,'ter'); }
   }
@@ -1363,7 +1363,7 @@ async function saveFileMapping() {
     addLog('マッピング設定保存', cli?.name||'');
     showT(`「${cli?.name}」の列設定を保存しました（次回この取引先を選ぶと自動で復元されます）`);
   } catch(e) {
-    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+    if (isMissingSchemaError(e)) {
       showMappingSql();
     } else { showT('エラー: '+e.message,'ter'); }
   }

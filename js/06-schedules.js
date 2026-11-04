@@ -154,7 +154,7 @@ async function loadSched() {
   try {
     schedData = await scheduleLoadAll('payment_schedules');
   } catch(e) {
-    if (e.message.includes('does not exist')||e.message.includes('relation')) {
+    if (isMissingSchemaError(e)) {
       const local = JSON.parse(localStorage.getItem('pg_sched_bak')||'[]');
       if (local.length) { schedData = local; showT('⚠ payment_schedulesテーブルが未作成です','twa'); }
       return;
@@ -188,7 +188,7 @@ async function saveSched() {
     addLog('支払予定追加',`${drv?.name} ${date} ${yen(amt)}`);
     showT('支払予定を追加しました');
   } catch(e) {
-    if (e.message.includes('does not exist')||e.message.includes('relation')) showSchedSql();
+    if (isMissingSchemaError(e)) showSchedSql();
     else showT('エラー: '+e.message,'ter');
   }
   showLoad(false);
