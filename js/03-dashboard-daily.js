@@ -3387,10 +3387,18 @@ function onInspChange() {
    点呼をしなければ業務は始められないので、この2つは基本的に同じ時刻になる。
    ただし別々の帳票の項目（点呼時刻＝点呼記録簿、業務開始・終了＝業務の記録で稼働時間の起点）で、
    帰着してから点呼した日のように数分ずれることもあるため、欄は分けたままにしてある。
-   写すのは空いているほうだけで、既に入っている値には触らない。 */
+   点呼時刻を入れ直したときは業務開始・終了時刻も同じ時刻に揃える（onDrTenkoTimeInput）。
+   業務開始・終了時刻を直したときと、運行からの補完や既存の日報を開いたときは、空いているほうへ写すだけにする。
+   数分ずれた日は、点呼時刻のあとに業務開始・終了時刻を直せば別々に残せる。 */
 function mirrorDrTime(fromId, toId) {
   const a = document.getElementById(fromId), b = document.getElementById(toId);
   if (a && b && a.value && !b.value) b.value = a.value;
+}
+// 点呼時刻を変えたら、対応する業務時刻を同じ時刻で上書きする（消したときは相手の値を残す）
+function onDrTenkoTimeInput(tenkoId, workId) {
+  const a = document.getElementById(tenkoId), b = document.getElementById(workId);
+  if (a && b && a.value) b.value = a.value;
+  syncDrTenkoTimes();
 }
 // 業務前（点呼 ⇄ 業務開始）と業務後（業務終了 ⇄ 点呼）を、空いているほうへ写す
 function syncDrTenkoTimes() {

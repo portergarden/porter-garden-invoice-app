@@ -1422,8 +1422,8 @@ try {
           <div style="font-size:10px;color:var(--text2);margin-top:2px">対面以外のときは、どのように点呼したかの記録が必要です</div>
         </div>
         <div class="fld"><label>業務前 点呼時刻 <span style="color:var(--red)">*</span></label>
-          <input type="time" id="drTenkoBeforeAt" onchange="syncDrTenkoTimes()">
-          <div style="font-size:10px;color:var(--text2);margin-top:2px">点呼記録簿の必須項目です。③の業務開始時刻と片方を入れると、空いているもう片方にも同じ時刻が入ります</div>
+          <input type="time" id="drTenkoBeforeAt" oninput="onDrTenkoTimeInput('drTenkoBeforeAt','drStart')" onchange="onDrTenkoTimeInput('drTenkoBeforeAt','drStart')">
+          <div style="font-size:10px;color:var(--text2);margin-top:2px">点呼記録簿の必須項目です。入れると③の業務開始時刻も同じ時刻になります</div>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1472,7 +1472,7 @@ try {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="fld"><label>業務開始時刻 <span style="color:var(--red)">*</span></label>
             <input type="time" id="drStart" onchange="syncDrTenkoTimes()">
-            <div style="font-size:10px;color:var(--text2);margin-top:2px">②の業務前点呼時刻と入れ合います</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:2px">②の業務前点呼時刻と同じ時刻が入ります。違うときだけ直してください</div>
           </div>
           <div class="fld"><label>出発地点（業務を始めた場所） <span style="color:var(--red)">*</span></label>
             <input type="text" id="drStartLoc" placeholder="例: 自宅 ／ 〇〇営業所">
@@ -1705,7 +1705,7 @@ try {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="fld"><label>業務終了時刻 <span style="color:var(--red)">*</span></label>
             <input type="time" id="drEnd" onchange="syncDrTenkoTimes()">
-            <div style="font-size:10px;color:var(--text2);margin-top:2px">⑨の業務後点呼時刻と入れ合います</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:2px">⑨の業務後点呼時刻と同じ時刻が入ります。違うときだけ直してください</div>
           </div>
           <div class="fld"><label>帰着地点（業務を終えた場所） <span style="color:var(--red)">*</span></label>
             <input type="text" id="drEndLoc" placeholder="例: 自宅 ／ 〇〇営業所">
@@ -1721,8 +1721,8 @@ try {
 
         <div style="font-size:11px;font-weight:600;color:var(--blue);margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--blue-bg)">⑨ 業務後点呼</div>
         <div class="fld"><label>業務後 点呼時刻 <span style="color:var(--red)">*</span></label>
-          <input type="time" id="drTenkoAfterAt" onchange="syncDrTenkoTimes()">
-          <div style="font-size:10px;color:var(--text2);margin-top:2px">点呼記録簿の必須項目です。帰着してから点呼した日など、⑧の業務終了時刻と違うときはこの欄を直してください</div>
+          <input type="time" id="drTenkoAfterAt" oninput="onDrTenkoTimeInput('drTenkoAfterAt','drEnd')" onchange="onDrTenkoTimeInput('drTenkoAfterAt','drEnd')">
+          <div style="font-size:10px;color:var(--text2);margin-top:2px">点呼記録簿の必須項目です。入れると⑧の業務終了時刻も同じ時刻になります</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="fld">
@@ -3467,7 +3467,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=41d3843e"></script>
+<script src="js/03-dashboard-daily.js?v=414acca5"></script>
 
 
 <script src="js/04-monthly.js?v=54c868c7"></script>
