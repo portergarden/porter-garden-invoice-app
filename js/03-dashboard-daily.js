@@ -2980,6 +2980,7 @@ function onDrCliInput() {
   if (!box || !inp) return;
   const q = nm(inp.value || '');
   updateDrTripSiteFields();
+  if (!q) { showDrRecentClis(); return; }
   if (q.length < DR_CLI_MIN_CHARS) { hideDrCliSuggest(); return; }
   const hits = drCliCandidates().filter(c => nm(c.name).includes(q)).slice(0, 8);
   if (!hits.length) {
@@ -2997,6 +2998,63 @@ function selectDrCli(name) {
   if (inp) inp.value = name;
   hideDrCliSuggest();
   updateDrTripSiteFields();
+}
+
+/* ---- 最近使った取引先 ----
+   取引先欄が空のときに、そのドライバーの最近の運行から候補を出す（この日報で足した運行→過去の日報の順）。
+   取引先・営業所・コースの組み合わせごとに1件とし、選ぶと営業所・コースまで入る。
+   登録のない手入力の取引先は集計に結び付かないので勧めない。
+   登録から消えた営業所・コースは候補に出さない（取引先だけの候補にまとめる） */
+const DR_RECENT_CLI_MAX = 6;
+let drRecentTrips = null;   // { drvId, trips }。セッション中はキャッシュし、提出したら捨てる
+let drRecentCliItems = [];
+function drRecentCliList(drvTrips) {
+  const src = drCliCandidates();
+  const seen = new Set(), out = [];
+  for (const t of [...pendDrTrips].reverse().concat(drvTrips || [])) {
+    const cli = t?.cli_id != null ? src.find(c => String(c.id) === String(t.cli_id)) : null;
+    if (!cli) continue;
+    const site = cliSiteNames(cli).includes(t.site) ? t.site : '';
+    const course = cliCourseNames(cli, site).includes(t.course) ? t.course : '';
+    const key = `${cli.id}|${site}|${course}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({name: cli.name, site, course});
+    if (out.length >= DR_RECENT_CLI_MAX) break;
+  }
+  return out;
+}
+function renderDrRecentClis() {
+  const box = document.getElementById('drCliSuggest');
+  const inp = document.getElementById('drCli');
+  if (!box || !inp || inp.value || document.activeElement !== inp) return;
+  drRecentCliItems = drRecentCliList(drRecentTrips?.trips);
+  if (!drRecentCliItems.length) { hideDrCliSuggest(); return; }
+  box.innerHTML = '<div style="padding:5px 8px;font-size:10px;color:var(--text2)">最近使った取引先</div>' +
+    drRecentCliItems.map((c, i) => `<div style="padding:6px 8px;font-size:12px;cursor:pointer"
+    onmousedown="selectDrRecentCli(${i})"
+    onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">${escHtml(c.name)}${escHtml(tripSubParen(c))}</div>`).join('');
+  box.style.display = 'block';
+}
+async function showDrRecentClis() {
+  renderDrRecentClis();   // この日報の運行と取得済みの分はすぐ出す
+  const drvId = drFormDrvId();
+  if (!sb || drvId == null || drRecentTrips?.drvId === drvId) return;
+  try {
+    const {data, error} = await sb.from('daily_reports').select('trips').eq('drv_id', drvId)
+      .order('date', {ascending:false}).order('id', {ascending:false}).limit(20);
+    if (error) throw error;
+    drRecentTrips = {drvId, trips: (data || []).flatMap(r => Array.isArray(r.trips) ? [...r.trips].reverse() : [])};
+    renderDrRecentClis();
+  } catch(e) { console.warn('showDrRecentClis:', e.message); }
+}
+function selectDrRecentCli(i) {
+  const c = drRecentCliItems[i];
+  const inp = document.getElementById('drCli');
+  if (!c || !inp) return;
+  inp.value = c.name;
+  hideDrCliSuggest();
+  updateDrTripSiteFields(c.site, c.course);
 }
 
 /* ---- 取引先の営業所・コース ----
@@ -3134,11 +3192,13 @@ function collectDrTrip() {
   const numOrNull = id => { const v = document.getElementById(id)?.value; return v === '' || v == null ? null : +v; };
   const odoStart = numOrNull('drTripOdoStart'), odoEnd = numOrNull('drTripOdoEnd');
   if (odoStart != null && odoEnd != null && odoEnd < odoStart) { showT('終了時のメーターが開始時より小さくなっています', 'twa'); return null; }
-  // 営業所・コース。欄が出ているのに選んでいなければ確認する（未選択でも記録はできるが、概算は共通ルールだけになる）
+  // 営業所・コース。コースが登録されている取引先はコースの選択を必須にする。
+  // 営業所は未選択でも確認のうえ記録できる（概算は共通ルールだけになる）
+  updateDrTripSiteFields();
   const pick = (fldId, selId) => { const f = document.getElementById(fldId); return (f && f.style.display !== 'none') ? (document.getElementById(selId)?.value || '') : null; };
   const site = pick('drTripSiteFld', 'drTripSite'), course = pick('drTripCourseFld', 'drTripCourse');
-  const missing = [site === '' ? '営業所' : '', course === '' ? 'コース' : ''].filter(Boolean);
-  if (missing.length && !confirm(`${missing.join('・')}が選ばれていません。\n\nこのまま記録しますか？`)) return null;
+  if (course === '') { showT('コースを選んでください', 'twa'); document.getElementById('drTripCourse')?.focus(); return null; }
+  if (site === '' && !confirm('営業所が選ばれていません。\n\nこのまま記録しますか？')) return null;
   return {
     cli_id: cli ? cli.id : null, cli_name: cli ? cli.name : cliInput,
     site: site || null, course: course || null,
@@ -3881,6 +3941,7 @@ async function submitDailyReport() {
       addLog('日報提出', `${car} ${date} ${km}km アルコール前:${alcBefore}`);
     }
     clearDrDraft();
+    drRecentTrips = null;   // 次に開いたとき、今回の運行も候補に入るように取り直す
     resultEl.textContent = '✔ 提出しました'; resultEl.style.color='var(--green)';
     setTimeout(() => showDailyList(), 1200);
   } catch(e) {

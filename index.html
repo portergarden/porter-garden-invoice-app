@@ -1554,7 +1554,7 @@ try {
         <div style="background:var(--bg2);border-radius:var(--radius);padding:9px 10px;margin-bottom:8px">
           <div class="fld"><label>取引先 / センター <span style="color:var(--red)">*</span></label>
             <div style="position:relative">
-              <input type="text" id="drCli" autocomplete="off" placeholder="2文字以上入力すると候補が出ます"
+              <input type="text" id="drCli" autocomplete="off" placeholder="タップで最近の取引先、2文字以上で検索"
                      oninput="onDrCliInput()" onfocus="onDrCliInput()" onblur="setTimeout(hideDrCliSuggest,150)">
               <div id="drCliSuggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:60;background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius);max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)"></div>
             </div>
@@ -1565,7 +1565,7 @@ try {
             <div class="fld" id="drTripSiteFld" style="display:none"><label>営業所（配属先）</label>
               <select id="drTripSite" style="width:100%" onchange="updateDrTripSiteFields()"></select>
             </div>
-            <div class="fld" id="drTripCourseFld" style="display:none"><label>コース</label>
+            <div class="fld" id="drTripCourseFld" style="display:none"><label>コース <span style="color:var(--red)">*</span></label>
               <select id="drTripCourse" style="width:100%"></select>
             </div>
           </div>
@@ -3467,7 +3467,7 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=414acca5"></script>
+<script src="js/03-dashboard-daily.js?v=68718b9d"></script>
 
 
 <script src="js/04-monthly.js?v=54c868c7"></script>
