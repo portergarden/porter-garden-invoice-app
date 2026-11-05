@@ -2051,14 +2051,12 @@ async function downloadDriverStatement(id, path, title, isRead) {
 
 async function loadDriverDailyList() {
   if (!sb || !me?.driver_id) return;
-  const drvData = me.driver_data;
-  const dCars = (drvData?.cars || []);
   const month = document.getElementById('drvDailyMonth')?.value || '';
   // 60件で打ち切っていたため、月で絞らずに開くと自分の過去の日報が途中から見えなかった。
   // RLSで自分の分しか返らず、1人あたり年に約250件なので全件読んで問題ない
   const build = () => {
     let q = sb.from('daily_reports').select('*').order('date', {ascending:false}).order('id', {ascending:false});
-    if (dCars.length) q = q.in('car', dCars);
+    q = q.eq('drv_id', me.driver_id);
     if (month) { const [y,m]=month.split('-'); q=q.gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))); }
     return q;
   };
@@ -2118,7 +2116,7 @@ async function renderDriverMonthly() {
   try {
     const [y,m] = month.split('-');
     const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*')
-      .in('car', drvData.cars||[]).gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))).order('date').order('id'));
+      .eq('drv_id', me.driver_id).gte('date',`${y}-${m}-01`).lte('date',fmtLocalDate(new Date(+y,+m,0))).order('date').order('id'));
     if (error) throw error;
     const reps = data||[];
     // 稼働先の名前を引けるようにする。ドライバーはclientsテーブルを読めないため、
@@ -2200,7 +2198,7 @@ async function printDriverMonthlyReportA4() {
   let dReports = [];
   try {
     const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*')
-      .in('car', d.cars||[]).gte('date', monthFrom).lte('date', monthTo).order('date').order('id'));
+      .eq('drv_id', me.driver_id).gte('date', monthFrom).lte('date', monthTo).order('date').order('id'));
     if (error) throw error;
     dReports = data || [];
   } catch(e) { showT('日報データの取得に失敗しました: ' + e.message, 'twa'); return; }

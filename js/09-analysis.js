@@ -368,7 +368,7 @@ async function showDriverStats(drvId) {
     const [y,m] = months[0].split('-');
     const {data} = await fetchAllRows(() => sb.from('daily_reports')
       .select('date,distance_km,alc_before,alc_after,status')
-      .in('car', dCars)
+      .eq('drv_id', drvId)
       .gte('date', `${y}-${m}-01`)
       .order('date', {ascending:false})
       .order('id', {ascending:false}));

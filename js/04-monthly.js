@@ -703,6 +703,7 @@ async function renderMonthlyReport() {
         .order('date').order('id'));
       if (!error) {
         drReports = data || [];
+        await refreshDrvsForReports(drReports);
         mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
         mrFetchKey = fetchKey;
       }
@@ -1140,6 +1141,7 @@ async function printMonthlyReportA4(onlyDrvId) {
     const {data, error} = await fetchAllRows(() => sb.from('daily_reports').select('*').gte('date', monthFrom).lte('date', monthTo).order('date').order('id'));
     if (error) throw error;
     drReports = data || [];
+    await refreshDrvsForReports(drReports);
     mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
   } catch(e) { alert('日報データの取得に失敗しました: ' + e.message); return; }
 
@@ -1295,7 +1297,7 @@ async function checkSlipVsDailyReport() {
     const maxM = months.sort().pop();
     const [maxY, maxMo] = maxM.split('-');
     const {data, error} = await fetchAllRows(() => sb.from('daily_reports')
-      .select('date,car,distance_km,qty_takkyubin,qty_nekopos,status')
+      .select('date,car,drv_id,driver_name,distance_km,qty_takkyubin,qty_nekopos,status')
       .gte('date', `${minM}-01`)
       .lte('date', fmtLocalDate(new Date(+maxY,+maxMo,0)))
       .order('date').order('id'));
@@ -1315,7 +1317,6 @@ async function checkSlipVsDailyReport() {
   });
 
   drvs.forEach(d => {
-    const dCars = d.cars||[];
     const suppId = d.supplier_id;
     if (!suppId) return;
 
@@ -1324,7 +1325,7 @@ async function checkSlipVsDailyReport() {
     if (!dPayRows.length) return;
 
     // 日報
-    const dDailyReps = drReports.filter(r=>dCars.some(c=>nm(c)===nm(r.car)));
+    const dDailyReps = drReports.filter(r=>recDrv(r)?.id===d.id);
     if (!dDailyReps.length) {
       warnings.push(`<b>${escHtml(d.name)}</b>: 日報の提出がありません`);
       return;

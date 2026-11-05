@@ -2552,6 +2552,7 @@ async function initDailyForm(reportId=null) {
   // 別の日報を開いたときに、前の運行・休憩を編集中のままにしない
   editDrTripIdx = null;
   editDrRestIdx = null;
+  drCarPicked = false;
   installDrDraftAutosave();
   // 日付
   const dEl = document.getElementById('drD');
@@ -2590,8 +2591,8 @@ async function initDailyForm(reportId=null) {
     const myCars = myDrv ? allCarsWithAssigned.filter(x=>x.drvId===myDrv.id).map(x=>x.car) : [];
     const otherCars = myDrv ? allCarsWithAssigned.filter(x=>x.drvId!==myDrv.id) : allCarsWithAssigned;
     carSel.innerHTML = '<option value="">選択してください</option>' +
-      (myCars.length ? `<optgroup label="自分の車両（${escHtml(myDrv.name)}）">${myCars.map(c => `<option value="${c}" data-name="${escHtml(myDrv.name)}">${c}</option>`).join('')}</optgroup>` : '') +
-      otherCars.map(x => `<option value="${escHtml(x.car)}" data-name="${escHtml(x.name)}">${escHtml(x.car)}（${escHtml(x.name)}）</option>`).join('');
+      (myCars.length ? `<optgroup label="自分の車両（${escHtml(myDrv.name)}）">${myCars.map(c => `<option value="${c}" data-name="${escHtml(myDrv.name)}" data-drv="${myDrv.id}">${c}</option>`).join('')}</optgroup>` : '') +
+      otherCars.map(x => `<option value="${escHtml(x.car)}" data-name="${escHtml(x.name)}" data-drv="${x.drvId}">${escHtml(x.car)}（${escHtml(x.name)}）</option>`).join('');
     enhanceSelectSearchable('drCar');
     // 新規入力では、ドライバーに紐づけた管理者アカウントなら自分の車両を最初から選んでおく（運転者名・メーター・出発地点も引き継ぐ）
     if (!reportId && myCars.length) {
@@ -2780,7 +2781,9 @@ async function initDailyForm(reportId=null) {
 
 // 車両番号セレクトの選択変更時: ドライバーは「その他（手入力）」欄の表示切替のみ、
 // 管理者は選択した車両の所有ドライバー名を運転者名欄へ自動反映する
+let drCarPicked = false;   // 開いた後に車両を選び直したか
 function onDrCarChange() {
+  drCarPicked = true;
   const carSel = document.getElementById('drCar');
   const carCustom = document.getElementById('drCarCustom');
   if (me?.role === 'driver') {
@@ -3610,6 +3613,9 @@ function drFormDrvId() {
     ? (document.getElementById('drCarCustom')?.value || '').trim()
     : (carSel?.value || '');
   if (!car) return null;
+  // 同じ車番が2人に登録されていることがあるので、車番より先に選んだ候補の人を見る
+  const picked = carSel?.options[carSel.selectedIndex]?.dataset.drv;
+  if (picked) return +picked;
   const date = document.getElementById('drD')?.value || fmtLocalDate(new Date());
   return lkDByAssign(car, date)?.id ?? lkD(car)?.id ?? null;
 }
@@ -3835,7 +3841,11 @@ async function submitDailyReport() {
   // 管理者・編集者が代理入力する場合のみ、車番から所有ドライバーを解決する
   // （恒久登録車両はlkD、乗務履歴で割り当て中の代車はlkDByAssignで解決。車番プルダウンに
   // 両方の車両が候補として出るようになったため、代車を選んだ場合も正しく紐づける）。
-  const resolvedDrvId = (me?.role === 'driver') ? me.driver_id : (lkDByAssign(car, date)?.id ?? lkD(car)?.id ?? null);
+  // 既存の日報を管理者が直すときは、車両を選び直さない限り提出した人のまま（車番から決め直すと別人に変わる）
+  const editingRep = editDailyId ? dailyReports.find(x => x.id === editDailyId) : null;
+  const resolvedDrvId = (me?.role === 'driver') ? me.driver_id
+    : (editingRep?.drv_id != null && !drCarPicked) ? editingRep.drv_id
+    : drFormDrvId();
   if (!editDailyId && await checkDrSameDay()) {
     resultEl.textContent = '⚠ この日の日報はすでに提出されています。新しく出さずに、その日報を開いて「② 稼働」に運行を追加してください';
     resultEl.style.color = 'var(--red)';
@@ -4002,6 +4012,7 @@ async function loadDailyReports() {
       throw error;
     }
     dailyReports = data || [];
+    await refreshDrvsForReports(dailyReports);
     renderDailyList();
     renderDailySummary();
     renderDailyListCount(from, to);

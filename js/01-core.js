@@ -752,7 +752,26 @@ function lkDByAssign(car, date) {
 // 同じ車両を複数人で稼働することがあるため、次の優先順位で判定する:
 // ① レコードのdrv_id（受注入力での手動選択）② 車両乗務履歴（代車・乗り換え）③ drivers.carsの登録車番
 // ④取引先のCSVの車番が誤っている場合の読み替え（car_aliases。車番の読み替え画面で登録）
-const recDrv=r=>(r.drv_id!=null && driverIndexes().id.get(r.drv_id)) || lkDByAssign(r.car, r.date) || lkD(r.car) || aliasDrv(r);
+// 日報（driver_name 列を持つ行）は①で必ず決める。画面を開いた後に登録された人は名簿(drvs)にまだ居ないが、
+// ここで車番に落とすと同じ車番の別人（奥山さんの日報→三輪さん）になるため、日報に残っている氏名で返す
+const recDrv=r=>{
+  if(r.drv_id!=null){
+    const d=driverIndexes().id.get(r.drv_id);
+    if(d) return d;
+    if('driver_name' in r) return {id:r.drv_id,name:r.driver_name||'',supplier_id:'',cars:[]};
+  }
+  return lkDByAssign(r.car, r.date) || lkD(r.car) || aliasDrv(r);
+};
+// 読み込んだ日報に、名簿(drvs)に居ないドライバーがいれば名簿を取り直す（画面を開いた後に登録された人）
+async function refreshDrvsForReports(reports){
+  if(!sb || me?.role==='driver') return;
+  const idx=driverIndexes().id;
+  if(!(reports||[]).some(r=>r.drv_id!=null && !idx.has(r.drv_id))) return;
+  const {data,error}=await fetchAllRows(()=>sb.from('drivers').select('*').order('name').order('id'));
+  if(error){ console.warn('refreshDrvsForReports:',error.message); return; }
+  drvs=data||[];
+  invalidateDriverIndexes();
+}
 // 取引先ID・ドライバーIDの新規登録時の自動採番（既存の最大値+1。数値以外は無視）
 function nextIdFor(list, field) {
   // 「100-2」のような枝番つきIDは本体の100として数える（枝番ぶんで採番が飛ばないように）
