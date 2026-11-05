@@ -4567,14 +4567,14 @@ function resetMonthDefaults() {
    pageSel は紙1枚にあたる要素のセレクタ（.drp-page / .mr-page）。
    紙1枚ずつ <div class="doc-fit"> で包んで使う。 */
 const DOC_FIT_MAX_WIDTH = 600;
-function docFitBlock(pageSel) {
+function docFitBlock(pageSel, maxWidth = DOC_FIT_MAX_WIDTH) {
   return `
   <style>
   /* iOSは横に広いページの文字を勝手に拡大する（読みやすくするための機能）。
      colspanで幅の広いセルほど大きくなり、表の中身だけが罫線からはみ出す。
      100%を指定すると拡大せず、指定どおりの大きさで出る */
   html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
-  @media screen and (max-width:${DOC_FIT_MAX_WIDTH}px){
+  @media screen and (max-width:${maxWidth}px){
     body{overflow-x:hidden}
     .doc-fit{overflow:hidden}
   }
@@ -4586,7 +4586,7 @@ function docFitBlock(pageSel) {
   <script>
   (function(){
     function fit(){
-      var narrow = window.innerWidth <= ${DOC_FIT_MAX_WIDTH};
+      var narrow = window.innerWidth <= ${maxWidth};
       document.querySelectorAll('.doc-fit').forEach(function(wrap){
         var page = wrap.querySelector('${pageSel}');
         if (!page) return;

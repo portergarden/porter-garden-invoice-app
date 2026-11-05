@@ -4294,8 +4294,7 @@ function buildDailyReportHtml(r) {
     <table class="drp-table">
       <tr><th>業務日</th><td>${r.date||''}</td><th>車両番号</th><td>${escHtml(r.car)}</td></tr>
       <tr><th>運転者名</th><td>${escHtml(r.driver_name)}</td><th>業務形態</th><td>${typeShort(r.type)}</td></tr>
-      <tr><th>稼働先</th><td>${cli?escHtml(cli.name):'—'}</td>
-          <th>提出者・提出日時</th><td>${escHtml(r.submitted_by||'')||'—'}${r.created_at?`　${(r.created_at||'').slice(0,16).replace('T',' ')}`:''}</td></tr>
+      <tr><th>稼働先</th><td colspan="3">${cli?escHtml(cli.name):'—'}</td></tr>
     </table>
 
     <div class="drp-section-title">① 業務の記録</div>

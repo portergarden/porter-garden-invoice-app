@@ -2277,33 +2277,10 @@ async function printDriverMonthlyReportA4() {
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>月報_${monthStr}</title>
   <style>
-    @page{size:A4 portrait;margin:10mm}
-    *{box-sizing:border-box}
-    body{font-family:"Hiragino Sans","Meiryo",sans-serif;color:#222;margin:0}
-    /* 印刷したときと同じ幅で見せる。指定しないとプレビューの枠幅まで表が縮み、
-       稼働時間などが枠からはみ出す。@page の余白が10mmなので中身は190mm */
-    .mr-page{width:190mm;margin:0 auto;page-break-after:always}
-    .mr-page:last-child{page-break-after:auto}
-    .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
-    .mr-title{font-size:16px;font-weight:700}
-    .mr-period{font-size:12px;color:#555;margin-top:2px}
-    .mr-company{text-align:right;font-size:10px;color:#555;line-height:1.5}
-    .mr-summary{font-size:10px;color:#333;margin-bottom:6px;padding:4px 6px;background:#f2f2f2;border-radius:3px}
-    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
-    table.mr-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.7px}
-    table.mr-table th,table.mr-table td{border:1px solid #666;padding:2px 3px}
-    table.mr-table th{background:#eee;font-weight:600}
-    table.mr-table td.num{text-align:right}
-    table.mr-table td.center{text-align:center}
-    /* 以前は1行に収めて「…」で切っていたが、車番や稼働先が読めなくなるため折り返す */
-    table.mr-table td.car,table.mr-table td.site{white-space:normal;word-break:break-word}
-    tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
-    tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
-    tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
-    tr.alc{background:#fdeaea}
-  </style></head><body>
+    ${MR_PRINT_CSS}</style></head><body>
   ${page}
-  ${docFitBlock('.mr-page')}
+  ${mrFitPagesScript()}
+  ${docFitBlock('.mr-page', MR_DOC_FIT_WIDTH)}
   </body></html>`;
 
   openDocPreview(html, `${y}年${m}月の月報`);

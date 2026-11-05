@@ -1821,7 +1821,7 @@ try {
       <button class="btn sml" onclick="toggleMrDrvPicker()" title="月報に出すドライバーを個別に選びます。画面と印刷の両方に反映されます">👤 対象ドライバー <span id="mrDrvCount" style="color:var(--text2);font-size:10px">全員</span></button>
       <button class="btn sml" onclick="toggleMrColPicker()" title="月報に出す項目を選びます。画面の日別明細と印刷の日めくり表の両方に反映されます">⚙ 表示項目 <span id="mrColCount" style="color:var(--text2);font-size:10px"></span></button>
       <button class="btn sml" onclick="exportMonthlyCsv()">⬇ CSV</button>
-      <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4縦1枚）を画面で確認してから印刷・PDF保存できます">📄 月報を見る（ドライバー別）</button>
+      <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4横1枚）を画面で確認してから印刷・PDF保存できます">📄 月報を見る（ドライバー別）</button>
     </div>
   </div>
 
@@ -2168,7 +2168,7 @@ try {
         <input type="month" id="drvMrMonth" style="padding:4px 8px;font-size:12px;border:0.5px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text)" onchange="renderDriverMonthly()">
         <button class="btn sml" onclick="singleMonthShift('drvMrMonth',1,renderDriverMonthly)" title="翌月">▶</button>
         <button class="btn sml" onclick="exportDriverMonthlyCsv()">⬇ CSV</button>
-        <button class="btn sml" onclick="printDriverMonthlyReportA4()" title="1日〜月末までの日めくり表（A4縦1枚）を画面で確認してから印刷・PDF保存できます">📄 月報を見る</button>
+        <button class="btn sml" onclick="printDriverMonthlyReportA4()" title="1日〜月末までの日めくり表（A4横1枚）を画面で確認してから印刷・PDF保存できます">📄 月報を見る</button>
       </div>
       <div id="drvMonthlyBody" style="padding:8px 14px"></div>
     </div>
@@ -3412,7 +3412,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=5a6b1bcc"></script>
+<script src="js/01-core.js?v=f2a7b016"></script>
 
 <script src="js/02-drivers-pay.js?v=f0957b27"></script>
 
@@ -3467,13 +3467,13 @@ try {
 </div>
 
 
-<script src="js/03-dashboard-daily.js?v=68718b9d"></script>
+<script src="js/03-dashboard-daily.js?v=eb32038d"></script>
 
 
-<script src="js/04-monthly.js?v=54c868c7"></script>
+<script src="js/04-monthly.js?v=fa83c508"></script>
 
 
-<script src="js/05-driver-portal.js?v=5c62875c"></script>
+<script src="js/05-driver-portal.js?v=808f056c"></script>
 
 
 

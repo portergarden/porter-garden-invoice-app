@@ -931,7 +931,7 @@ function renderMrCards() {
           </div>
           <div class="mr-head-r" style="text-align:right;flex-shrink:0;padding-left:8px">
             <div class="mr-head-btns" style="display:flex;gap:4px;justify-content:flex-end;margin-bottom:3px">
-              <button class="btn sml" onclick="event.stopPropagation();printMonthlyReportA4(${d.id})" title="このドライバーの月報をA4縦1枚で見る（PDF保存できます）">📄 月報</button>
+              <button class="btn sml" onclick="event.stopPropagation();printMonthlyReportA4(${d.id})" title="このドライバーの月報をA4横1枚で見る（PDF保存できます）">📄 月報</button>
               <button class="btn sml" onclick="event.stopPropagation();clearMrDrvFocus()" title="全員の表示に戻る">✕</button>
             </div>
             <div style="font-size:13px;font-weight:600">${fmtHours(drHours)}</div>
@@ -1072,9 +1072,58 @@ function jpHolidayName(dateStr) {
 
 // 月報（日報自動集計）を「1日〜月末までの日めくり表」としてドライバーごとに1ページずつまとめ、
 // 印刷用ウィンドウを開く。各ページは対象月の全日数分の行を持ち、日報が無い日は空欄行のまま
-// 印字する（休みとして扱わず、単に空欄で「未提出/非稼働」を表す）。1ドライバー分がA4縦1枚に
+// 印字する（休みとして扱わず、単に空欄で「未提出/非稼働」を表す）。1ドライバー分がA4横1枚に
 // 収まるよう、列は既存の日別明細テーブルと同じ構成（走行距離・宅配便・ポスト便・チャーター・
 // Alc前後・体調・状態）にとどめ、フォントを小さくして31行+ヘッダーが収まるようにしている
+/* ===== 月報の印刷（管理者用・ドライバー用で共通） =====
+   A4横1枚に1人分。列を増やして収まらないときは、mrFitPagesScript が文字を小さくして1枚に収める */
+const MR_PRINT_CSS = `
+    @page{size:A4 landscape;margin:10mm}
+    *{box-sizing:border-box}
+    body{font-family:"Hiragino Sans","Meiryo",sans-serif;color:#222;margin:0}
+    /* 印刷したときと同じ幅で見せる。指定しないとプレビューの枠幅まで表が縮み、
+       稼働時間などが枠からはみ出す。@page の余白が10mmなので中身は277mm */
+    .mr-page{width:277mm;margin:0 auto;page-break-after:always}
+    .mr-page:last-child{page-break-after:auto}
+    .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+    .mr-title{font-size:16px;font-weight:700}
+    .mr-period{font-size:12px;color:#555;margin-top:2px}
+    .mr-company{text-align:right;font-size:10px;color:#555;line-height:1.5}
+    .mr-summary{font-size:10px;color:#333;margin-bottom:6px;padding:4px 6px;background:#f2f2f2;border-radius:3px}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+    table.mr-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:var(--mr-font,8.7px);line-height:1.25}
+    table.mr-table th,table.mr-table td{border:1px solid #666;padding:var(--mr-pad,2px 3px);white-space:normal;word-break:break-word;overflow-wrap:anywhere}
+    table.mr-table th{background:#eee;font-weight:600}
+    table.mr-table td.num{text-align:right}
+    table.mr-table td.center{text-align:center}
+    /* 以前は1行に収めて「…」で切っていたが、車番や稼働先が読めなくなるため折り返す */
+    table.mr-table td.car,table.mr-table td.site{white-space:normal;word-break:break-word}
+    tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
+    tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
+    tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
+    tr.alc{background:#fdeaea}
+  `;
+// 紙面を縮小表示に切り替える幅。紙面（277mm ≒ 1047px）が入らない枠では全体を縮めて見せる
+const MR_DOC_FIT_WIDTH = 1100;
+/* 用紙の高さ（A4横190mm。読み取り誤差と端末差を見て2mm引く）に収まるまで、表の文字を段階的に小さくする。
+   紙面の幅はmmで固定なので、プレビューの枠の広さによらず印刷と同じ結果になる。
+   読める下限まで小さくしても入らないときだけ、2枚目にまたがる */
+const MR_MIN_FONT_PX = 5.5;
+function mrFitPagesScript() {
+  return `<script>
+  (function(){
+    var limit = (190 - 2) * 96 / 25.4;
+    document.querySelectorAll('.mr-page').forEach(function(page){
+      for (var f = 8.7; page.offsetHeight > limit && f > ${MR_MIN_FONT_PX}; ) {
+        f = Math.max(${MR_MIN_FONT_PX}, Math.round((f - 0.3) * 10) / 10);
+        page.style.setProperty('--mr-font', f + 'px');
+        page.style.setProperty('--mr-pad', f < 7 ? '1px 2px' : '2px 3px');
+      }
+    });
+  })();
+  <\/script>`;
+}
+
 async function printMonthlyReportA4(onlyDrvId) {
   const from = document.getElementById('mrFrom')?.value;
   if (!from) { alert('対象期間を選択してください'); return; }
@@ -1180,33 +1229,10 @@ async function printMonthlyReportA4(onlyDrvId) {
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
   <title>月報_${monthStr}</title>
   <style>
-    @page{size:A4 portrait;margin:10mm}
-    *{box-sizing:border-box}
-    body{font-family:"Hiragino Sans","Meiryo",sans-serif;color:#222;margin:0}
-    /* 印刷したときと同じ幅で見せる。指定しないとプレビューの枠幅まで表が縮み、
-       稼働時間などが枠からはみ出す。@page の余白が10mmなので中身は190mm */
-    .mr-page{width:190mm;margin:0 auto;page-break-after:always}
-    .mr-page:last-child{page-break-after:auto}
-    .mr-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
-    .mr-title{font-size:16px;font-weight:700}
-    .mr-period{font-size:12px;color:#555;margin-top:2px}
-    .mr-company{text-align:right;font-size:10px;color:#555;line-height:1.5}
-    .mr-summary{font-size:10px;color:#333;margin-bottom:6px;padding:4px 6px;background:#f2f2f2;border-radius:3px}
-    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
-    table.mr-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:8.7px}
-    table.mr-table th,table.mr-table td{border:1px solid #666;padding:2px 3px;white-space:normal;word-break:break-word;overflow-wrap:anywhere}
-    table.mr-table th{background:#eee;font-weight:600}
-    table.mr-table td.num{text-align:right}
-    table.mr-table td.center{text-align:center}
-    /* 以前は1行に収めて「…」で切っていたが、車番や稼働先が読めなくなるため折り返す */
-    table.mr-table td.car,table.mr-table td.site{white-space:normal;word-break:break-word}
-    tr.sun td:first-child,tr.sun td:nth-child(2){color:#c0392b}
-    tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
-    tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
-    tr.alc{background:#fdeaea}
-  </style></head><body>
+    ${MR_PRINT_CSS}</style></head><body>
   ${pages.join('')}
-  ${docFitBlock('.mr-page')}
+  ${mrFitPagesScript()}
+  ${docFitBlock('.mr-page', MR_DOC_FIT_WIDTH)}
   </body></html>`;
 
   openDocPreview(html, `${y}年${m}月の月報`);
