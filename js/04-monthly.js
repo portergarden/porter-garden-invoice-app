@@ -23,7 +23,8 @@ const MR_COLS = [
   {key:'nethours', label:'実稼働時間',  def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drNetHours(r)):''},
   {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
   {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
-  {key:'odo',      label:'メーター',    def:false, align:'right',  pw:11, get:r=>(r.start_odometer!=null||r.end_odometer!=null)?`${r.start_odometer??'—'}/${r.end_odometer??'—'}`:''},
+  {key:'odoStart', label:'メーター開始', def:false, align:'right',  pw:8,  get:r=>r.start_odometer!=null?String(r.start_odometer):''},
+  {key:'odoEnd',   label:'メーター終了', def:false, align:'right',  pw:8,  get:r=>r.end_odometer!=null?String(r.end_odometer):''},
   {key:'tak',      label:'宅配便',      def:true,  align:'right',  pw:8,  get:r=>String(r.qty_takkyubin||0)},
   {key:'neko',     label:'ポスト便',    def:true,  align:'right',  pw:8,  get:r=>String(r.qty_nekopos||0)},
   {key:'corp',     label:'企業集配(件)',def:true, align:'right',  pw:8,  get:r=>String(r.qty_corp||0)},
@@ -45,6 +46,80 @@ const MR_COLS = [
   {key:'status',   label:'状態',        def:true,  align:'center', pw:8,  get:r=>r.status==='rejected'?'差戻し':''},
   {key:'note',     label:'備考',        def:true,  align:'left',   pw:14, screen:true, print:false, get:r=>escHtml(r.note||'')},
 ];
+/* 表の最後の「合計」の行に出す値。合計に意味のある列だけ。
+   同じ日に2枚ある日報（印刷の表には1枚しか出ない）も含めて足すので、月報の集計と同じ数字になる */
+const mrSumNum = (rs, key) => rs.reduce((a, r) => a + (+r[key] || 0), 0);
+const mrSumFmt = n => (Math.round(n * 10) / 10).toLocaleString();
+const MR_COL_SUMS = {
+  workh:      rs => fmtHM(rs.reduce((a, r) => a + drWorkHours(r), 0)),
+  nethours:   rs => fmtHM(rs.reduce((a, r) => a + drNetHours(r), 0)),
+  km:         rs => mrSumFmt(mrSumNum(rs, 'distance_km')),
+  tak:        rs => mrSumFmt(mrSumNum(rs, 'qty_takkyubin')),
+  neko:       rs => mrSumFmt(mrSumNum(rs, 'qty_nekopos')),
+  corp:       rs => mrSumFmt(mrSumNum(rs, 'qty_corp')),
+  corppcs:    rs => mrSumFmt(mrSumNum(rs, 'qty_corp_pcs')),
+  charter:    rs => mrSumFmt(mrSumNum(rs, 'qty_charter')),
+  charterpcs: rs => mrSumFmt(mrSumNum(rs, 'qty_charter_pcs')),
+  est:        rs => yenR(rs.reduce((a, r) => a + (estimateOneReport(r)?.sale || 0), 0)),
+  estPay:     rs => yenR(rs.reduce((a, r) => a + (estimateOneReport(r)?.pay || 0), 0)),
+};
+const mrTotalCells = (cols, reports) => cols.map((c, i) =>
+  i === 0 ? '合計' : (MR_COL_SUMS[c.key] ? MR_COL_SUMS[c.key](reports) : ''));
+/* 未入力の列を人ごとに隠す。担当の仕事によって使わない項目（宅配便・チャーターなど）が違うため。
+   0だけの列も未入力として扱う。日付の列は常に出す */
+const MR_HIDE_EMPTY_KEY = 'mrHideEmpty';
+let mrHideEmpty = true;
+try { mrHideEmpty = localStorage.getItem(MR_HIDE_EMPTY_KEY) !== '0'; } catch(e) {}
+const MR_COL_ALWAYS = new Set(['date', 'day', 'dow']);
+function mrColHasData(c, reports) {
+  if (MR_COL_ALWAYS.has(c.key)) return true;
+  if (!c.get) return false;
+  // アルコールの「0/0」は検知値0という記録なので未入力に含めない（空欄は「—/—」と出る）
+  return reports.some(r => !/^(0|¥0|[—\/\s]*)$/.test(String(c.get(r) ?? '').replace(/<[^>]*>/g, '').trim()));
+}
+const mrColsWithData = (cols, reports) => mrHideEmpty ? cols.filter(c => mrColHasData(c, reports)) : cols;
+function toggleMrHideEmpty(on) {
+  mrHideEmpty = on;
+  try { localStorage.setItem(MR_HIDE_EMPTY_KEY, on ? '1' : '0'); } catch(e) {}
+  renderMonthlyReport();
+}
+/* 月報の印刷の表（1日〜月末＋合計の行）。管理者用・ドライバー用で共通。
+   reports はその人のその月の日報。日報が無い日は空欄の行のまま出す */
+function mrMonthlyTableHtml(cols, reports, y, m) {
+  const WD = ['日','月','火','水','木','金','土'];
+  const lastDay = new Date(y, m, 0).getDate();
+  const monthStr = `${y}-${String(m).padStart(2,'0')}`;
+  const byDate = {};
+  reports.forEach(r => { byDate[r.date] = r; }); // 同日複数件は最後の1件を優先
+  const shown = mrColsWithData(cols, reports);
+  const cellCls = c => c.align==='right' ? 'num' : c.align==='center' ? 'center' : (c.key==='car'?'car':c.key==='site'?'site':'');
+  const rows = [];
+  for (let day=1; day<=lastDay; day++) {
+    const dateStr = `${monthStr}-${String(day).padStart(2,'0')}`;
+    const wd = new Date(y, m-1, day).getDay();
+    const holName = jpHolidayName(dateStr);
+    const r = byDate[dateStr];
+    const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
+    const rowCls = alcWarn ? 'alc' : holName ? 'hol' : wd===0 ? 'sun' : wd===6 ? 'sat' : '';
+    rows.push(`<tr${rowCls?` class="${rowCls}"`:''}>${shown.map(c=>{
+      const title = (c.key==='day'||c.key==='dow') && holName ? ` title="${escHtml(holName)}"` : '';
+      let v = '';
+      if (c.key==='day') v = String(day);
+      else if (c.key==='dow') v = WD[wd];
+      else if (r) v = c.get ? c.get(r) : '';
+      return `<td class="${cellCls(c)}"${title}>${v}</td>`;
+    }).join('')}</tr>`);
+  }
+  const sumPw = shown.reduce((a,c)=>a+(c.pw||8),0) || 1;   // 選ばれた列の目安幅を合計100%になるよう按分する
+  const totals = mrTotalCells(shown, reports);
+  return `<table class="mr-table">
+    <thead><tr>${shown.map(c=>`<th style="width:${((c.pw||8)/sumPw*100).toFixed(1)}%">${escHtml(c.label)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.join('')}
+      <tr class="mr-total">${shown.map((c,i)=>`<td class="${i===0?'center':cellCls(c)}">${totals[i]}</td>`).join('')}</tr>
+    </tbody>
+  </table>`;
+}
+
 /* ===== 取引先ごとの概算単価（段階＋超過のルール） =====
    日報の数量・時間・距離から売上・支払の見込みを出す。請求書・支払明細書とは別で確定額ではない。
    時間制（4時間まで固定、以降30分ごと加算）も距離制（20kmまで固定、20〜50kmは5kmごと加算…）も
@@ -383,6 +458,8 @@ function loadMrCols() {
     if (saved && typeof saved === 'object') {
       // 保存後に列が増えても、増えた列は既定値のまま残す
       MR_COLS.forEach(c => { if (typeof saved[c.key] === 'boolean') on[c.key] = saved[c.key]; });
+      // メーターが1列だった頃の選択を、開始・終了の2列に引き継ぐ
+      if (typeof saved.odo === 'boolean' && saved.odoStart === undefined) on.odoStart = on.odoEnd = saved.odo;
     }
   } catch(e) {}
   return on;
@@ -415,7 +492,9 @@ function renderMrColPicker() {
   const scope = c => c.screen === false ? '<span style="color:var(--text3);font-size:9.5px">（印刷のみ）</span>'
                    : c.print  === false ? '<span style="color:var(--text3);font-size:9.5px">（画面のみ）</span>' : '';
   const cols = mrAvailableCols();
-  el.innerHTML = cols.map(c => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer">
+  el.innerHTML = `<label style="grid-column:1/-1;display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px 6px;cursor:pointer;font-weight:500">
+    <input type="checkbox" onchange="toggleMrHideEmpty(this.checked)"${mrHideEmpty?' checked':''}>未入力の項目は人ごとに隠す（0だけの項目も隠します）
+  </label>` + cols.map(c => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer">
     <input type="checkbox" onchange="toggleMrCol('${c.key}',this.checked)"${mrCols[c.key]?' checked':''}>${escHtml(c.label)}${scope(c)}
   </label>`).join('');
   const n = cols.filter(c=>mrCols[c.key]).length;
@@ -997,14 +1076,14 @@ function renderMrCards() {
             <div style="overflow-x:auto">
               <table class="mr-day-tbl" style="width:100%;border-collapse:collapse;font-size:10px">
                 <thead><tr style="background:var(--bg2)">
-                  ${mrSelectedCols('screen').map(c=>`<th style="padding:3px 6px;text-align:${c.align}">${escHtml(c.label)}</th>`).join('')}
+                  ${mrColsWithData(mrSelectedCols('screen'), dReports).map(c=>`<th style="padding:3px 6px;text-align:${c.align}">${escHtml(c.label)}</th>`).join('')}
                 </tr></thead>
                 <tbody>
                   ${dReports.map(r => {
                     const alcWarn = +r.alc_before>=0.15||+r.alc_after>=0.15;
                     const healthBad = r.health_before==='bad'||r.health_after==='bad';
                     return `<tr data-k="${r.id}" style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">${
-                      mrSelectedCols('screen').map(c => {
+                      mrColsWithData(mrSelectedCols('screen'), dReports).map(c => {
                         // 目立たせたい列だけ色を付ける。備考は長いので省略表示にする
                         const extra = c.key==='alc' && alcWarn ? ';color:var(--red);font-weight:600'
                                     : c.key==='health' && healthBad ? ';color:var(--amber-text)'
@@ -1016,6 +1095,11 @@ function renderMrCards() {
                       }).join('')
                     }</tr>`;
                   }).join('')}
+                  ${(() => {
+                    const cols = mrColsWithData(mrSelectedCols('screen'), dReports);
+                    const totals = mrTotalCells(cols, dReports);
+                    return `<tr style="background:var(--bg2);font-weight:600">${cols.map((c,i)=>`<td style="padding:3px 6px;text-align:${c.align}">${totals[i]}</td>`).join('')}</tr>`;
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -1106,6 +1190,7 @@ const MR_PRINT_CSS = `
     tr.sat td:first-child,tr.sat td:nth-child(2){color:#2874a6}
     tr.hol td:first-child,tr.hol td:nth-child(2){color:#c0392b;font-weight:700}
     tr.alc{background:#fdeaea}
+    tr.mr-total td{background:#eee;font-weight:700}
   `;
 // 紙面を縮小表示に切り替える幅。紙面（277mm ≒ 1047px）が入らない枠では全体を縮めて見せる
 const MR_DOC_FIT_WIDTH = 1100;
@@ -1148,7 +1233,6 @@ async function printMonthlyReportA4(onlyDrvId) {
     mrReports = drReports;   // CSV出力が同じ範囲・同じ内容を使えるようにする
   } catch(e) { alert('日報データの取得に失敗しました: ' + e.message); return; }
 
-  const weekdayLabel = ['日','月','火','水','木','金','土'];
   const cAll = companySettings || {};
 
   /* 提出状況の表から1名を指定して呼ばれたときはその人だけ。
@@ -1162,9 +1246,6 @@ async function printMonthlyReportA4(onlyDrvId) {
     .map(d => {
       const dReports = drReports.filter(r => recDrv(r)?.id === d.id);
       if (!dReports.length) return null; // その月の日報が1件もないドライバーは出力対象外
-      const byDate = {};
-      dReports.forEach(r => { byDate[r.date] = r; }); // 同日複数件は最後の1件を優先
-
       const partner = lkCli(d.company_client_id);
 
       const drWorkDays = dReports.length;
@@ -1178,28 +1259,6 @@ async function printMonthlyReportA4(onlyDrvId) {
       const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
       const drNetH=dReports.reduce((a,r)=>a+drNetHours(r),0);
 
-      const dayRows = [];
-      const printCols = mrSelectedCols('print');
-      for (let day=1; day<=lastDay; day++) {
-        const dateStr = `${monthStr}-${String(day).padStart(2,'0')}`;
-        const wd = new Date(y, m-1, day).getDay();
-        const holName = jpHolidayName(dateStr);
-        const r = byDate[dateStr];
-        const alcWarn = r && (+r.alc_before>=0.15||+r.alc_after>=0.15);
-        const site = r ? lkCliAny(r.cli) : null;
-        const rowCls = alcWarn ? 'alc' : holName ? 'hol' : wd===0 ? 'sun' : wd===6 ? 'sat' : '';
-        // 選択された列だけを、定義順に並べる
-        dayRows.push(`<tr${rowCls?` class="${rowCls}"`:''}>${printCols.map(c=>{
-          const cls = c.align==='right' ? 'num' : c.align==='center' ? 'center' : (c.key==='car'?'car':c.key==='site'?'site':'');
-          const title = (c.key==='day'||c.key==='dow') && holName ? ` title="${escHtml(holName)}"` : '';
-          let v = '';
-          if (c.key==='day') v = String(day);
-          else if (c.key==='dow') v = weekdayLabel[wd];
-          else if (r) v = c.get ? c.get(r) : '';
-          return `<td class="${cls}"${title}>${v}</td>`;
-        }).join('')}</tr>`);
-      }
-
       return `<div class="doc-fit"><div class="mr-page">
         <div class="mr-head">
           <div>
@@ -1212,17 +1271,7 @@ async function printMonthlyReportA4(onlyDrvId) {
           </div>
         </div>
         <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　実稼働時間 ${fmtHours(drNetH)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
-        <table class="mr-table">
-          <thead><tr>
-            ${(() => {
-              // 選ばれた列の目安幅を合計100%になるよう按分する
-              const cols = mrSelectedCols('print');
-              const sum = cols.reduce((a,c)=>a+(c.pw||8),0) || 1;
-              return cols.map(c=>`<th style="width:${((c.pw||8)/sum*100).toFixed(1)}%">${escHtml(c.label)}</th>`).join('');
-            })()}
-          </tr></thead>
-          <tbody>${dayRows.join('')}</tbody>
-        </table>
+        ${mrMonthlyTableHtml(mrSelectedCols('print'), dReports, y, m)}
       </div></div>`;
     })
     .filter(Boolean);
