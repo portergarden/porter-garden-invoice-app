@@ -20,6 +20,7 @@ const MR_COLS = [
   {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
   {key:'worktime', label:'業務時間帯',  def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(hhmm(r.start_time)||'?')}-${escHtml(hhmm(r.end_time)||'?')}`:''},
   {key:'workh',    label:'稼働時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drWorkHours(r)):''},
+  {key:'nethours', label:'実稼働時間',  def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drNetHours(r)):''},
   {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
   {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
   {key:'odo',      label:'メーター',    def:false, align:'right',  pw:11, get:r=>(r.start_odometer!=null||r.end_odometer!=null)?`${r.start_odometer??'—'}/${r.end_odometer??'—'}`:''},
@@ -760,6 +761,7 @@ async function renderMonthlyReport() {
      過労運転の防止にも使う */
   const totalHours = drReports.reduce((a,r) => a + drWorkHours(r), 0);
   const maxHours   = drReports.reduce((a,r) => Math.max(a, drWorkHours(r)), 0);
+  const totalNetHours = drReports.reduce((a,r) => a + drNetHours(r), 0);
   const per = (v, unit) => manDays ? `1日平均 ${(v/manDays).toFixed(1)}${unit}` : '';
   // 時間は小数だと読み取れないので時:分で出す
   const perHours = () => manDays ? `1日平均 ${fmtHM(totalHours/manDays)}` : '';
@@ -776,7 +778,7 @@ async function renderMonthlyReport() {
     <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div>
       <div class="kpi-diff kpi-eq">${manDays === workDays ? '' : `のべ ${manDays}日`}</div></div>
     <div class="kpi-card"><div class="kpi-label">稼働時間</div><div class="kpi-val">${fmtHours(totalHours)}</div>
-      <div class="kpi-diff kpi-eq">${perHours()}${maxHours?` ／ 最長 ${fmtHM(maxHours)}`:''}</div></div>
+      <div class="kpi-diff kpi-eq">実稼働 ${fmtHours(totalNetHours)} ／ ${perHours()}${maxHours?` ／ 最長 ${fmtHM(maxHours)}`:''}</div></div>
     <div class="kpi-card"><div class="kpi-label">総走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div>
       <div class="kpi-diff kpi-eq">${per(totalKm,'km')}</div></div>
     <div class="kpi-card"><div class="kpi-label">個人宅配</div><div class="kpi-val">${(sumQty('qty_takkyubin')+sumQty('qty_nekopos')).toLocaleString()}個</div>
@@ -878,6 +880,7 @@ function renderMrCards() {
       const drCorp= dReports.reduce((a,r)=>a+(+r.qty_corp||0),0);
       const drCorpPcs=dReports.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
       const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
+      const drNetH=dReports.reduce((a,r)=>a+drNetHours(r),0);
       const drAlcAlert = dReports.filter(r=>+r.alc_before>=0.15||+r.alc_after>=0.15);
       const drHealthBad= dReports.filter(r=>r.health_before==='bad'||r.health_after==='bad');
 
@@ -926,7 +929,7 @@ function renderMrCards() {
                 ${drAlcAlert.length?'<span style="font-size:10px;color:var(--red);margin-left:4px">🚨 ALc超過</span>':''}
               </div>
               <div style="font-size:10px;color:var(--text2)">
-                稼働${drWorkDays}日 · 稼働時間${fmtHours(drHours)} · ${drKm}km${drTak||drNeko?` · 個人宅配${drTak+drNeko}個`:''}${drCorp||drCorpPcs?` · 企業集配${drCorp}件${drCorpPcs?`/${drCorpPcs}個`:''}`:''}${drChar||drCharPcs?` · チャーター${drChar}件${drCharPcs?`/${drCharPcs}個`:''}`:''}
+                稼働${drWorkDays}日 · 稼働時間${fmtHours(drHours)} · 実稼働${fmtHours(drNetH)} · ${drKm}km${drTak||drNeko?` · 個人宅配${drTak+drNeko}個`:''}${drCorp||drCorpPcs?` · 企業集配${drCorp}件${drCorpPcs?`/${drCorpPcs}個`:''}`:''}${drChar||drCharPcs?` · チャーター${drChar}件${drCharPcs?`/${drCharPcs}個`:''}`:''}
               </div>
             </div>
           </div>
@@ -1173,6 +1176,7 @@ async function printMonthlyReportA4(onlyDrvId) {
       const drCorp= dReports.reduce((a,r)=>a+(+r.qty_corp||0),0);
       const drCorpPcs=dReports.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
       const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
+      const drNetH=dReports.reduce((a,r)=>a+drNetHours(r),0);
 
       const dayRows = [];
       const printCols = mrSelectedCols('print');
@@ -1207,7 +1211,7 @@ async function printMonthlyReportA4(onlyDrvId) {
             発行日: ${fmtLocalDate(new Date())}
           </div>
         </div>
-        <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
+        <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　実稼働時間 ${fmtHours(drNetH)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
         <table class="mr-table">
           <thead><tr>
             ${(() => {

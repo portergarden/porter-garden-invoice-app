@@ -2132,6 +2132,7 @@ async function renderDriverMonthly() {
     const totalCorp = reps.reduce((a,r)=>a+(+r.qty_corp||0),0);
     const totalCorpPcs = reps.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
     const totalHours = reps.reduce((a,r)=>a+drWorkHours(r),0);
+    const totalNetHours = reps.reduce((a,r)=>a+drNetHours(r),0);
     const workDays = new Set(reps.map(r=>r.date)).size;
     // 稼働先ごとの日数。同じ日に同じ稼働先が複数件あっても1日と数える
     const daysBySite = {};
@@ -2149,6 +2150,7 @@ async function renderDriverMonthly() {
         <div class="kpi-card"><div class="kpi-label">稼働日数</div><div class="kpi-val">${workDays}日</div></div>
         <div class="kpi-card"><div class="kpi-label">走行距離</div><div class="kpi-val">${totalKm.toLocaleString()}km</div></div>
         <div class="kpi-card"><div class="kpi-label">稼働時間</div><div class="kpi-val">${fmtHours(totalHours)}</div></div>
+        <div class="kpi-card"><div class="kpi-label">実稼働時間</div><div class="kpi-val">${fmtHours(totalNetHours)}</div></div>
       </div>
       <div class="pnl-row"><span>個人宅配</span><span>宅配便${totalTak.toLocaleString()}個 ／ ポスト便${totalNeko.toLocaleString()}個</span></div>
       <div class="pnl-row"><span>企業集配</span><span>${totalCorp.toLocaleString()}件 ／ ${totalCorpPcs.toLocaleString()}個</span></div>
@@ -2163,7 +2165,7 @@ async function renderDriverMonthly() {
           const site = lkCliAny(r.cli);
           return `<div class="pnl-row sub">
             <span>${escHtml(r.date||'')}${site?` <span style="color:var(--text2)">${escHtml(site.short||site.name)}</span>`:''}</span>
-            <span>${fmtHours(drWorkHours(r))} / ${r.distance_km||0}km${drQtyText(r)?` / ${drQtyText(r)}`:''}</span>
+            <span>${fmtHours(drWorkHours(r))}（実稼働${fmtHours(drNetHours(r))}） / ${r.distance_km||0}km${drQtyText(r)?` / ${drQtyText(r)}`:''}</span>
           </div>`;
         }).join('')}
       </div>`;
@@ -2224,6 +2226,7 @@ async function printDriverMonthlyReportA4() {
   const drCorp= dReports.reduce((a,r)=>a+(+r.qty_corp||0),0);
   const drCorpPcs=dReports.reduce((a,r)=>a+(+r.qty_corp_pcs||0),0);
   const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
+  const drNetH=dReports.reduce((a,r)=>a+drNetHours(r),0);
 
   const dayRows = [];
   for (let day=1; day<=lastDay; day++) {
@@ -2240,6 +2243,7 @@ async function printDriverMonthlyReportA4() {
       <td class="car">${r?escHtml(r.car||''):''}</td>
       <td class="center">${r&&(r.start_time||r.end_time)?`${hhmm(r.start_time)||'?'}-${hhmm(r.end_time)||'?'}`:''}</td>
       <td class="num">${r&&r.start_time&&r.end_time?fmtHM(drWorkHours(r)):''}</td>
+      <td class="num">${r&&r.start_time&&r.end_time?fmtHM(drNetHours(r)):''}</td>
       <td class="site" title="${r&&site?escHtml(site.name):''}">${r&&site?escHtml(site.short||site.name):''}</td>
       <td class="num">${r?(r.distance_km||0):''}</td>
       <td class="num">${r?(r.qty_takkyubin||0):''}</td>
@@ -2263,10 +2267,10 @@ async function printDriverMonthlyReportA4() {
         発行日: ${fmtLocalDate(new Date())}
       </div>
     </div>
-    <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
+    <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　実稼働時間 ${fmtHours(drNetH)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
     <table class="mr-table">
       <thead><tr>
-        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:10%">車番</th><th style="width:11%">業務時間帯</th><th style="width:6%">稼働時間</th><th style="width:12%">稼働先</th><th style="width:6%">走行km</th><th style="width:6%">宅配便</th><th style="width:6%">ポスト便</th><th style="width:6%">企業集配</th><th style="width:7%">チャーター</th><th style="width:10%">Alc前/後</th><th style="width:5%">体調</th><th style="width:8%">状態</th>
+        <th style="width:4%">日</th><th style="width:4%">曜</th><th style="width:10%">車番</th><th style="width:11%">業務時間帯</th><th style="width:6%">稼働時間</th><th style="width:6%">実稼働時間</th><th style="width:12%">稼働先</th><th style="width:6%">走行km</th><th style="width:6%">宅配便</th><th style="width:6%">ポスト便</th><th style="width:6%">企業集配</th><th style="width:7%">チャーター</th><th style="width:10%">Alc前/後</th><th style="width:5%">体調</th><th style="width:8%">状態</th>
       </tr></thead>
       <tbody>${dayRows.join('')}</tbody>
     </table>

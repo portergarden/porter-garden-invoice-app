@@ -2371,6 +2371,28 @@ function drWorkHours(r) {
   if (a == null || b == null) return 0;
   return ((b - a + 24*60) % (24*60)) / 60;
 }
+/* 休憩の合計（時間）。業務時間の中に入っている分だけを数え、重なった休憩は二重に引かない。
+   終了が空の休憩や、業務時間の外の休憩（打ち間違い）は数えない */
+function drRestHours(r) {
+  const toMin = t => { const m = String(t||'').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1]*60 + +m[2] : null; };
+  const a = toMin(r.start_time), b = toMin(r.end_time);
+  if (a == null || b == null) return 0;
+  const span = (b - a + 24*60) % (24*60);
+  const list = Array.isArray(r.rests) && r.rests.length ? r.rests
+    : (r.rest_start ? [{start:r.rest_start, end:r.rest_end}] : []);
+  // 業務開始からの経過分に直す（日付をまたぐ業務でも順番が崩れないように）
+  const rel = t => (t - a + 24*60) % (24*60);
+  const parts = list.map(x => [toMin(x.start), toMin(x.end)])
+    .filter(([s,e]) => s != null && e != null)
+    .map(([s,e]) => [rel(s), Math.min(rel(e), span)])
+    .filter(([s,e]) => s < e)
+    .sort((x,y) => x[0] - y[0]);
+  let total = 0, cur = 0;
+  parts.forEach(([s,e]) => { const from = Math.max(s, cur); if (e > from) { total += e - from; cur = e; } });
+  return total / 60;
+}
+// 実稼働時間（稼働時間から休憩を引いたもの）
+const drNetHours = r => drWorkHours(r) - drRestHours(r);
 // 「12時間30分」の形。合計や平均の表示に使う
 function fmtHours(h) {
   const m = Math.round((+h || 0) * 60);
