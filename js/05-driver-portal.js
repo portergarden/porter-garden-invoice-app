@@ -2225,10 +2225,6 @@ async function printDriverMonthlyReportA4() {
   const drHours=dReports.reduce((a,r)=>a+drWorkHours(r),0);
   const drNetH=dReports.reduce((a,r)=>a+drNetHours(r),0);
 
-  // ドライバーには概算を出さないので、出す列をここで決める
-  const DRV_PRINT_COLS = ['day','dow','car','worktime','workh','nethours','site','km','odoStart','odoEnd','tak','neko','corp','corppcs','charter','charterpcs','alc','health','status'];
-  const printCols = DRV_PRINT_COLS.map(k => MR_COLS.find(c => c.key === k));
-
   const page = `<div class="doc-fit"><div class="mr-page">
     <div class="mr-head">
       <div>
@@ -2241,7 +2237,7 @@ async function printDriverMonthlyReportA4() {
       </div>
     </div>
     <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　実稼働時間 ${fmtHours(drNetH)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
-    ${mrMonthlyTableHtml(printCols, dReports, y, m)}
+    ${mrMonthlyTableHtml(mrColsFor('print'), dReports, y, m)}
   </div></div>`;
 
   const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">

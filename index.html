@@ -1826,7 +1826,6 @@ try {
       </select>
       <button class="btn sml" id="mrShowAllBtn" onclick="toggleMrShowAll()" title="既定では対象期間に日報の提出があるドライバーのみ表示します">提出者のみ表示</button>
       <button class="btn sml" onclick="toggleMrDrvPicker()" title="月報に出すドライバーを個別に選びます。画面と印刷の両方に反映されます">👤 対象ドライバー <span id="mrDrvCount" style="color:var(--text2);font-size:10px">全員</span></button>
-      <button class="btn sml" onclick="toggleMrColPicker()" title="月報に出す項目を選びます。画面の日別明細と印刷の日めくり表の両方に反映されます">⚙ 表示項目 <span id="mrColCount" style="color:var(--text2);font-size:10px"></span></button>
       <button class="btn sml" onclick="exportMonthlyCsv()">⬇ CSV</button>
       <button class="btn sml" onclick="printMonthlyReportA4()" title="選択中のドライバー（全ドライバーの場合は全員分）の1日〜月末までの日めくり表（A4横1枚）を画面で確認してから印刷・PDF保存できます">📄 月報を見る（ドライバー別）</button>
     </div>
@@ -1841,18 +1840,6 @@ try {
       <span style="font-size:10px;color:var(--text2)">誰も選ばないと全員が対象になります。上のプルダウンで1名を選んでいるときはそちらが優先されます</span>
     </div>
     <div id="mrDrvBoxes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px;max-height:220px;overflow-y:auto"></div>
-  </div>
-
-  <!-- 表示項目の選択（画面の日別明細と印刷の日めくり表の両方に効く） -->
-  <div id="mrColPicker" style="display:none;padding:8px 14px;border-bottom:0.5px solid var(--border);background:var(--bg2)">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-      <span style="font-size:11px;font-weight:500">月報に出す項目</span>
-      <button class="btn sml" onclick="setAllMrCols(true)">すべて選ぶ</button>
-      <button class="btn sml" onclick="setAllMrCols(false)">すべて外す</button>
-      <button class="btn sml" onclick="resetMrCols()">既定に戻す</button>
-      <span style="font-size:10px;color:var(--text2)">選んだ内容はこの端末に記憶されます</span>
-    </div>
-    <div id="mrColBoxes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:2px"></div>
   </div>
 
   <!-- 1人だけを見ているときの帯。全員の表示に戻す手段をここに置く -->
@@ -3477,10 +3464,10 @@ try {
 <script src="js/03-dashboard-daily.js?v=082d0509"></script>
 
 
-<script src="js/04-monthly.js?v=cf75b2fa"></script>
+<script src="js/04-monthly.js?v=438cab6b"></script>
 
 
-<script src="js/05-driver-portal.js?v=c7842e3b"></script>
+<script src="js/05-driver-portal.js?v=8a6a2fae"></script>
 
 
 

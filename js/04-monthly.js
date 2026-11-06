@@ -9,42 +9,39 @@
    ============================================================ */
 
 /* ===== 月報の表示項目 =====
-   画面の日別明細と、印刷の日めくり表が同じ定義・同じ選択を使う。
-   pw は印刷時の列幅の目安。選ばれた列だけで按分し直すので合計が100%でなくてよい。
+   画面の日別明細、印刷の日めくり表、CSVが同じ定義を使う。項目は選ばず固定で、
+   未入力の列は人ごとに隠す（mrColsWithData。CSVは全員の列をそろえるので隠さない）。
+   pw は印刷時の列幅の目安。出す列だけで按分し直すので合計が100%でなくてよい。
    get(r) は日報1件を受け取り、表示用の文字列（HTMLとして出すのでエスケープ済み）を返す。
    r が無い日（印刷の日めくり表で日報が無い日）は空欄にする。 */
 const MR_COLS = [
-  {key:'date',     label:'日付',        def:true,  align:'left',   pw:8,  screen:true,  print:false, get:r=>escHtml(r.date||'')},
-  {key:'day',      label:'日',          def:true,  align:'center', pw:4,  screen:false, print:true},
-  {key:'dow',      label:'曜日',        def:true,  align:'center', pw:4,  screen:false, print:true},
-  {key:'car',      label:'車番',        def:false, align:'left',   pw:11, get:r=>escHtml(r.car||'')},
-  {key:'worktime', label:'業務時間帯',  def:false, align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(hhmm(r.start_time)||'?')}-${escHtml(hhmm(r.end_time)||'?')}`:''},
-  {key:'workh',    label:'稼働時間',    def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drWorkHours(r)):''},
-  {key:'nethours', label:'実稼働時間',  def:true,  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drNetHours(r)):''},
-  {key:'site',     label:'稼働先',      def:true,  align:'left',   pw:13, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
-  {key:'km',       label:'走行km',      def:true,  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
-  {key:'odoStart', label:'メーター開始', def:false, align:'right',  pw:8,  get:r=>r.start_odometer!=null?String(r.start_odometer):''},
-  {key:'odoEnd',   label:'メーター終了', def:false, align:'right',  pw:8,  get:r=>r.end_odometer!=null?String(r.end_odometer):''},
-  {key:'tak',      label:'宅配便',      def:true,  align:'right',  pw:8,  get:r=>String(r.qty_takkyubin||0)},
-  {key:'neko',     label:'ポスト便',    def:true,  align:'right',  pw:8,  get:r=>String(r.qty_nekopos||0)},
-  {key:'corp',     label:'企業集配(件)',def:true, align:'right',  pw:8,  get:r=>String(r.qty_corp||0)},
-  {key:'corppcs',  label:'企業集配(個)',def:false,align:'right',  pw:8,  get:r=>String(r.qty_corp_pcs||0)},
-  {key:'charter',  label:'チャーター(件)',def:true,align:'right', pw:8,  get:r=>String(r.qty_charter||0)},
-  {key:'charterpcs',label:'チャーター(個)',def:false,align:'right',pw:8, get:r=>String(r.qty_charter_pcs||0)},
-  {key:'alc',      label:'Alc前/後',    def:true,  align:'center', pw:11, get:r=>`${r.alc_before??'—'}/${r.alc_after??'—'}`},
-  {key:'health',   label:'体調',        def:true,  align:'center', pw:6,  get:r=>({good:'良',normal:'普',bad:'不'}[r.health_before||'good']||'')},
-  {key:'rest',     label:'休憩',        def:false, align:'left',   pw:12, get:r=>escHtml(formatRests(r)||'')},
-  {key:'wait',     label:'荷待ち',      def:false, align:'left',   pw:14, get:r=>escHtml(dailyTrips(r).filter(t=>t.wait).map(t=>`${t.wait.loc||''} ${t.wait.arrive||''}-${t.wait.depart||''}`).join(' / '))},
-  {key:'cargo',    label:'荷役作業等',  def:false, align:'left',   pw:14, get:r=>escHtml(dailyTrips(r).filter(t=>t.cargo).map(t=>`${t.cargo.loc||''} ${t.cargo.work_start||''}-${t.cargo.work_end||''}`).join(' / '))},
-  {key:'handover', label:'業務交替',    def:false, align:'left',   pw:12, get:r=>r.handover_flag?escHtml(`${r.handover_location||''} ${r.handover_time||''}`):''},
+  {key:'date',     label:'日付',  align:'left',   pw:8,  screen:true,  print:false, get:r=>escHtml(r.date||'')},
+  {key:'day',      label:'日',  align:'center', pw:4,  screen:false, print:true},
+  {key:'dow',      label:'曜日',  align:'center', pw:4,  screen:false, print:true},
+  {key:'car',      label:'車番', align:'left',   pw:11, get:r=>escHtml(r.car||'')},
+  {key:'worktime', label:'業務時間帯', align:'center', pw:11, get:r=>(r.start_time||r.end_time)?`${escHtml(hhmm(r.start_time)||'?')}-${escHtml(hhmm(r.end_time)||'?')}`:''},
+  // 場所は業務記録で見られるので、月報は時刻だけにして1行に収める
+  {key:'rest',     label:'休憩', align:'left',   pw:16, get:r=>escHtml((formatRests(r)||'').replace(/（[^）]*）/g,''))},
+  {key:'workh',    label:'稼働時間',  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drWorkHours(r)):''},
+  {key:'nethours', label:'実稼働時間',  align:'right',  pw:8,  get:r=>(r.start_time&&r.end_time)?fmtHM(drNetHours(r)):''},
+  {key:'site',     label:'稼働先',  align:'left',   pw:17, get:r=>{const c=lkCliAny(r.cli);return c?escHtml(c.short||c.name):'';}},
+  {key:'km',       label:'走行km',  align:'right',  pw:8,  get:r=>String(r.distance_km||0)},
+  {key:'odoStart', label:'メーター開始', align:'right',  pw:8,  get:r=>r.start_odometer!=null?String(r.start_odometer):''},
+  {key:'odoEnd',   label:'メーター終了', align:'right',  pw:8,  get:r=>r.end_odometer!=null?String(r.end_odometer):''},
+  {key:'tak',      label:'宅配便',  align:'right',  pw:8,  get:r=>String(r.qty_takkyubin||0)},
+  {key:'neko',     label:'ポスト便',  align:'right',  pw:8,  get:r=>String(r.qty_nekopos||0)},
+  {key:'corp',     label:'企業集配(件)', align:'right',  pw:8,  get:r=>String(r.qty_corp||0)},
+  {key:'corppcs',  label:'企業集配(個)',align:'right',  pw:8,  get:r=>String(r.qty_corp_pcs||0)},
+  {key:'charter',  label:'チャーター(件)',align:'right', pw:8,  get:r=>String(r.qty_charter||0)},
+  {key:'charterpcs',label:'チャーター(個)',align:'right',pw:8, get:r=>String(r.qty_charter_pcs||0)},
+  {key:'alc',      label:'Alc前/後',  align:'center', pw:11, get:r=>`${r.alc_before??'—'}/${r.alc_after??'—'}`},
   /* 概算はドライバーに見せない列なので、画面だけに出す（印刷した紙が本人に渡ることがあるため）。
      単価を1件も登録していないときは列そのものを出さない（needRates） */
-  {key:'est',      label:'概算(売上)',  def:true,  align:'right',  pw:10, screen:true, print:false, needRates:true,
+  {key:'est',      label:'概算(売上)',  align:'right',  pw:10, screen:true, print:false, needRates:true,
     get:r=>{ const e = estimateOneReport(r); return e ? yenR(e.sale) : ''; }},
-  {key:'estPay',   label:'概算(支払)',  def:false, align:'right',  pw:10, screen:true, print:false, needRates:true,
+  {key:'estPay',   label:'概算(支払)', align:'right',  pw:10, screen:true, print:false, needRates:true,
     get:r=>{ const e = estimateOneReport(r); return e ? yenR(e.pay) : ''; }},
-  {key:'status',   label:'状態',        def:true,  align:'center', pw:8,  get:r=>r.status==='rejected'?'差戻し':''},
-  {key:'note',     label:'備考',        def:true,  align:'left',   pw:14, screen:true, print:false, get:r=>escHtml(r.note||'')},
+  {key:'note',     label:'備考',  align:'left',   pw:14, screen:true, print:false, get:r=>escHtml(r.note||'')},
 ];
 /* 表の最後の「合計」の行に出す値。合計に意味のある列だけ。
    同じ日に2枚ある日報（印刷の表には1枚しか出ない）も含めて足すので、月報の集計と同じ数字になる */
@@ -67,9 +64,6 @@ const mrTotalCells = (cols, reports) => cols.map((c, i) =>
   i === 0 ? '合計' : (MR_COL_SUMS[c.key] ? MR_COL_SUMS[c.key](reports) : ''));
 /* 未入力の列を人ごとに隠す。担当の仕事によって使わない項目（宅配便・チャーターなど）が違うため。
    0だけの列も未入力として扱う。日付の列は常に出す */
-const MR_HIDE_EMPTY_KEY = 'mrHideEmpty';
-let mrHideEmpty = true;
-try { mrHideEmpty = localStorage.getItem(MR_HIDE_EMPTY_KEY) !== '0'; } catch(e) {}
 const MR_COL_ALWAYS = new Set(['date', 'day', 'dow']);
 function mrColHasData(c, reports) {
   if (MR_COL_ALWAYS.has(c.key)) return true;
@@ -77,12 +71,7 @@ function mrColHasData(c, reports) {
   // アルコールの「0/0」は検知値0という記録なので未入力に含めない（空欄は「—/—」と出る）
   return reports.some(r => !/^(0|¥0|[—\/\s]*)$/.test(String(c.get(r) ?? '').replace(/<[^>]*>/g, '').trim()));
 }
-const mrColsWithData = (cols, reports) => mrHideEmpty ? cols.filter(c => mrColHasData(c, reports)) : cols;
-function toggleMrHideEmpty(on) {
-  mrHideEmpty = on;
-  try { localStorage.setItem(MR_HIDE_EMPTY_KEY, on ? '1' : '0'); } catch(e) {}
-  renderMonthlyReport();
-}
+const mrColsWithData = (cols, reports) => cols.filter(c => mrColHasData(c, reports));
 /* 月報の印刷の表（1日〜月末＋合計の行）。管理者用・ドライバー用で共通。
    reports はその人のその月の日報。日報が無い日は空欄の行のまま出す */
 function mrMonthlyTableHtml(cols, reports, y, m) {
@@ -449,59 +438,12 @@ const yenR = v => '¥' + Math.round(+v || 0).toLocaleString();
    以前は日報タブ用の共有配列(dailyReports)を見ており、日報タブを一度も開いていないと
    CSVが空になり、開いていても別の期間の内容が出ることがあった */
 let mrReports = [];
-const MR_COLS_KEY = 'mrCols';
-function loadMrCols() {
-  const on = {};
-  MR_COLS.forEach(c => on[c.key] = c.def);
-  try {
-    const saved = JSON.parse(localStorage.getItem(MR_COLS_KEY) || 'null');
-    if (saved && typeof saved === 'object') {
-      // 保存後に列が増えても、増えた列は既定値のまま残す
-      MR_COLS.forEach(c => { if (typeof saved[c.key] === 'boolean') on[c.key] = saved[c.key]; });
-      // メーターが1列だった頃の選択を、開始・終了の2列に引き継ぐ
-      if (typeof saved.odo === 'boolean' && saved.odoStart === undefined) on.odoStart = on.odoEnd = saved.odo;
-    }
-  } catch(e) {}
-  return on;
+/* 概算の列は、単価を登録している取引先が1件も無ければ出さない（数字の出ない列が並ぶだけになるため）。
+   ドライバーには出さない。where は 'screen' か 'print'（日付は画面用、日＋曜は印刷用） */
+function mrColsFor(where) {
+  return MR_COLS.filter(c => c[where] !== false
+    && (!c.needRates || (me?.role !== 'driver' && Object.keys(clientRates || {}).length)));
 }
-let mrCols = loadMrCols();
-function saveMrCols() { try { localStorage.setItem(MR_COLS_KEY, JSON.stringify(mrCols)); } catch(e) {} }
-/* 今この画面で選べる列。概算の列は、単価を登録している取引先が1件も無ければ出さない
-   （数字の出ない列が並ぶだけになるため）。ドライバー画面はこの表を使っていない */
-function mrAvailableCols() {
-  return MR_COLS.filter(c => !c.needRates || (me?.role !== 'driver' && Object.keys(clientRates || {}).length));
-}
-// where は 'screen' か 'print'。列ごとに出す場所を絞れる（日付は画面用、日＋曜は印刷用）
-function mrSelectedCols(where) {
-  return mrAvailableCols().filter(c => mrCols[c.key] && (c[where] !== false));
-}
-function toggleMrCol(key, on) { mrCols[key] = on; saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
-function setAllMrCols(on) { MR_COLS.forEach(c => mrCols[c.key] = on); saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
-function resetMrCols() { MR_COLS.forEach(c => mrCols[c.key] = c.def); saveMrCols(); renderMonthlyReport(); renderMrColPicker(); }
-function toggleMrColPicker() {
-  const el = document.getElementById('mrColPicker');
-  if (!el) return;
-  const show = el.style.display === 'none';
-  el.style.display = show ? 'block' : 'none';
-  if (show) renderMrColPicker();
-}
-function renderMrColPicker() {
-  const el = document.getElementById('mrColBoxes');
-  if (!el) return;
-  // 画面だけ・印刷だけの列があるので、どちらに出るのかを添える
-  const scope = c => c.screen === false ? '<span style="color:var(--text3);font-size:9.5px">（印刷のみ）</span>'
-                   : c.print  === false ? '<span style="color:var(--text3);font-size:9.5px">（画面のみ）</span>' : '';
-  const cols = mrAvailableCols();
-  el.innerHTML = `<label style="grid-column:1/-1;display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px 6px;cursor:pointer;font-weight:500">
-    <input type="checkbox" onchange="toggleMrHideEmpty(this.checked)"${mrHideEmpty?' checked':''}>未入力の項目は人ごとに隠す（0だけの項目も隠します）
-  </label>` + cols.map(c => `<label style="display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 4px;cursor:pointer">
-    <input type="checkbox" onchange="toggleMrCol('${c.key}',this.checked)"${mrCols[c.key]?' checked':''}>${escHtml(c.label)}${scope(c)}
-  </label>`).join('');
-  const n = cols.filter(c=>mrCols[c.key]).length;
-  const cnt = document.getElementById('mrColCount');
-  if (cnt) cnt.textContent = `${n}/${cols.length}`;
-}
-
 /* ===== 月報 ===== */
 // 読み込み済みの期間。同じ期間なら日報を読み直さない
 let mrFetchKey = '';
@@ -1076,27 +1018,24 @@ function renderMrCards() {
             <div style="overflow-x:auto">
               <table class="mr-day-tbl" style="width:100%;border-collapse:collapse;font-size:10px">
                 <thead><tr style="background:var(--bg2)">
-                  ${mrColsWithData(mrSelectedCols('screen'), dReports).map(c=>`<th style="padding:3px 6px;text-align:${c.align}">${escHtml(c.label)}</th>`).join('')}
+                  ${mrColsWithData(mrColsFor('screen'), dReports).map(c=>`<th style="padding:3px 6px;text-align:${c.align}">${escHtml(c.label)}</th>`).join('')}
                 </tr></thead>
                 <tbody>
                   ${dReports.map(r => {
                     const alcWarn = +r.alc_before>=0.15||+r.alc_after>=0.15;
-                    const healthBad = r.health_before==='bad'||r.health_after==='bad';
                     return `<tr data-k="${r.id}" style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">${
-                      mrColsWithData(mrSelectedCols('screen'), dReports).map(c => {
+                      mrColsWithData(mrColsFor('screen'), dReports).map(c => {
                         // 目立たせたい列だけ色を付ける。備考は長いので省略表示にする
                         const extra = c.key==='alc' && alcWarn ? ';color:var(--red);font-weight:600'
-                                    : c.key==='health' && healthBad ? ';color:var(--amber-text)'
                                     : ';white-space:pre-wrap;word-break:break-word';   // 途中で切らずに折り返す
                         const title = c.key==='note' ? ` title="${escHtml(r.note||'')}"` : '';
-                        const v = c.key==='status' && r.status==='rejected'
-                                ? '<span class="dr-status rejected">差</span>' : (c.get ? c.get(r) : '');
+                        const v = c.get ? c.get(r) : '';
                         return `<td style="padding:3px 6px;text-align:${c.align}${extra}"${title}>${v}</td>`;
                       }).join('')
                     }</tr>`;
                   }).join('')}
                   ${(() => {
-                    const cols = mrColsWithData(mrSelectedCols('screen'), dReports);
+                    const cols = mrColsWithData(mrColsFor('screen'), dReports);
                     const totals = mrTotalCells(cols, dReports);
                     return `<tr style="background:var(--bg2);font-weight:600">${cols.map((c,i)=>`<td style="padding:3px 6px;text-align:${c.align}">${totals[i]}</td>`).join('')}</tr>`;
                   })()}
@@ -1113,7 +1052,7 @@ function renderMrCards() {
     || (mrSelDrvId != null ? ''
         : '<div style="color:var(--text2);font-size:11.5px;padding:14px;text-align:center">上の提出状況で<b>ドライバー名を押す</b>と、その人だけの表示に切り替わります</div>');
   // 日別明細はスマホでは1日＝1枚のカードにする。列は利用者が選んだものなので全部見せ、日付を見出しにする
-  const dateIdx = mrSelectedCols('screen').findIndex(c => c.key === 'date');
+  const dateIdx = mrColsFor('screen').findIndex(c => c.key === 'date');
   bodyEl.querySelectorAll('table.mr-day-tbl').forEach(tb => mobilizeTable(tb, { name:'mr', title: dateIdx >= 0 ? dateIdx : 0, hideZero: true }));
 
   // 差異バナー表示
@@ -1271,7 +1210,7 @@ async function printMonthlyReportA4(onlyDrvId) {
           </div>
         </div>
         <div class="mr-summary">稼働日数 ${drWorkDays}日　稼働時間 ${fmtHours(drHours)}　実稼働時間 ${fmtHours(drNetH)}　走行距離 ${drKm.toLocaleString()}km　個人宅配 宅配便${drTak.toLocaleString()}／ポスト便${drNeko.toLocaleString()}　企業集配 ${drCorp.toLocaleString()}件／${drCorpPcs.toLocaleString()}個　チャーター ${drChar.toLocaleString()}件／${drCharPcs.toLocaleString()}個</div>
-        ${mrMonthlyTableHtml(mrSelectedCols('print'), dReports, y, m)}
+        ${mrMonthlyTableHtml(mrColsFor('print'), dReports, y, m)}
       </div></div>`;
     })
     .filter(Boolean);
@@ -1299,7 +1238,7 @@ function exportMonthlyCsv() {
   const month = mrFrom;
   const drReports_local = (mrReports||[]).filter(r=>r.date&&r.date>=mrFrom&&r.date<=mrTo);
   // 画面と同じ項目を出す。ドライバーの識別だけは常に付ける
-  const csvCols = mrSelectedCols('screen');
+  const csvCols = mrColsFor('screen');
   const headers = ['ドライバー','ドライバーID', ...csvCols.map(c=>c.label)];
   const rows = [];
   drvs.forEach(d => {
