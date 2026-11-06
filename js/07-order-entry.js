@@ -91,12 +91,10 @@ function switchP0Tab(n) {
 let q0Templates = []; // Supabaseから読み込む
 
 function initQ0Form() {
-  // 日付デフォルト（配送日を基準に、引取日・支払日も同じ日をデフォルトにする）
+  // 日付デフォルト（作業日を基準に、支払日も同じ日をデフォルトにする）
   // システム全体の集計期間と同じく前月を既定値とする（前月分の受注をまとめて入力する運用のため）
   const dEl = document.getElementById('q0D');
   if (dEl && !dEl.value) { const now = new Date(); dEl.value = fmtLocalDate(new Date(now.getFullYear(), now.getMonth()-1, 1)); }
-  const pickEl = document.getElementById('q0PickD');
-  if (pickEl && !pickEl.value) pickEl.value = dEl.value;
   const payDateEl = document.getElementById('q0InvPayDate');
   if (payDateEl && !payDateEl.value) payDateEl.value = dEl.value;
   const qtyEl = document.getElementById('q0Qty');
@@ -288,12 +286,6 @@ function setQ0CarByCode(car) {
   document.getElementById('q0CarText').value = (car && d) ? `${car}（${d.name}）` : (car || '');
 }
 
-// 配送日を変更したら引取日も同じ日に揃える（デフォルト同期。引取日は個別に上書き可能）
-function syncQ0Dates() {
-  const d = document.getElementById('q0D').value;
-  document.getElementById('q0PickD').value = d;
-}
-
 // 距離(km)・時間(h)の入力欄を「150km/3h」のような1本の文字列(q0DistTime)にまとめる
 function syncQ0DistTime() {
   const dist = document.getElementById('q0Dist').value;
@@ -347,12 +339,9 @@ function openEditInvoice(id) {
   updateQ0DrvHint();
   document.getElementById('q0Type').value = r.type || 'regular';
   document.getElementById('q0D').value = r.date || '';
-  document.getElementById('q0PickD').value = r.pickup_date || r.date || '';
   document.getElementById('q0PickT').value = r.pickup_time || '';
-  document.getElementById('q0PickDone').checked = !!r.pickup_done;
   document.getElementById('q0PickLoc').value = r.pickup_location || '';
   document.getElementById('q0DeliT').value = r.delivery_time || '';
-  document.getElementById('q0DeliDone').checked = !!r.delivery_done;
   document.getElementById('q0DeliLoc').value = r.delivery_location || '';
   document.getElementById('q0TaskName').value = r.task_name || '';
   const qty = r.qty != null ? r.qty : 1;
@@ -404,7 +393,6 @@ function cancelQ0Edit(skipFormReset) {
   if (!skipFormReset) {
     ['q0Fare','q0PayFare','q0Note','q0PickT','q0PickLoc','q0DeliT','q0DeliLoc','q0TaskName',
      'q0DistTime','q0Dist','q0Time'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-    ['q0PickDone','q0DeliDone'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});
     document.getElementById('q0Qty').value = 1;
     q0ExtraFees = [];
     renderQ0FeeList();
@@ -1045,12 +1033,10 @@ async function submitQ0(forceContinuous) {
     drv_id: +document.getElementById('q0DrvOverride').value || null,
   };
   const extObj = {
-    pickup_date: document.getElementById('q0PickD').value || null,
+    pickup_date: date,   // 作業日に統合した。古いデータと形をそろえるため同じ日を入れておく
     pickup_time: document.getElementById('q0PickT').value || null,
-    pickup_done: document.getElementById('q0PickDone').checked,
     pickup_location: document.getElementById('q0PickLoc').value.trim(),
     delivery_time: document.getElementById('q0DeliT').value || null,
-    delivery_done: document.getElementById('q0DeliDone').checked,
     delivery_location: document.getElementById('q0DeliLoc').value.trim(),
     task_name: document.getElementById('q0TaskName').value.trim(),
     qty: document.getElementById('q0Qty').value === '' ? null : +document.getElementById('q0Qty').value,
@@ -1124,18 +1110,15 @@ async function submitQ0(forceContinuous) {
     ['q0Fare','q0PayFare','q0Note',
      'q0PickT','q0PickLoc','q0DeliT','q0DeliLoc','q0TaskName','q0DistTime','q0Dist','q0Time'
      ].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-    ['q0PickDone','q0DeliDone'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});
     document.getElementById('q0Qty').value = 1;
-    // 連続入力: 日付を翌日に（引取日・支払日も同じ日に同期）
+    // 連続入力: 日付を翌日に（支払日も同じ日に同期）
     // 「連続登録」ボタンから呼ばれた場合はチェックボックスの設定にかかわらず必ず継続する
     if (forceContinuous || document.getElementById('q0Cont')?.checked) {
       const d = new Date(date); d.setDate(d.getDate()+1);
       const next = fmtLocalDate(d);
       document.getElementById('q0D').value = next;
-      document.getElementById('q0PickD').value = next;
       document.getElementById('q0InvPayDate').value = next;
     } else {
-      document.getElementById('q0PickD').value = '';
       document.getElementById('q0InvPayDate').value = '';
     }
     q0ExtraFees = [];

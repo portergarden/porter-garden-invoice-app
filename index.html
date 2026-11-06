@@ -343,21 +343,23 @@ try {
           </div>
         </div>
         <div class="qr">
-          <div class="ql">引取日</div>
+          <div class="ql">作業日 <span style="color:var(--red)">*</span></div>
           <div class="qv">
-            <input type="date" id="q0PickD" style="width:150px">
+            <input type="date" id="q0D" style="width:150px">
+          </div>
+        </div>
+        <div class="qr">
+          <div class="ql">引取</div>
+          <div class="qv">
             <span class="qmini">時間</span><input type="time" id="q0PickT" style="width:100px">
-            <label style="display:flex;align-items:center;gap:3px;font-size:12px;color:var(--text2)"><input type="checkbox" id="q0PickDone">引取済</label>
             <span class="qmini">引取先</span><input type="text" id="q0PickLoc" placeholder="任意" style="flex:1;min-width:120px">
             <button class="btn sml" style="font-size:11px;padding:0 6px" onclick="copyQ0CliTo('q0PickLoc')">取引先と同じ</button>
           </div>
         </div>
         <div class="qr">
-          <div class="ql">配送日 <span style="color:var(--red)">*</span></div>
+          <div class="ql">配送</div>
           <div class="qv">
-            <input type="date" id="q0D" style="width:150px" onchange="syncQ0Dates()">
             <span class="qmini">時間</span><input type="time" id="q0DeliT" style="width:100px">
-            <label style="display:flex;align-items:center;gap:3px;font-size:12px;color:var(--text2)"><input type="checkbox" id="q0DeliDone">配送済</label>
             <span class="qmini">配送先</span><input type="text" id="q0DeliLoc" placeholder="任意" style="flex:1;min-width:120px">
             <button class="btn sml" style="font-size:11px;padding:0 6px" onclick="copyQ0CliTo('q0DeliLoc')">取引先と同じ</button>
           </div>
@@ -3412,7 +3414,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=a182287c"></script>
+<script src="js/01-core.js?v=5c6e88f7"></script>
 
 <script src="js/02-drivers-pay.js?v=f0957b27"></script>
 
@@ -3480,7 +3482,7 @@ try {
 <script src="js/06-schedules.js?v=bde36d2a"></script>
 
 
-<script src="js/07-order-entry.js?v=d45fc75d"></script>
+<script src="js/07-order-entry.js?v=2d729970"></script>
 
 
 <script src="js/08-templates.js?v=d9ab3302"></script>
