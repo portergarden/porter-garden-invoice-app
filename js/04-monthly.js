@@ -34,7 +34,6 @@ const MR_COLS = [
   {key:'corppcs',  label:'企業集配(個)',align:'right',  pw:8,  get:r=>String(r.qty_corp_pcs||0)},
   {key:'charter',  label:'チャーター(件)',align:'right', pw:8,  get:r=>String(r.qty_charter||0)},
   {key:'charterpcs',label:'チャーター(個)',align:'right',pw:8, get:r=>String(r.qty_charter_pcs||0)},
-  {key:'alc',      label:'Alc前/後',  align:'center', pw:11, get:r=>`${r.alc_before??'—'}/${r.alc_after??'—'}`},
   /* 概算はドライバーに見せない列なので、画面だけに出す（印刷した紙が本人に渡ることがあるため）。
      単価を1件も登録していないときは列そのものを出さない（needRates） */
   {key:'est',      label:'概算(売上)',  align:'right',  pw:10, screen:true, print:false, needRates:true,
@@ -68,8 +67,7 @@ const MR_COL_ALWAYS = new Set(['date', 'day', 'dow']);
 function mrColHasData(c, reports) {
   if (MR_COL_ALWAYS.has(c.key)) return true;
   if (!c.get) return false;
-  // アルコールの「0/0」は検知値0という記録なので未入力に含めない（空欄は「—/—」と出る）
-  return reports.some(r => !/^(0|¥0|[—\/\s]*)$/.test(String(c.get(r) ?? '').replace(/<[^>]*>/g, '').trim()));
+  return reports.some(r => !/^(0|¥0|)$/.test(String(c.get(r) ?? '').replace(/<[^>]*>/g, '').trim()));
 }
 const mrColsWithData = (cols, reports) => cols.filter(c => mrColHasData(c, reports));
 /* 月報の印刷の表（1日〜月末＋合計の行）。管理者用・ドライバー用で共通。
@@ -1025,9 +1023,8 @@ function renderMrCards() {
                     const alcWarn = +r.alc_before>=0.15||+r.alc_after>=0.15;
                     return `<tr data-k="${r.id}" style="border-bottom:0.5px solid var(--border)${alcWarn?';background:var(--red-bg)':''}">${
                       mrColsWithData(mrColsFor('screen'), dReports).map(c => {
-                        // 目立たせたい列だけ色を付ける。備考は長いので省略表示にする
-                        const extra = c.key==='alc' && alcWarn ? ';color:var(--red);font-weight:600'
-                                    : ';white-space:pre-wrap;word-break:break-word';   // 途中で切らずに折り返す
+                        // 備考は長いので途中で切らずに折り返す
+                        const extra = ';white-space:pre-wrap;word-break:break-word';
                         const title = c.key==='note' ? ` title="${escHtml(r.note||'')}"` : '';
                         const v = c.get ? c.get(r) : '';
                         return `<td style="padding:3px 6px;text-align:${c.align}${extra}"${title}>${v}</td>`;
