@@ -286,6 +286,22 @@ function setQ0CarByCode(car) {
   document.getElementById('q0CarText').value = (car && d) ? `${car}（${d.name}）` : (car || '');
 }
 
+/* 日をまたぐ作業。開始日を pickup_date、終わった日を date に入れる。
+   date は請求・支払・月の集計の基準なので、終わった日の月に計上される（以前の配送日と同じ考え方） */
+function setQ0MultiDay(on, end) {
+  document.getElementById('q0DMulti').checked = !!on;
+  document.getElementById('q0DEndWrap').style.display = on ? 'inline-flex' : 'none';
+  document.getElementById('q0DEnd').value = on ? (end || '') : '';
+}
+// 印を付けたら、終わる日は翌日を初期値にする（日付は入力欄の日から数える）
+function onQ0MultiDayChange() {
+  const on = document.getElementById('q0DMulti').checked;
+  const start = document.getElementById('q0D').value;
+  let end = '';
+  if (on && start) { const d = new Date(start); d.setDate(d.getDate()+1); end = fmtLocalDate(d); }
+  setQ0MultiDay(on, end);
+}
+
 // 距離(km)・時間(h)の入力欄を「150km/3h」のような1本の文字列(q0DistTime)にまとめる
 function syncQ0DistTime() {
   const dist = document.getElementById('q0Dist').value;
@@ -338,7 +354,9 @@ function openEditInvoice(id) {
   setQ0DrvOverrideById(r.drv_id);
   updateQ0DrvHint();
   document.getElementById('q0Type').value = r.type || 'regular';
-  document.getElementById('q0D').value = r.date || '';
+  const multiDay = r.pickup_date && r.date && r.pickup_date !== r.date;
+  document.getElementById('q0D').value = (multiDay ? r.pickup_date : r.date) || '';
+  setQ0MultiDay(multiDay, r.date);
   document.getElementById('q0PickT').value = r.pickup_time || '';
   document.getElementById('q0PickLoc').value = r.pickup_location || '';
   document.getElementById('q0DeliT').value = r.delivery_time || '';
@@ -390,6 +408,7 @@ function cancelQ0Edit(skipFormReset) {
   document.getElementById('q0SubmitBtn').textContent = '✔ 登録する';
   document.getElementById('q0ContRow').style.display = '';
   document.getElementById('q0ContBtn').style.display = '';
+  setQ0MultiDay(false);
   if (!skipFormReset) {
     ['q0Fare','q0PayFare','q0Note','q0PickT','q0PickLoc','q0DeliT','q0DeliLoc','q0TaskName',
      'q0DistTime','q0Dist','q0Time'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -988,11 +1007,14 @@ function syncQ0PayFromFare() {
 }
 
 async function submitQ0(forceContinuous) {
-  const date = document.getElementById('q0D').value;
+  const startDate = document.getElementById('q0D').value;
+  const multiDay = document.getElementById('q0DMulti').checked;
+  const date = multiDay ? document.getElementById('q0DEnd').value : startDate;   // 集計の基準は終わった日
   const car = document.getElementById('q0Car').value;
   const cli = +document.getElementById('q0Cli').value||null;
   const result = document.getElementById('q0Result');
-  if (!date||!car) { result.textContent='⚠ 日付と車番は必須です'; result.style.color='var(--red)'; return; }
+  if (!startDate||!car) { result.textContent='⚠ 日付と車番は必須です'; result.style.color='var(--red)'; return; }
+  if (multiDay && (!date || date <= startDate)) { result.textContent='⚠ 日をまたぐ作業は、終わった日を作業日より後の日付にしてください'; result.style.color='var(--red)'; return; }
   if (!cli) { result.textContent='⚠ 取引先は登録済みの候補から選択してください'; result.style.color='var(--red)'; return; }
 
   const qty = +document.getElementById('q0Qty').value || 1;
@@ -1033,7 +1055,7 @@ async function submitQ0(forceContinuous) {
     drv_id: +document.getElementById('q0DrvOverride').value || null,
   };
   const extObj = {
-    pickup_date: date,   // 作業日に統合した。古いデータと形をそろえるため同じ日を入れておく
+    pickup_date: startDate,   // 作業を始めた日。日をまたがなければ date と同じ日
     pickup_time: document.getElementById('q0PickT').value || null,
     pickup_location: document.getElementById('q0PickLoc').value.trim(),
     delivery_time: document.getElementById('q0DeliT').value || null,
@@ -1111,6 +1133,7 @@ async function submitQ0(forceContinuous) {
      'q0PickT','q0PickLoc','q0DeliT','q0DeliLoc','q0TaskName','q0DistTime','q0Dist','q0Time'
      ].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
     document.getElementById('q0Qty').value = 1;
+    setQ0MultiDay(false);
     // 連続入力: 日付を翌日に（支払日も同じ日に同期）
     // 「連続登録」ボタンから呼ばれた場合はチェックボックスの設定にかかわらず必ず継続する
     if (forceContinuous || document.getElementById('q0Cont')?.checked) {

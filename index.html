@@ -346,6 +346,11 @@ try {
           <div class="ql">作業日 <span style="color:var(--red)">*</span></div>
           <div class="qv">
             <input type="date" id="q0D" style="width:150px">
+            <label style="display:flex;align-items:center;gap:3px;font-size:12px;color:var(--text2);cursor:pointer"><input type="checkbox" id="q0DMulti" onchange="onQ0MultiDayChange()">日をまたぐ</label>
+            <span id="q0DEndWrap" style="display:none;align-items:center;gap:6px;flex-wrap:wrap">
+              <span class="qmini" style="margin-left:0">〜</span><input type="date" id="q0DEnd" style="width:150px">
+              <span style="font-size:10px;color:var(--text2)">終わった日の月に計上します</span>
+            </span>
           </div>
         </div>
         <div class="qr">
@@ -3414,7 +3419,7 @@ try {
        これが無いと「新しいindex.html＋古いJS」という組み合わせで動いてしまいます。
        js/ か css/ を変更したら、コミット前に必ず実行してください:
            python tools/stamp-assets.py -->
-<script src="js/01-core.js?v=5c6e88f7"></script>
+<script src="js/01-core.js?v=02b5b6ea"></script>
 
 <script src="js/02-drivers-pay.js?v=f0957b27"></script>
 
@@ -3482,7 +3487,7 @@ try {
 <script src="js/06-schedules.js?v=bde36d2a"></script>
 
 
-<script src="js/07-order-entry.js?v=2d729970"></script>
+<script src="js/07-order-entry.js?v=cd940475"></script>
 
 
 <script src="js/08-templates.js?v=d9ab3302"></script>

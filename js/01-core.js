@@ -1035,7 +1035,7 @@ const AGG_DETAIL_COLS = [
     return { top: escHtml(names.join('、'))||'—', bottom: yen(fb.other) };
   }},
   {key:'total', label:'金額', default:true, num:true, get:(r,side)=>{const fb=feeBreakdown(r,side);return fareBySide(r,side)+fb.total+rtaxBySide(r,side);}},
-  {key:'date', label:'作業日', default:false, get:r=>r.date||''},
+  {key:'date', label:'作業日', default:false, get:r=>(r.pickup_date&&r.date&&r.pickup_date!==r.date)?`${r.pickup_date}〜${r.date}`:(r.date||'')},
   {key:'car', label:'車番', default:false, get:r=>escHtml(r.car||'')},
   {key:'driver', label:'ドライバー', default:false, get:r=>{const d=recDrv(r);return d?escHtml(d.name):'';}},
   {key:'type', label:'種別', default:false, get:r=>typeShort(r.type)},
